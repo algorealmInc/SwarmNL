@@ -2,24 +2,14 @@
 mod prelude;
 mod util;
 
+pub use crate::prelude::*;
 /// re-exports
-pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType};
-
-use crate::prelude::*;
-use libp2p_identity::{Keypair, PeerId};
+pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair};
 
 /// This module contains data structures and functions to setup a node identity and configure it for networking
 pub mod setup {
-    /// import the content of the [prelude module](crate::prelude) into this module
+    /// import the contents of the exported modules into this module
     use super::*;
-
-    /// The Cryptographic Keypair for node identification and message signing.
-    /// This is only necessary because of the distinction between an RSA keypair and the others
-    #[derive(Debug)]
-    enum WrappedKeyPair {
-        Rsa(RsaKeypair),
-        Other(Keypair),
-    }
 
     /// Read the configuration from a config file
     #[derive(Debug)]
@@ -118,6 +108,39 @@ pub mod setup {
             };
 
             BootstrapConfig { keypair, ..self }
+        }
+    }
+}
+
+/// The module containing the core data structures for SwarmNl
+mod core {
+    use super::*;
+
+    /// The core library struct
+    struct Core {
+        keypair: WrappedKeyPair,
+    }
+
+    impl Core {
+        /// Serialize keypair to protobuf format and write to config file on disk.
+        /// It returns a boolean to indicate success of operation.
+        pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
+            // check if key type is something other than RSA
+            if let Some(keypair) = self.keypair.into_inner() {
+                if let Ok(protobuf_keypair) = keypair.to_protobuf_encoding() {
+                    // write to config file
+                    return util::write_config(
+                        "auth",
+                        "protobuf_keypair",
+                        &format!("{:?}", protobuf_keypair),
+                        config_file_path,
+                    );
+                }
+            } else {
+                // it is most certainly RSA
+            }
+
+            false
         }
     }
 }
