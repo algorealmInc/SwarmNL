@@ -2,10 +2,9 @@
 mod prelude;
 mod util;
 
-/// re-export all the prelude content
-pub use libp2p_identity::{KeyType, rsa::Keypair as RsaKeypair};
+/// re-exports
+pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType};
 
-/// libp2p utilities
 use crate::prelude::*;
 use libp2p_identity::{Keypair, PeerId};
 
@@ -17,9 +16,9 @@ pub mod setup {
     /// The Cryptographic Keypair for node identification and message signing.
     /// This is only necessary because of the distinction between an RSA keypair and the others
     #[derive(Debug)]
-    enum KeypairType {
+    enum WrappedKeyPair {
         Rsa(RsaKeypair),
-        Other(Keypair)
+        Other(Keypair),
     }
 
     /// Read the configuration from a config file
@@ -30,7 +29,7 @@ pub mod setup {
         /// The port to listen on if using the UDP or QUIC protocol
         udp_port: Port,
         /// The Cryptographic Keypair for node identification and message auth
-        keypair: KeypairType,
+        keypair: WrappedKeyPair,
     }
 
     impl BootstrapConfig {
@@ -51,7 +50,7 @@ pub mod setup {
                 // Default UDP port if not specified
                 udp_port: 2707,
                 // Default node keypair type i.e Ed25519
-                keypair: KeypairType::Other(Keypair::generate_ed25519()),
+                keypair: WrappedKeyPair::Other(Keypair::generate_ed25519()),
             }
         }
 
@@ -67,21 +66,55 @@ pub mod setup {
 
         /// Generate a Cryptographic Keypair.
         /// Please note that calling this function overrides whatever might have been read from the `.ini` file
-        pub fn generate_keypair(self, keytype: KeyType) -> Self {
-            let keypair = match keytype {
+        pub fn generate_keypair(self, key_type: KeyType) -> Self {
+            let keypair = match key_type {
                 // generate a Ed25519 Keypair
-                KeyType::Ed25519 => KeypairType::Other(Keypair::generate_ed25519()),
+                KeyType::Ed25519 => WrappedKeyPair::Other(Keypair::generate_ed25519()),
                 KeyType::RSA => {
                     // first generate an Ed25519 Keypair and then try to cast it into RSA.
                     // Return an Ed25519 keyType if casting fails
                     let keypair = Keypair::generate_ed25519();
                     match keypair.clone().try_into_rsa() {
-                        Ok(rsa_keypair) => KeypairType::Rsa(rsa_keypair),
-                        Err(_) => KeypairType::Other(keypair)
+                        Ok(rsa_keypair) => WrappedKeyPair::Rsa(rsa_keypair),
+                        Err(_) => WrappedKeyPair::Other(keypair),
                     }
-                },
-                KeyType::Secp256k1 => KeypairType::Other(Keypair::generate_secp256k1()),
-                KeyType::Ecdsa => KeypairType::Other(Keypair::generate_ecdsa())
+                }
+                KeyType::Secp256k1 => WrappedKeyPair::Other(Keypair::generate_secp256k1()),
+                KeyType::Ecdsa => WrappedKeyPair::Other(Keypair::generate_ecdsa()),
+            };
+
+            BootstrapConfig { keypair, ..self }
+        }
+
+        /// Generate a Cryptographic Keypair from a protobuf format.
+        /// This will override any already set keypair
+        /// # Panics
+        ///
+        /// This function will panic if the `u8` buffer is not parsable into the specified key type
+        pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
+            // parse the key type
+            let key_type = <KeyType as CustomFrom>::from(key_type_str)
+                .ok_or(SwarmNlError::BoostrapDataParseError(
+                    key_type_str.to_owned(),
+                ))
+                .unwrap();
+
+            let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
+            let keypair = match key_type {
+                // generate a Ed25519 Keypair
+                KeyType::Ed25519 => {
+                    WrappedKeyPair::Other(Keypair::try_into_ed25519(raw_keypair).unwrap().into())
+                }
+                // generate a RSA Keypair
+                KeyType::RSA => WrappedKeyPair::Rsa(raw_keypair.try_into_rsa().unwrap()),
+                // generate a Secp256k1 Keypair
+                KeyType::Secp256k1 => {
+                    WrappedKeyPair::Other(Keypair::try_into_secp256k1(raw_keypair).unwrap().into())
+                }
+                // generate a Ecdsa Keypair
+                KeyType::Ecdsa => {
+                    WrappedKeyPair::Other(Keypair::try_into_ecdsa(raw_keypair).unwrap().into())
+                }
             };
 
             BootstrapConfig { keypair, ..self }

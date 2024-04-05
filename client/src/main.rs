@@ -10,19 +10,14 @@ fn main() {}
 #[cfg(test)]
 mod tests {
     use ini::Ini;
-    use std::{
-        borrow::Cow,
-        fmt::{Debug, Display},
-    };
+    use std::borrow::Cow;
 
     use crate::CONFIG_FILE_PATH;
 
     /// try to read/write a byte vector to config file
     #[test]
     fn write_to_ini_file() {
-        let test_vec = vec![
-            12, 234, 45, 34, 54, 343, 43, 534, 43, 3423, 434, 43, 34, 667, 98,
-        ];
+        let test_vec = vec![12, 234, 45, 34, 54, 34, 43, 34, 43, 23, 43, 43, 34, 67, 98];
 
         // try vec to `.ini` file
         assert!(write_config(
@@ -39,6 +34,14 @@ mod tests {
         assert_eq!(read_config("bio", "name"), "@thewoodfish");
     }
 
+    #[test]
+    fn test_conversion_fn() {
+        let test_vec = vec![12, 234, 45, 34, 54, 34, 43, 34, 43, 23, 43, 43, 34, 67, 98];
+
+        let vec_string = "[12, 234, 45, 34, 54, 34, 43, 34, 43, 23, 43, 43, 34, 67, 98,]";
+        assert_eq!(string_to_vec(vec_string), test_vec);
+    }
+
     /// read value from config file
     fn read_config(section: &str, key: &str) -> Cow<'static, str> {
         if let Ok(conf) = Ini::load_from_file(CONFIG_FILE_PATH) {
@@ -50,6 +53,14 @@ mod tests {
         }
 
         "".into()
+    }
+
+    fn string_to_vec(input: &str) -> Vec<u8> {
+        input
+            .trim_matches(|c| c == '[' || c == ']')
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect()
     }
 
     /// write value into config file
