@@ -11,4 +11,4 @@ pub enum SwarmNlError {
 /// Generic SwarmNl result type
 pub type SwarmNlResult<T> = Result<T, SwarmNlError>;
 /// Port type
-pub type Port = u32;
+pub type Port = u16;
