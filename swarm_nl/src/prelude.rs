@@ -39,7 +39,7 @@ impl CustomFrom for KeyType {
 
 /// A wrapper for the cryptographic Keypair for node identification and message signing.
 /// This is only necessary because of the distinction between an RSA keypair and the others
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum WrappedKeyPair {
     Rsa(RsaKeypair),
     Other(Keypair),
@@ -63,4 +63,18 @@ impl WrappedKeyPair {
             None
         }
     }
+}
+
+/// Supported runtimes and executor
+pub enum Runtime {
+    AsyncStd,
+    Tokio
+}
+
+/// Supported transport protocols
+pub enum Transport {
+    /// TCP/IP transport protocol
+    TCP,
+    /// QUIC transport protocol
+    QUIC
 }

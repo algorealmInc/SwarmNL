@@ -2,8 +2,8 @@
 mod prelude;
 mod util;
 
-pub use crate::prelude::*;
 /// re-exports
+pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair};
 
 /// This module contains data structures and functions to setup a node identity and configure it for networking
@@ -11,7 +11,7 @@ pub mod setup {
     /// import the contents of the exported modules into this module
     use super::*;
 
-    /// Read the configuration from a config file
+    /// Configuration data required for node bootstrap
     #[derive(Debug)]
     pub struct BootstrapConfig {
         /// The port to listen on if using the TCP/IP protocol
@@ -109,21 +109,118 @@ pub mod setup {
 
             BootstrapConfig { keypair, ..self }
         }
+
+        /// Return a node's (wrapped) cryptographic keypair
+        pub fn keypair(&self) -> WrappedKeyPair {
+            self.keypair.clone()
+        }
     }
 }
 
 /// The module containing the core data structures for SwarmNl
 mod core {
-    use super::*;
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        time::Duration,
+    };
 
-    /// The core library struct
+    use libp2p::{ping, swarm::NetworkBehaviour};
+
+    use super::*;
+    use crate::setup::BootstrapConfig;
+
+    /// The Core Behaviour we'll be implementing which highlights the various protocols
+    /// we'll be adding support for
+    #[derive(NetworkBehaviour)]
+    #[behaviour(to_swarm = "CoreEvent")]
+    struct CorecBehaviour {
+        ping: ping::Behaviour,
+    }
+
+    /// Network events generated as a result of supported and configured `NetworkBehaviour`'s
+    #[derive(Debug)]
+    enum CoreEvent {
+        Ping(ping::Event),
+    }
+
+    /// Implement ping events for [`CoreEvent`]
+    impl From<ping::Event> for CoreEvent {
+        fn from(event: ping::Event) -> Self {
+            CoreEvent::Ping(event)
+        }
+    }
+
+    /// Structure containing necessary data to build [`Core`]
+    pub struct CoreBuilder {
+        keypair: WrappedKeyPair,
+        ip_address: IpAddr,
+        runtime: Runtime,
+        transports: Vec<Transport>,
+        /// the `Behaviour` of the `Ping` protocol
+        ping: ping::Behaviour,
+    }
+
+    impl CoreBuilder {
+        /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig)
+        pub fn with_config(config: BootstrapConfig) -> Self {
+            // initialize struct with information from `BootstrapConfig`
+            CoreBuilder {
+                keypair: config.keypair(),
+                // default is to listen on all interfaces (ipv4)
+                ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                // runtime & executor, tokio by default
+                runtime: Runtime::Tokio,
+                // TCP/IP and QUIC by default
+                transports: vec![Transport::TCP, Transport::QUIC],
+                ping: Default::default(),
+            }
+        }
+
+        /// Configure the IP address to listen on
+        pub fn listen_on(self, ip_address: IpAddr) -> Self {
+            CoreBuilder { ip_address, ..self }
+        }
+
+        /// Configure the `Ping` protocol for the network
+        pub fn with_ping(self, config: PingConfig) -> Self {
+            // set the ping protocol
+            CoreBuilder {
+                ping: ping::Behaviour::new(
+                    ping::Config::new()
+                        .with_interval(config.interval)
+                        .with_timeout(config.timeout),
+                ),
+                ..self
+            }
+        }
+
+        /// Configure the Runtime & Executor to support.
+        /// It's basically async-std vs tokio
+        pub fn with_transport(self, runtime: Runtime) -> Self {
+            CoreBuilder { runtime, ..self }
+        }
+
+        /// Configure the transports to support
+        pub fn with_transports(self, transports: Vec<Transport>) -> Self {
+            CoreBuilder { transports, ..self }
+        }
+
+        // /// Build the [`Core`] data structure
+        // pub fn build(self) -> Core {
+
+        // }
+    }
+
+    /// The core library struct for SwarmNl
     struct Core {
         keypair: WrappedKeyPair,
+        // swarm:
     }
 
     impl Core {
         /// Serialize keypair to protobuf format and write to config file on disk.
         /// It returns a boolean to indicate success of operation.
+        /// Only key types other than RSA can be serialized to protobuf format for now
         pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
             // check if key type is something other than RSA
             if let Some(keypair) = self.keypair.into_inner() {
@@ -142,5 +239,15 @@ mod core {
 
             false
         }
+    }
+
+    /// The configuration for the `Ping` protocol
+    pub struct PingConfig {
+        /// The interval between successive pings.
+        /// Default is 15 seconds
+        pub interval: Duration,
+        /// The duration before which the request is considered  failure.
+        /// Default is 20 seconds
+        pub timeout: Duration,
     }
 }
