@@ -180,7 +180,7 @@ mod core {
         pub fn listen_on(self, ip_address: IpAddr) -> Self {
             CoreBuilder { ip_address, ..self }
         }
-
+ 
         /// Configure the `Ping` protocol for the network
         pub fn with_ping(self, config: PingConfig) -> Self {
             // set the ping protocol
