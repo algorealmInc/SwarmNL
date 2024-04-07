@@ -120,11 +120,14 @@ pub mod setup {
 /// The module containing the core data structures for SwarmNl
 mod core {
     use std::{
+        collections::HashSet,
         net::{IpAddr, Ipv4Addr},
         time::Duration,
     };
 
-    use libp2p::{ping, swarm::NetworkBehaviour};
+    use libp2p::{
+        dns, noise, ping, swarm::NetworkBehaviour, tcp, tls, yamux, SwarmBuilder, Transport,
+    };
 
     use super::*;
     use crate::setup::BootstrapConfig;
@@ -133,7 +136,7 @@ mod core {
     /// we'll be adding support for
     #[derive(NetworkBehaviour)]
     #[behaviour(to_swarm = "CoreEvent")]
-    struct CorecBehaviour {
+    struct CoreBehaviour {
         ping: ping::Behaviour,
     }
 
@@ -154,24 +157,31 @@ mod core {
     pub struct CoreBuilder {
         keypair: WrappedKeyPair,
         ip_address: IpAddr,
-        runtime: Runtime,
-        transports: Vec<Transport>,
-        /// the `Behaviour` of the `Ping` protocol
+        provider: Runtime,
+        transports: HashSet<TransportOpts>,
+        /// The `Behaviour` of the `Ping` protocol
         ping: ping::Behaviour,
     }
 
     impl CoreBuilder {
         /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig)
         pub fn with_config(config: BootstrapConfig) -> Self {
+            // Hashset containing the default transports that are supported
+            // TCP/IP and QUIC are supported by default
+            let mut default_transports = HashSet::new();
+            default_transports.extend(vec![
+                TransportOpts::TCP(TcpConfig::Default),
+                TransportOpts::QUIC,
+            ]);
+
             // initialize struct with information from `BootstrapConfig`
             CoreBuilder {
                 keypair: config.keypair(),
                 // default is to listen on all interfaces (ipv4)
                 ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                 // runtime & executor, tokio by default
-                runtime: Runtime::Tokio,
-                // TCP/IP and QUIC by default
-                transports: vec![Transport::TCP, Transport::QUIC],
+                provider: Runtime::Tokio,
+                transports: default_transports,
                 ping: Default::default(),
             }
         }
@@ -180,7 +190,7 @@ mod core {
         pub fn listen_on(self, ip_address: IpAddr) -> Self {
             CoreBuilder { ip_address, ..self }
         }
- 
+
         /// Configure the `Ping` protocol for the network
         pub fn with_ping(self, config: PingConfig) -> Self {
             // set the ping protocol
@@ -196,19 +206,75 @@ mod core {
 
         /// Configure the Runtime & Executor to support.
         /// It's basically async-std vs tokio
-        pub fn with_transport(self, runtime: Runtime) -> Self {
-            CoreBuilder { runtime, ..self }
+        pub fn with_provider(self, provider: Runtime) -> Self {
+            CoreBuilder { provider, ..self }
         }
 
         /// Configure the transports to support
-        pub fn with_transports(self, transports: Vec<Transport>) -> Self {
+        pub fn with_transports(self, transports: HashSet<TransportOpts>) -> Self {
             CoreBuilder { transports, ..self }
         }
 
-        // /// Build the [`Core`] data structure
-        // pub fn build(self) -> Core {
+        /// Build the [`Core`] data structure
+        pub fn build(self) -> Core {
+            // Build and configure the libp2p Swarm structure. Thereby configuring the selected transport protocols, behaviours and node identity.
+            // The Swarm is wrapped in the Core construct which serves as the interface to interact with the internal networking layer
+            let swarm = if self.provider == Runtime::AsyncStd {
+                // configure for async-std
+                let swarm_builder = libp2p::SwarmBuilder::with_existing_identity(
+                    self.keypair.into_inner().unwrap(),
+                )
+                .with_async_std();
+                // add dummy transport so we can configure DNS
 
-        // }
+                // Configure the available chosen transports
+                for transport in &self.transports {
+                    match *transport {
+                        TransportOpts::TCP(config) => {
+                            match config {
+                                TcpConfig::Default => {
+                                    // use the default config
+                                    let swarm_builder = swarm_builder
+                                        .with_tcp(
+                                            tcp::Config::default(),
+                                            (tls::Config::new, noise::Config::new),
+                                            yamux::Config::default,
+                                        )
+                                        .unwrap();
+                                }
+                                TcpConfig::Custom {
+                                    ttl,
+                                    nodelay,
+                                    backlog,
+                                } => {
+                                    // configure TCP
+                                    let tcp_config = tcp::Config::default()
+                                        .ttl(ttl)
+                                        .nodelay(nodelay)
+                                        .listen_backlog(backlog);
+
+                                    let swarm_builder = swarm_builder
+                                        .with_tcp(
+                                            tcp_config,
+                                            (tls::Config::new, noise::Config::new),
+                                            yamux::Config::default,
+                                        )
+                                        .unwrap();
+                                }
+                            }
+                        }
+                        TransportOpts::QUIC => {
+                            let swarm_builder = swarm_builder.with_quic();
+                        }
+                    }
+                }
+
+                // add support for DNS
+                let swarm_builder = swarm_builder.with_dns();
+            } else {
+                // we're delaing with tokio here
+            };
+        }
     }
 
     /// The core library struct for SwarmNl

@@ -66,15 +66,34 @@ impl WrappedKeyPair {
 }
 
 /// Supported runtimes and executor
+#[derive(Hash, Eq, PartialEq)]
 pub enum Runtime {
     AsyncStd,
     Tokio
 }
 
 /// Supported transport protocols
-pub enum Transport {
+#[derive(Hash, Eq, PartialEq)]
+pub enum TransportOpts {
     /// TCP/IP transport protocol
-    TCP,
+    TCP(TcpConfig),
     /// QUIC transport protocol
     QUIC
+}
+
+/// TCP setup Config
+#[derive(Hash, Eq, PartialEq)]
+pub enum TcpConfig {
+    /// Default configuration specified in the [libp2p docs](https://docs.rs/libp2p/latest/libp2p/tcp/struct.Config.html#method.new).
+    Default,
+    Custom {
+        /// Configures the IP_TTL option for new sockets.
+        ttl: u32,
+        /// Configures the TCP_NODELAY option for new sockets.
+        nodelay: bool,
+        /// Configures the listen backlog for new listen sockets.
+        backlog: u32,
+        // false by default, we're not dealing with NAT traversal for now.
+        // port_resuse: bool
+    }
 }
