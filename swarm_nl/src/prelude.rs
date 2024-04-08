@@ -10,12 +10,20 @@ pub enum SwarmNlError {
     BoostrapFileReadError(String),
     #[error("could not parse data read from bootstrap config file")]
     BoostrapDataParseError(String),
+    #[error("failed to configure transport. It is likely is not supported on machine")]
+    TransportConfigError(TransportOpts),
+    #[error("failed to confifure DNS resolution into transport")]
+    DNSConfigError,
+    #[error("could not configure the selected protocols")]
+    ProtocolConfigError,
 }
 
 /// Generic SwarmNl result type
 pub type SwarmNlResult<T> = Result<T, SwarmNlError>;
 /// Port type
 pub type Port = u16;
+/// Seconds type
+pub type Seconds = u64;
 
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
@@ -73,16 +81,17 @@ pub enum Runtime {
 }
 
 /// Supported transport protocols
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Debug)]
 pub enum TransportOpts {
-    /// TCP/IP transport protocol
-    TCP(TcpConfig),
-    /// QUIC transport protocol
-    QUIC
+    /// QUIC transport protocol enabled with TCP/IP as fallback. 
+    /// DNS lookup is also configured by default
+    TCP_QUIC{
+        tcp_config: TcpConfig,
+    }
 }
 
 /// TCP setup Config
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum TcpConfig {
     /// Default configuration specified in the [libp2p docs](https://docs.rs/libp2p/latest/libp2p/tcp/struct.Config.html#method.new).
     Default,

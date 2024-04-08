@@ -114,19 +114,23 @@ pub mod setup {
         pub fn keypair(&self) -> WrappedKeyPair {
             self.keypair.clone()
         }
+
+        /// Return the configured ports in a tuple i.e (TCP Port, UDP port)
+        pub fn ports(&self) -> (Port, Port) {
+            (self.tcp_port, self.udp_port)
+        }   
     }
 }
 
 /// The module containing the core data structures for SwarmNl
 mod core {
     use std::{
-        collections::HashSet,
         net::{IpAddr, Ipv4Addr},
         time::Duration,
     };
 
     use libp2p::{
-        dns, noise, ping, swarm::NetworkBehaviour, tcp, tls, yamux, SwarmBuilder, Transport,
+        dns, noise, ping, swarm::NetworkBehaviour, tcp, tls, yamux, SwarmBuilder, Transport, Multiaddr, multiaddr::Protocol,
     };
 
     use super::*;
@@ -156,9 +160,12 @@ mod core {
     /// Structure containing necessary data to build [`Core`]
     pub struct CoreBuilder {
         keypair: WrappedKeyPair,
+        tcp_udp_port: (Port, Port),
         ip_address: IpAddr,
         provider: Runtime,
-        transports: HashSet<TransportOpts>,
+        /// connection keep-alive duration while idle
+        keep_alive_duration: Seconds,
+        transport: TransportOpts, // maybe this can be a collection in the future to support additive transports
         /// The `Behaviour` of the `Ping` protocol
         ping: ping::Behaviour,
     }
@@ -166,22 +173,22 @@ mod core {
     impl CoreBuilder {
         /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig)
         pub fn with_config(config: BootstrapConfig) -> Self {
-            // Hashset containing the default transports that are supported
             // TCP/IP and QUIC are supported by default
-            let mut default_transports = HashSet::new();
-            default_transports.extend(vec![
-                TransportOpts::TCP(TcpConfig::Default),
-                TransportOpts::QUIC,
-            ]);
+            let default_transport = TransportOpts::TCP_QUIC {
+                tcp_config: TcpConfig::Default,
+            };
 
             // initialize struct with information from `BootstrapConfig`
             CoreBuilder {
                 keypair: config.keypair(),
+                tcp_udp_port: config.ports(),
                 // default is to listen on all interfaces (ipv4)
                 ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                 // runtime & executor, tokio by default
                 provider: Runtime::Tokio,
-                transports: default_transports,
+                // default to 60 seconds
+                keep_alive_duration: 60,
+                transport: default_transport,
                 ping: Default::default(),
             }
         }
@@ -189,6 +196,11 @@ mod core {
         /// Configure the IP address to listen on
         pub fn listen_on(self, ip_address: IpAddr) -> Self {
             CoreBuilder { ip_address, ..self }
+        }
+
+        /// How long to keep a connection alive once it is idling, in seconds
+        pub fn with_idle_connection_timeout(self, keep_alive_duration: Seconds) -> Self {
+            CoreBuilder { keep_alive_duration, ..self }
         }
 
         /// Configure the `Ping` protocol for the network
@@ -211,69 +223,153 @@ mod core {
         }
 
         /// Configure the transports to support
-        pub fn with_transports(self, transports: HashSet<TransportOpts>) -> Self {
-            CoreBuilder { transports, ..self }
+        pub fn with_transports(self, transport: TransportOpts) -> Self {
+            CoreBuilder { transport, ..self }
         }
 
         /// Build the [`Core`] data structure
-        pub fn build(self) -> Core {
+        pub async fn build(self) -> /* SwarmNlResult<Core> */ Result<(), Error> {
             // Build and configure the libp2p Swarm structure. Thereby configuring the selected transport protocols, behaviours and node identity.
             // The Swarm is wrapped in the Core construct which serves as the interface to interact with the internal networking layer
             let swarm = if self.provider == Runtime::AsyncStd {
                 // configure for async-std
-                let swarm_builder = libp2p::SwarmBuilder::with_existing_identity(
-                    self.keypair.into_inner().unwrap(),
-                )
-                .with_async_std();
-                // add dummy transport so we can configure DNS
 
-                // Configure the available chosen transports
-                for transport in &self.transports {
-                    match *transport {
-                        TransportOpts::TCP(config) => {
-                            match config {
-                                TcpConfig::Default => {
-                                    // use the default config
-                                    let swarm_builder = swarm_builder
-                                        .with_tcp(
-                                            tcp::Config::default(),
-                                            (tls::Config::new, noise::Config::new),
-                                            yamux::Config::default,
-                                        )
-                                        .unwrap();
-                                }
-                                TcpConfig::Custom {
-                                    ttl,
-                                    nodelay,
-                                    backlog,
-                                } => {
-                                    // configure TCP
-                                    let tcp_config = tcp::Config::default()
-                                        .ttl(ttl)
-                                        .nodelay(nodelay)
-                                        .listen_backlog(backlog);
-
-                                    let swarm_builder = swarm_builder
-                                        .with_tcp(
-                                            tcp_config,
-                                            (tls::Config::new, noise::Config::new),
-                                            yamux::Config::default,
-                                        )
-                                        .unwrap();
-                                }
-                            }
+                // Configure transports
+                let swarm_builder: SwarmBuilder<_, _> = match self.transport {
+                    TransportOpts::TCP_QUIC { tcp_config } => match tcp_config {
+                        TcpConfig::Default => {
+                            // use the default config
+                            libp2p::SwarmBuilder::with_existing_identity(
+                                self.keypair.into_inner().unwrap(),
+                            )
+                            .with_async_std()
+                            .with_tcp(
+                                tcp::Config::default(),
+                                (tls::Config::new, noise::Config::new),
+                                yamux::Config::default,
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Default }))?
+                            .with_quic()
+                            .with_dns().await.map_err(|_|SwarmNlError::DNSConfigError)?
                         }
-                        TransportOpts::QUIC => {
-                            let swarm_builder = swarm_builder.with_quic();
-                        }
-                    }
-                }
 
-                // add support for DNS
-                let swarm_builder = swarm_builder.with_dns();
+                        TcpConfig::Custom {
+                            ttl,
+                            nodelay,
+                            backlog,
+                        } => {
+                            // use the provided config
+                            let tcp_config = tcp::Config::default()
+                                .ttl(ttl)
+                                .nodelay(nodelay)
+                                .listen_backlog(backlog);
+
+                            libp2p::SwarmBuilder::with_existing_identity(
+                                self.keypair.into_inner().unwrap(),
+                            )
+                            .with_async_std()
+                            .with_tcp(
+                                tcp_config,
+                                (tls::Config::new, noise::Config::new),
+                                yamux::Config::default,
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            .with_quic()
+                            .with_dns().await.map_err(|_|SwarmNlError::DNSConfigError)?
+                        }
+                    },
+                };
+
+                // configure the selected protocols and their corresponding behaviours
+                swarm_builder
+                    .with_behaviour(|_| 
+                        // configure the selected behaviours
+                        CoreBehaviour {
+                            ping: self.ping
+                        }
+                    ).map_err(|_| SwarmNlError::ProtocolConfigError)?
+                    .with_swarm_config(|cfg| {
+                        cfg.with_idle_connection_timeout(Duration::from_secs(self.keep_alive_duration))
+                    })
+                    .build()
             } else {
                 // we're delaing with tokio here
+                // Configure transports
+                let swarm_builder: SwarmBuilder<_, _> = match self.transport {
+                    TransportOpts::TCP_QUIC { tcp_config } => match tcp_config {
+                        TcpConfig::Default => {
+                            // use the default config
+                            libp2p::SwarmBuilder::with_existing_identity(
+                                self.keypair.into_inner().unwrap(),
+                            )
+                            .with_tokio()
+                            .with_tcp(
+                                tcp::Config::default(),
+                                (tls::Config::new, noise::Config::new),
+                                yamux::Config::default,
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Default }))?
+                            .with_quic()
+                        }
+
+                        TcpConfig::Custom {
+                            ttl,
+                            nodelay,
+                            backlog,
+                        } => {
+                            // use the provided config
+                            let tcp_config = tcp::Config::default()
+                                .ttl(ttl)
+                                .nodelay(nodelay)
+                                .listen_backlog(backlog);
+
+                            libp2p::SwarmBuilder::with_existing_identity(
+                                self.keypair.into_inner().unwrap(),
+                            )
+                            .with_tokio()
+                            .with_tcp(
+                                tcp_config,
+                                (tls::Config::new, noise::Config::new),
+                                yamux::Config::default,
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            .with_quic()
+                        }
+                    },
+                };
+
+                // configure the selected protocols and their corresponding behaviours
+                swarm_builder
+                    .with_behaviour(|_| 
+                        // configure the selected behaviours
+                        CoreBehaviour {
+                            ping: self.ping
+                        }
+                    )?
+                    .with_swarm_config(|cfg| {
+                        cfg.with_idle_connection_timeout(Duration::from_secs(self.keep_alive_duration))
+                    })
+                    .build()
             };
+                    
+            // Configure TCP/IP multiaddress
+            let listen_addr_tcp = Multiaddr::empty()
+                .with(match self.ip_address {
+                    IpAddr::V4(address) => Protocol::from(address),
+                    IpAddr::V6(address) => Protocol::from(address),
+                })
+                .with(Protocol::Tcp(self.tcp_udp_port.0));
+
+            // Configure QUIC multiaddress
+            let listen_addr_quic = Multiaddr::empty()
+                .with(match self.ip_address {
+                    IpAddr::V4(address) => Protocol::from(address),
+                    IpAddr::V6(address) => Protocol::from(address),
+                })
+                .with(Protocol::Udp(self.tcp_udp_port.1))
+                .with(Protocol::QuicV1);
+
+            // Begin listening
+            swarm.listen_on(listen_addr_tcp)?;
+            swarm.listen_on(listen_addr_quic)?;
+
+            Ok(())
         }
     }
 
