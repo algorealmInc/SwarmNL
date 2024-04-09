@@ -1,6 +1,6 @@
 /// Copyright (c) 2024 Algorealm
 use libp2p_identity::KeyType;
-use libp2p_identity::{Keypair, rsa::Keypair as RsaKeypair};
+use libp2p_identity::{rsa::Keypair as RsaKeypair, Keypair};
 use thiserror::Error;
 
 /// Library error type containing all custom errors that could be encountered
@@ -10,12 +10,14 @@ pub enum SwarmNlError {
     BoostrapFileReadError(String),
     #[error("could not parse data read from bootstrap config file")]
     BoostrapDataParseError(String),
-    #[error("failed to configure transport. It is likely is not supported on machine")]
+    #[error("could not configure transport. It is likely is not supported on machine")]
     TransportConfigError(TransportOpts),
-    #[error("failed to confifure DNS resolution into transport")]
+    #[error("could not configure DNS resolution into transport")]
     DNSConfigError,
     #[error("could not configure the selected protocols")]
     ProtocolConfigError,
+    #[error("could not listen on specified address")]
+    MultiaddressListenError(String),
 }
 
 /// Generic SwarmNl result type
@@ -77,17 +79,15 @@ impl WrappedKeyPair {
 #[derive(Hash, Eq, PartialEq)]
 pub enum Runtime {
     AsyncStd,
-    Tokio
+    Tokio,
 }
 
 /// Supported transport protocols
 #[derive(Hash, Eq, PartialEq, Debug)]
 pub enum TransportOpts {
-    /// QUIC transport protocol enabled with TCP/IP as fallback. 
+    /// QUIC transport protocol enabled with TCP/IP as fallback.
     /// DNS lookup is also configured by default
-    TCP_QUIC{
-        tcp_config: TcpConfig,
-    }
+    TCP_QUIC { tcp_config: TcpConfig },
 }
 
 /// TCP setup Config
@@ -104,5 +104,11 @@ pub enum TcpConfig {
         backlog: u32,
         // false by default, we're not dealing with NAT traversal for now.
         // port_resuse: bool
-    }
+    },
 }
+
+/// A unique type that indicates that a struct is not yet initialized to its default state
+pub struct NotInitialiazed;
+
+/// A unique type that indicates that a struct has been default configured
+pub struct Initialized;

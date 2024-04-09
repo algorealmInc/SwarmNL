@@ -130,7 +130,7 @@ mod core {
     };
 
     use libp2p::{
-        dns, noise, ping, swarm::NetworkBehaviour, tcp, tls, yamux, SwarmBuilder, Transport, Multiaddr, multiaddr::Protocol,
+         noise, ping, swarm::NetworkBehaviour, tcp, tls, yamux, SwarmBuilder, Multiaddr, multiaddr::Protocol, Swarm,
     };
 
     use super::*;
@@ -228,10 +228,10 @@ mod core {
         }
 
         /// Build the [`Core`] data structure
-        pub async fn build(self) -> /* SwarmNlResult<Core> */ Result<(), Error> {
+        pub async fn build(self) -> SwarmNlResult<Core>  {
             // Build and configure the libp2p Swarm structure. Thereby configuring the selected transport protocols, behaviours and node identity.
             // The Swarm is wrapped in the Core construct which serves as the interface to interact with the internal networking layer
-            let swarm = if self.provider == Runtime::AsyncStd {
+            let mut swarm = if self.provider == Runtime::AsyncStd {
                 // configure for async-std
 
                 // Configure transports
@@ -291,7 +291,7 @@ mod core {
                     })
                     .build()
             } else {
-                // we're delaing with tokio here
+                // we're dealing with tokio here
                 // Configure transports
                 let swarm_builder: SwarmBuilder<_, _> = match self.transport {
                     TransportOpts::TCP_QUIC { tcp_config } => match tcp_config {
@@ -341,7 +341,7 @@ mod core {
                         CoreBehaviour {
                             ping: self.ping
                         }
-                    )?
+                    ).map_err(|_| SwarmNlError::ProtocolConfigError)?
                     .with_swarm_config(|cfg| {
                         cfg.with_idle_connection_timeout(Duration::from_secs(self.keep_alive_duration))
                     })
@@ -366,17 +366,21 @@ mod core {
                 .with(Protocol::QuicV1);
 
             // Begin listening
-            swarm.listen_on(listen_addr_tcp)?;
-            swarm.listen_on(listen_addr_quic)?;
+            swarm.listen_on(listen_addr_tcp.clone()).map_err(|_|SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string()))?;
+            swarm.listen_on(listen_addr_quic.clone()).map_err(|_|SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string()))?;
 
-            Ok(())
+            // build the network core
+            Ok(Core {
+                keypair: self.keypair,
+                swarm
+            })
         }
     }
 
     /// The core library struct for SwarmNl
     struct Core {
         keypair: WrappedKeyPair,
-        // swarm:
+        swarm: Swarm<CoreBehaviour>
     }
 
     impl Core {
