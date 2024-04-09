@@ -8,6 +8,8 @@ pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair};
 
 /// This module contains data structures and functions to setup a node identity and configure it for networking
 pub mod setup {
+    use std::collections::HashMap;
+
     /// import the contents of the exported modules into this module
     use super::*;
 
@@ -20,6 +22,8 @@ pub mod setup {
         udp_port: Port,
         /// The Cryptographic Keypair for node identification and message auth
         keypair: WrappedKeyPair,
+        /// Bootstrap peers
+        boot_nodes: HashMap<PeerIdString, MutltiaddrString>
     }
 
     impl BootstrapConfig {
@@ -41,7 +45,13 @@ pub mod setup {
                 udp_port: 2707,
                 // Default node keypair type i.e Ed25519
                 keypair: WrappedKeyPair::Other(Keypair::generate_ed25519()),
+                boot_nodes: Default::default()
             }
+        }
+
+        /// Configure available bootnodes
+        pub fn with_bootnodes(self, boot_nodes: HashMap<String, String>) -> Self {
+            BootstrapConfig { boot_nodes, ..self }
         }
 
         /// Configure the TCP/IP port
@@ -174,7 +184,7 @@ mod core {
         /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig)
         pub fn with_config(config: BootstrapConfig) -> Self {
             // TCP/IP and QUIC are supported by default
-            let default_transport = TransportOpts::TCP_QUIC {
+            let default_transport = TransportOpts::TcpQuic {
                 tcp_config: TcpConfig::Default,
             };
 
@@ -236,7 +246,7 @@ mod core {
 
                 // Configure transports
                 let swarm_builder: SwarmBuilder<_, _> = match self.transport {
-                    TransportOpts::TCP_QUIC { tcp_config } => match tcp_config {
+                    TransportOpts::TcpQuic { tcp_config } => match tcp_config {
                         TcpConfig::Default => {
                             // use the default config
                             libp2p::SwarmBuilder::with_existing_identity(
@@ -247,7 +257,7 @@ mod core {
                                 tcp::Config::default(),
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Default }))?
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
                             .with_quic()
                             .with_dns().await.map_err(|_|SwarmNlError::DNSConfigError)?
                         }
@@ -271,7 +281,7 @@ mod core {
                                 tcp_config,
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
                             .with_quic()
                             .with_dns().await.map_err(|_|SwarmNlError::DNSConfigError)?
                         }
@@ -294,7 +304,7 @@ mod core {
                 // we're dealing with tokio here
                 // Configure transports
                 let swarm_builder: SwarmBuilder<_, _> = match self.transport {
-                    TransportOpts::TCP_QUIC { tcp_config } => match tcp_config {
+                    TransportOpts::TcpQuic { tcp_config } => match tcp_config {
                         TcpConfig::Default => {
                             // use the default config
                             libp2p::SwarmBuilder::with_existing_identity(
@@ -305,7 +315,7 @@ mod core {
                                 tcp::Config::default(),
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Default }))?
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
                             .with_quic()
                         }
 
@@ -328,7 +338,7 @@ mod core {
                                 tcp_config,
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TCP_QUIC { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
                             .with_quic()
                         }
                     },

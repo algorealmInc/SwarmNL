@@ -1,3 +1,6 @@
+use std::hash::Hash;
+use std::{collections::HashMap, str::FromStr};
+
 /// Copyright (c) 2024 Algorealm
 use crate::{prelude::*, setup::BootstrapConfig};
 use ini::Ini;
@@ -37,10 +40,22 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 
         // get serialized keypair
         let mut serialized_keypair =
-            string_to_vec(section.get("protobuf_keypair").unwrap_or_default());
+            string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
+
+        // Now, move on the read bootnodes if any
+        let section = config
+            .section(Some("Bootstrap"))
+            .ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
+
+        // get the preferred key type
+        let key_type = section.get("bootstrap").unwrap_or_default();
+
+        // get serialized keypair
+        let boot_nodes = string_to_hashmap(section.get("boot_nodes").unwrap_or_default());
 
         Ok(BootstrapConfig::new()
             .generate_keypair_from_protobuf(key_type, &mut serialized_keypair)
+            .with_bootnodes(boot_nodes)
             .with_tcp(tcp_port)
             .with_udp(udp_port))
     } else {
@@ -61,11 +76,32 @@ pub fn write_config(section: &str, key: &str, new_value: &str, file_path: &str) 
     false
 }
 
-/// Parse string into a u8 vector
-fn string_to_vec(input: &str) -> Vec<u8> {
+/// Parse string into a vector
+fn string_to_vec<T: FromStr>(input: &str) -> Vec<T> {
     input
         .trim_matches(|c| c == '[' || c == ']')
         .split(',')
-        .filter_map(|s| s.trim().parse().ok())
-        .collect()
+        .filter_map(|s| s.trim().parse::<T>().ok())
+        .fold(Vec::new(), |mut acc, item| {
+            acc.push(item);
+            acc
+        })
+}
+
+
+/// Parse string into a hashmap
+fn string_to_hashmap(input: &str) -> HashMap<String, String> {
+    input
+        .trim_matches(|c| c == '{' || c == '}')
+        .split(',')
+        .filter(|s| s.contains(':'))
+        .fold(HashMap::new(), |mut acc, s| {
+            let mut parts = s.trim().splitn(2, ':');
+            if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+                if key.len() > 1 {
+                    acc.insert(key.trim().to_owned(), value.trim().to_owned());
+                }
+            }
+            acc
+        })
 }

@@ -26,6 +26,10 @@ pub type SwarmNlResult<T> = Result<T, SwarmNlError>;
 pub type Port = u16;
 /// Seconds type
 pub type Seconds = u64;
+/// The stringified PeerId type
+pub type PeerIdString = String;
+/// The stringified Multiaddr type
+pub type MutltiaddrString = String;
 
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
@@ -87,7 +91,7 @@ pub enum Runtime {
 pub enum TransportOpts {
     /// QUIC transport protocol enabled with TCP/IP as fallback.
     /// DNS lookup is also configured by default
-    TCP_QUIC { tcp_config: TcpConfig },
+    TcpQuic { tcp_config: TcpConfig },
 }
 
 /// TCP setup Config
