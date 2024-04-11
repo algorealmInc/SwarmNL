@@ -66,6 +66,7 @@ pub mod setup {
 
         /// Generate a Cryptographic Keypair.
         /// Please note that calling this function overrides whatever might have been read from the `.ini` file
+        /// TODO! Generate RSA properly by reading from its binary
         pub fn generate_keypair(self, key_type: KeyType) -> Self {
             let keypair = match key_type {
                 // Generate a Ed25519 Keypair
@@ -196,7 +197,8 @@ mod core {
     }
 
     impl CoreBuilder {
-        /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig) and default values
+        /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig) and default values. 
+        /// Here, it is certain that [BootstrapConfig](setup::BootstrapConfig) contains valid data
         pub fn with_config(config: BootstrapConfig) -> Self {
             // The default network id
             let network_id = "/swarmnl/1.0";
@@ -234,7 +236,14 @@ mod core {
             }
         }
 
+        /// TODO! To be able to explitcly provide a network id for the network
+        pub fn with_network_id(self, id: &str) -> Self {
+            unimplemented!()
+        }
+
         /// Configure the IP address to listen on
+        /// TODO! Accept custom domain names e.g swarmnl.com
+        /// TODO! Type-stating
         pub fn listen_on(self, ip_address: IpAddr) -> Self {
             CoreBuilder { ip_address, ..self }
         }
@@ -268,7 +277,8 @@ mod core {
         }
 
         /// Configure the Runtime & Executor to support.
-        /// It's basically async-std vs tokio
+        /// It's basically async-std vs tokio. 
+        /// Tokio does not yet support DNS translation, so you have to splicitly spec
         pub fn with_provider(self, provider: Runtime) -> Self {
             CoreBuilder { provider, ..self }
         }
@@ -401,32 +411,39 @@ mod core {
                     .build()
             };
                     
-            // Configure TCP/IP multiaddress
-            let listen_addr_tcp = Multiaddr::empty()
-                .with(match self.ip_address {
-                    IpAddr::V4(address) => Protocol::from(address),
-                    IpAddr::V6(address) => Protocol::from(address),
-                })
-                .with(Protocol::Tcp(self.tcp_udp_port.0));
+            // Configure the transport multiaddress and begin listening.
+            // It can handle multiple future tranports based on configuration e.g WebRTC
+            match self.transport {
+                // TCP/IP and QUIC
+                TransportOpts::TcpQuic { tcp_config } => {
+                    // Configure TCP/IP multiaddress
+                    let listen_addr_tcp = Multiaddr::empty()
+                    .with(match self.ip_address {
+                        IpAddr::V4(address) => Protocol::from(address),
+                        IpAddr::V6(address) => Protocol::from(address),
+                    })
+                    .with(Protocol::Tcp(self.tcp_udp_port.0));
 
-            // Configure QUIC multiaddress
-            let listen_addr_quic = Multiaddr::empty()
-                .with(match self.ip_address {
-                    IpAddr::V4(address) => Protocol::from(address),
-                    IpAddr::V6(address) => Protocol::from(address),
-                })
-                .with(Protocol::Udp(self.tcp_udp_port.1))
-                .with(Protocol::QuicV1);
+                    // Configure QUIC multiaddress
+                    let listen_addr_quic = Multiaddr::empty()
+                    .with(match self.ip_address {
+                        IpAddr::V4(address) => Protocol::from(address),
+                        IpAddr::V6(address) => Protocol::from(address),
+                    })
+                    .with(Protocol::Udp(self.tcp_udp_port.1))
+                    .with(Protocol::QuicV1);
 
-            // Begin listening
-            swarm.listen_on(listen_addr_tcp.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string()))?;
-            swarm.listen_on(listen_addr_quic.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string()))?;
-
+                    // Begin listening
+                    swarm.listen_on(listen_addr_tcp.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string()))?;
+                    swarm.listen_on(listen_addr_quic.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string()))?;
+                }
+            }
+           
             // Add bootnodes to local routing table, if any
             for peer_info in self.boot_nodes {
-                // Parse PeerId
+                // PeerId
                 if let Ok(peer_id) = PeerId::from_bytes(peer_info.0.as_bytes()) {
-                    // Parse Multiaddress
+                    // Multiaddress
                     if let Ok(multiaddr) = multiaddr::from_url(&peer_info.1) {
                         swarm
                         .behaviour_mut()
@@ -439,10 +456,43 @@ mod core {
                 }
             }
 
+            // TODO!
             // There must be a way for the application to communicate with the underlying networking core.
             // This could be pro-active or reactive. We will open a single-consumer (the core) and multiple producers stream to serve as 
             // the bridge from the application layer to the networking layer.
             // let (msg_sender, msg_receiver) = mpsc::channel::<ChannelMsg>(0);
+
+            // passing to the appication:
+            // multiple producers: to send commands to the network
+            // single comsumer: To recieve data from the network
+            // They are diffrent streams
+
+            // Listening for commands 
+
+            // Pushing data 
+
+            // A stream wer're polling
+            // Messages are coming in from the application layer
+            // switch (msg) {
+            //     case StreamBridge::Gossip {
+            //         topic_id,
+            //         peer_id,
+            //         data = "blow_kitchen::deji15"
+            //     }
+            //     handle_it
+            //     case 'y':
+            //     handle_it
+            //     ...
+            // }
+
+            
+            // Spin up a loop that polls the event stream and other important streams. This will be run in a separate asynchronous task
+            // if self.provider == Runtime::Tokio {
+            //     // spinup a tokio task
+            //     tokio
+            // } else {
+            //     // async-std
+            // }
 
             // Build the network core
             Ok(Core {
@@ -462,6 +512,8 @@ mod core {
         /// Serialize keypair to protobuf format and write to config file on disk.
         /// It returns a boolean to indicate success of operation.
         /// Only key types other than RSA can be serialized to protobuf format for now
+        /// 
+        /// ; TODO; Save keyType automatically to file
         pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
             // Check if key type is something other than RSA
             if let Some(keypair) = self.keypair.into_inner() {
@@ -487,7 +539,7 @@ mod core {
         /// The interval between successive pings.
         /// Default is 15 seconds
         pub interval: Duration,
-        /// The duration before which the request is considered  failure.
+        /// The duration before which the request is considered failure.
         /// Default is 20 seconds
         pub timeout: Duration,
     }

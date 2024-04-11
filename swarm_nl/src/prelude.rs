@@ -18,7 +18,7 @@ pub enum SwarmNlError {
     ProtocolConfigError,
     #[error("could not listen on specified address")]
     MultiaddressListenError(String),
-    #[error("could not dial a remote peer successfully")]
+    #[error("could not dial remote peer")]
     RemotePeerDialError(String),
 }
 
@@ -85,7 +85,7 @@ impl WrappedKeyPair {
 #[derive(Hash, Eq, PartialEq)]
 pub enum Runtime {
     AsyncStd,
-    Tokio,
+    Tokio
 }
 
 /// Supported transport protocols
@@ -93,11 +93,11 @@ pub enum Runtime {
 pub enum TransportOpts {
     /// QUIC transport protocol enabled with TCP/IP as fallback.
     /// DNS lookup is also configured by default
-    TcpQuic { tcp_config: TcpConfig },
+    TcpQuic { tcp_config: TcpConfig } 
 }
 
 /// TCP setup Config
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum TcpConfig {
     /// Default configuration specified in the [libp2p docs](https://docs.rs/libp2p/latest/libp2p/tcp/struct.Config.html#method.new).
     Default,
