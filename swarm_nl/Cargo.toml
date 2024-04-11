@@ -9,5 +9,6 @@ edition = "2021"
 rust-ini = "0.20.0"
 thiserror = "1.0.58"
 rand = "0.8.5"
-libp2p = { version="0.53.2", "features"=["ping", "tokio", "async-std", "macros", "ping", "async-std", "tokio", "tcp", "noise", "yamux", "quic", "tls", "dns"] }
+libp2p = { version="0.53.2", "features"=["ping", "tokio", "async-std", "macros", "ping", "async-std", "tokio", "tcp", "noise", "yamux", "quic", "tls", "dns", "kad"] }
 libp2p-identity = { version="0.2.8", "features"=["secp256k1", "ecdsa", "rsa", "ed25519"] }
+futures = "0.3.30"

@@ -18,6 +18,8 @@ pub enum SwarmNlError {
     ProtocolConfigError,
     #[error("could not listen on specified address")]
     MultiaddressListenError(String),
+    #[error("could not dial a remote peer successfully")]
+    RemotePeerDialError(String),
 }
 
 /// Generic SwarmNl result type
@@ -29,7 +31,7 @@ pub type Seconds = u64;
 /// The stringified PeerId type
 pub type PeerIdString = String;
 /// The stringified Multiaddr type
-pub type MutltiaddrString = String;
+pub type MultiaddrString = String;
 
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
