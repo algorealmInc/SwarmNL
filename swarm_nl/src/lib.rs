@@ -149,7 +149,7 @@ mod core {
     use crate::setup::BootstrapConfig;
 
     /// The Core Behaviour implemented which highlights the various protocols
-    /// We'll be adding support for
+    /// we'll be adding support for
     #[derive(NetworkBehaviour)]
     #[behaviour(to_swarm = "CoreEvent")]
     struct CoreBehaviour {
@@ -196,7 +196,7 @@ mod core {
     }
 
     impl CoreBuilder {
-        /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig)
+        /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig) and default values
         pub fn with_config(config: BootstrapConfig) -> Self {
             // The default network id
             let network_id = "/swarmnl/1.0";
@@ -212,7 +212,6 @@ mod core {
             // Set up default config for Kademlia
             let mut cfg = kad::Config::default();
             cfg.set_protocol_names(vec![StreamProtocol::new(network_id)]);
-            cfg.set_query_timeout(Duration::from_secs(5 * 60));
 
             let store = kad::store::MemoryStore::new(peer_id);
             let kademlia = kad::Behaviour::with_config(peer_id, store, cfg);
@@ -299,9 +298,9 @@ mod core {
                                 tcp::Config::default(),
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
+                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
                             .with_quic()
-                            .with_dns().await.map_err(|_|SwarmNlError::DNSConfigError)?
+                            .with_dns().await.map_err(|_| SwarmNlError::DNSConfigError)?
                         }
 
                         TcpConfig::Custom {
@@ -323,9 +322,9 @@ mod core {
                                 tcp_config,
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
                             .with_quic()
-                            .with_dns().await.map_err(|_|SwarmNlError::DNSConfigError)?
+                            .with_dns().await.map_err(|_| SwarmNlError::DNSConfigError)?
                         }
                     },
                 };
@@ -358,7 +357,7 @@ mod core {
                                 tcp::Config::default(),
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
+                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
                             .with_quic()
                         }
 
@@ -381,7 +380,7 @@ mod core {
                                 tcp_config,
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_|SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
                             .with_quic()
                         }
                     },
@@ -420,8 +419,8 @@ mod core {
                 .with(Protocol::QuicV1);
 
             // Begin listening
-            swarm.listen_on(listen_addr_tcp.clone()).map_err(|_|SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string()))?;
-            swarm.listen_on(listen_addr_quic.clone()).map_err(|_|SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string()))?;
+            swarm.listen_on(listen_addr_tcp.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string()))?;
+            swarm.listen_on(listen_addr_quic.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string()))?;
 
             // Add bootnodes to local routing table, if any
             for peer_info in self.boot_nodes {
@@ -435,7 +434,7 @@ mod core {
                         .add_address(&peer_id, multiaddr.clone());
 
                         // Dial them
-                        swarm.dial(multiaddr.clone()).map_err(|_|SwarmNlError::RemotePeerDialError(multiaddr.to_string()))?;
+                        swarm.dial(multiaddr.clone()).map_err(|_| SwarmNlError::RemotePeerDialError(multiaddr.to_string()))?;
                     }
                 }
             }
@@ -443,7 +442,7 @@ mod core {
             // There must be a way for the application to communicate with the underlying networking core.
             // This could be pro-active or reactive. We will open a single-consumer (the core) and multiple producers stream to serve as 
             // the bridge from the application layer to the networking layer.
-            let (msg_sender, msg_receiver) = mpsc::channel::<ChannelMsg>(0);
+            // let (msg_sender, msg_receiver) = mpsc::channel::<ChannelMsg>(0);
 
             // Build the network core
             Ok(Core {

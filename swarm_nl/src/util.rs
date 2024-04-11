@@ -1,14 +1,13 @@
-use std::hash::Hash;
-use std::{collections::HashMap, str::FromStr};
-
 /// Copyright (c) 2024 Algorealm
+
+
 use crate::{prelude::*, setup::BootstrapConfig};
 use ini::Ini;
+use std::{collections::HashMap, str::FromStr};
 
 /// Read an .ini file containing bootstrap config information
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
     // read the file from disk;
-    // does not panic but returns a Result<> type because of the `safe` metavariable
     if let Ok(config) = Ini::load_from_file(file_path) {
         // ports section
         let section = config
@@ -47,10 +46,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
             .section(Some("Bootstrap"))
             .ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
 
-        // get the preferred key type
-        let key_type = section.get("bootstrap").unwrap_or_default();
-
-        // get serialized keypair
+        // get the provided bootnodes
         let boot_nodes = string_to_hashmap(section.get("boot_nodes").unwrap_or_default());
 
         Ok(BootstrapConfig::new()
@@ -87,7 +83,6 @@ fn string_to_vec<T: FromStr>(input: &str) -> Vec<T> {
             acc
         })
 }
-
 
 /// Parse string into a hashmap
 fn string_to_hashmap(input: &str) -> HashMap<String, String> {
