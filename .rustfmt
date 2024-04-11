@@ -1,0 +1,15 @@
+# See: https://rust-lang.github.io/rustfmt/?version=v1.7.0
+
+# Basic
+edition = "2021"
+hard_tabs = true
+max_width = 100
+
+# Format comments
+comment_width = 100
+wrap_comments = true
+
+# Consistency
+newline_style = "Unix"
+chain_width = 80
+match_block_trailing_comma = true
