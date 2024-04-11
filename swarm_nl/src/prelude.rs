@@ -1,4 +1,7 @@
 /// Copyright (c) 2024 Algorealm
+///  
+/// This file is part of the SwarmNL library.
+
 use libp2p_identity::KeyType;
 use libp2p_identity::{rsa::Keypair as RsaKeypair, Keypair};
 use thiserror::Error;

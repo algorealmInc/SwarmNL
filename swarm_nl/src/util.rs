@@ -1,13 +1,14 @@
 /// Copyright (c) 2024 Algorealm
-
+/// 
+/// This file is part of the SwarmNl library.
 
 use crate::{prelude::*, setup::BootstrapConfig};
 use ini::Ini;
 use std::{collections::HashMap, str::FromStr};
 
-/// Read an .ini file containing bootstrap config information
+/// Read an .ini file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
-    // read the file from disk;
+    // read the file from disk
     if let Ok(config) = Ini::load_from_file(file_path) {
         // ports section
         let section = config

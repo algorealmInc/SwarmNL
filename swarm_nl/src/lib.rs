@@ -1,4 +1,7 @@
 /// Copyright (c) 2024 Algorealm
+/// 
+/// This file is part of the SwarmNL library.
+
 mod prelude;
 mod util;
 
@@ -6,7 +9,7 @@ mod util;
 pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair};
 
-/// This module contains data structures and functions to setup a node identity and configure it for networking
+/// The module containing the data structures and functions to setup a node identity and configure it for networking. 
 pub mod setup {
     use std::collections::HashMap;
 
@@ -28,14 +31,16 @@ pub mod setup {
 
     impl BootstrapConfig {
         /// Read from a bootstrap config file on disk
+        /// 
         /// # Panics
         ///
-        /// This function will panic if the file is not found at the specified path
+        /// This function will panic if the file is not found at the specified path.
         pub fn from_file(file_path: &str) -> Self {
             util::read_ini_file(file_path).unwrap()
         }
 
         /// Return a new `BootstrapConfig` struct populated by default (empty) values.
+        /// 
         /// Must be called first if the config is to be explicitly built without reading `.ini` file from disk
         pub fn new() -> Self {
             BootstrapConfig {
@@ -65,8 +70,10 @@ pub mod setup {
         }
 
         /// Generate a Cryptographic Keypair.
+        /// 
         /// Please note that calling this function overrides whatever might have been read from the `.ini` file
-        /// TODO! Generate RSA properly by reading from its binary
+        /// 
+        /// TODO! Generate RSA properly by reading from its binary.
         pub fn generate_keypair(self, key_type: KeyType) -> Self {
             let keypair = match key_type {
                 // Generate a Ed25519 Keypair
@@ -88,7 +95,9 @@ pub mod setup {
         }
 
         /// Generate a Cryptographic Keypair from a protobuf format.
-        /// This will override any already set keypair
+        /// 
+        /// This will override any already set keypair.
+        /// 
         /// # Panics
         ///
         /// This function will panic if the `u8` buffer is not parsable into the specified key type
@@ -133,7 +142,7 @@ pub mod setup {
     }
 }
 
-/// The module containing the core data structures for SwarmNl
+/// The module containing the core data structures for SwarmNl.
 mod core {
     use std::{
         net::{IpAddr, Ipv4Addr},
@@ -197,8 +206,8 @@ mod core {
     }
 
     impl CoreBuilder {
-        /// Return a [`CoreBuilder`] struct configured with [BootstrapConfig](setup::BootstrapConfig) and default values. 
-        /// Here, it is certain that [BootstrapConfig](setup::BootstrapConfig) contains valid data
+        /// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values. 
+        /// Here, it is certain that [`BootstrapConfig`] contains valid data.
         pub fn with_config(config: BootstrapConfig) -> Self {
             // The default network id
             let network_id = "/swarmnl/1.0";
@@ -242,18 +251,19 @@ mod core {
         }
 
         /// Configure the IP address to listen on
+        /// 
         /// TODO! Accept custom domain names e.g swarmnl.com
         /// TODO! Type-stating
         pub fn listen_on(self, ip_address: IpAddr) -> Self {
             CoreBuilder { ip_address, ..self }
         }
 
-        /// How long to keep a connection alive once it is idling, in seconds
+        /// Configure how long to keep a connection alive (in seconds) once it is idling.
         pub fn with_idle_connection_timeout(self, keep_alive_duration: Seconds) -> Self {
             CoreBuilder { keep_alive_duration, ..self }
         }
 
-        /// Configure the `Ping` protocol for the network
+        /// Configure the `Ping` protocol for the network.
         pub fn with_ping(self, config: PingConfig) -> Self {
             // Set the ping protocol
             CoreBuilder {
@@ -266,7 +276,7 @@ mod core {
             }
         }
 
-        /// Configure the `Kademlia` protocol for the network
+        /// Configure the `Kademlia` protocol for the network.
         pub fn with_kademlia(self, config: kad::Config) -> Self {
             // PeerId
             let peer_id = self.keypair.into_inner().unwrap().public().to_peer_id();
@@ -276,25 +286,28 @@ mod core {
             CoreBuilder { kademlia, ..self }
         }
 
-        /// Configure the Runtime & Executor to support.
-        /// It's basically async-std vs tokio. 
-        /// Tokio does not yet support DNS translation, so you have to splicitly spec
+        /// Configure the Runtime and Executor to support.
+        /// It's basically async-std vs tokio.
+        /// 
+        /// Tokio does not yet support DNS translation, so you have to explicitly specify it.   
         pub fn with_provider(self, provider: Runtime) -> Self {
             CoreBuilder { provider, ..self }
         }
 
-        /// Configure the transports to support
+        /// Configure the transports to support.
         pub fn with_transports(self, transport: TransportOpts) -> Self {
             CoreBuilder { transport, ..self }
         }
 
-        /// Build the [`Core`] data structure
+        /// Build the [`Core`] data structure.
+        /// 
+        /// Handles the configuration of the libp2p Swarm structure and the selected transport protocols, behaviours and node identity.
         pub async fn build(self) -> SwarmNlResult<Core>  {
             // Build and configure the libp2p Swarm structure. Thereby configuring the selected transport protocols, behaviours and node identity.
             // The Swarm is wrapped in the Core construct which serves as the interface to interact with the internal networking layer
             let mut swarm = if self.provider == Runtime::AsyncStd {
-                // Configure for async-std
-
+                
+                // We're dealing with async-std here
                 // Configure transports
                 let swarm_builder: SwarmBuilder<_, _> = match self.transport {
                     TransportOpts::TcpQuic { tcp_config } => match tcp_config {
@@ -510,10 +523,11 @@ mod core {
 
     impl Core {
         /// Serialize keypair to protobuf format and write to config file on disk.
-        /// It returns a boolean to indicate success of operation.
-        /// Only key types other than RSA can be serialized to protobuf format for now
         /// 
-        /// ; TODO; Save keyType automatically to file
+        /// It returns a boolean to indicate success of operation.
+        /// Only key types other than RSA can be serialized to protobuf format for now.
+        /// 
+        /// TODO! Save keyType automatically to file.
         pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
             // Check if key type is something other than RSA
             if let Some(keypair) = self.keypair.into_inner() {
