@@ -1,7 +1,6 @@
 /// Copyright (c) 2024 Algorealm
-/// 
+///
 /// This file is part of the SwarmNL library.
-
 mod prelude;
 mod util;
 
@@ -9,7 +8,7 @@ mod util;
 pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair};
 
-/// The module containing the data structures and functions to setup a node identity and configure it for networking. 
+/// The module containing the data structures and functions to setup a node identity and configure it for networking.
 pub mod setup {
     use std::collections::HashMap;
 
@@ -26,12 +25,12 @@ pub mod setup {
         /// The Cryptographic Keypair for node identification and message auth
         keypair: WrappedKeyPair,
         /// Bootstrap peers
-        boot_nodes: HashMap<PeerIdString, MultiaddrString>
+        boot_nodes: HashMap<PeerIdString, MultiaddrString>,
     }
 
     impl BootstrapConfig {
         /// Read from a bootstrap config file on disk
-        /// 
+        ///
         /// # Panics
         ///
         /// This function will panic if the file is not found at the specified path.
@@ -40,7 +39,7 @@ pub mod setup {
         }
 
         /// Return a new `BootstrapConfig` struct populated by default (empty) values.
-        /// 
+        ///
         /// Must be called first if the config is to be explicitly built without reading `.ini` file from disk
         pub fn new() -> Self {
             BootstrapConfig {
@@ -50,7 +49,7 @@ pub mod setup {
                 udp_port: 2707,
                 // Default node keypair type i.e Ed25519
                 keypair: WrappedKeyPair::Other(Keypair::generate_ed25519()),
-                boot_nodes: Default::default()
+                boot_nodes: Default::default(),
             }
         }
 
@@ -70,9 +69,9 @@ pub mod setup {
         }
 
         /// Generate a Cryptographic Keypair.
-        /// 
+        ///
         /// Please note that calling this function overrides whatever might have been read from the `.ini` file
-        /// 
+        ///
         /// TODO! Generate RSA properly by reading from its binary.
         pub fn generate_keypair(self, key_type: KeyType) -> Self {
             let keypair = match key_type {
@@ -95,9 +94,9 @@ pub mod setup {
         }
 
         /// Generate a Cryptographic Keypair from a protobuf format.
-        /// 
+        ///
         /// This will override any already set keypair.
-        /// 
+        ///
         /// # Panics
         ///
         /// This function will panic if the `u8` buffer is not parsable into the specified key type
@@ -138,22 +137,27 @@ pub mod setup {
         /// Return the configured ports in a tuple i.e (TCP Port, UDP port)
         pub fn ports(&self) -> (Port, Port) {
             (self.tcp_port, self.udp_port)
-        }   
+        }
     }
 }
 
 /// The module containing the core data structures for SwarmNl.
 mod core {
     use std::{
+        collections::HashMap,
         net::{IpAddr, Ipv4Addr},
-        time::Duration, collections::HashMap,
+        time::Duration,
     };
 
+    use futures::channel::mpsc;
     use libp2p::{
-        kad::{self, store::MemoryStore}, noise, ping, swarm::NetworkBehaviour, tcp, tls, yamux, SwarmBuilder, Multiaddr, multiaddr::{Protocol, self}, Swarm, StreamProtocol,
+        kad::{self, store::MemoryStore},
+        multiaddr::{self, Protocol},
+        noise, ping,
+        swarm::NetworkBehaviour,
+        tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
     };
     use libp2p_identity::PeerId;
-    use futures::channel::mpsc;
 
     use super::*;
     use crate::setup::BootstrapConfig;
@@ -164,7 +168,7 @@ mod core {
     #[behaviour(to_swarm = "CoreEvent")]
     struct CoreBehaviour {
         ping: ping::Behaviour,
-        kademlia: kad::Behaviour<MemoryStore>
+        kademlia: kad::Behaviour<MemoryStore>,
     }
 
     /// Network events generated as a result of supported and configured `NetworkBehaviour`'s
@@ -202,11 +206,11 @@ mod core {
         /// The `Behaviour` of the `Ping` protocol
         ping: ping::Behaviour,
         /// The `Behaviour` of the `Kademlia` protocol
-        kademlia: kad::Behaviour<kad::store::MemoryStore>
+        kademlia: kad::Behaviour<kad::store::MemoryStore>,
     }
 
     impl CoreBuilder {
-        /// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values. 
+        /// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
         /// Here, it is certain that [`BootstrapConfig`] contains valid data.
         pub fn with_config(config: BootstrapConfig) -> Self {
             // The default network id
@@ -241,7 +245,7 @@ mod core {
                 keep_alive_duration: 60,
                 transport: default_transport,
                 ping: Default::default(),
-                kademlia
+                kademlia,
             }
         }
 
@@ -251,7 +255,7 @@ mod core {
         }
 
         /// Configure the IP address to listen on
-        /// 
+        ///
         /// TODO! Accept custom domain names e.g swarmnl.com
         /// TODO! Type-stating
         pub fn listen_on(self, ip_address: IpAddr) -> Self {
@@ -260,7 +264,10 @@ mod core {
 
         /// Configure how long to keep a connection alive (in seconds) once it is idling.
         pub fn with_idle_connection_timeout(self, keep_alive_duration: Seconds) -> Self {
-            CoreBuilder { keep_alive_duration, ..self }
+            CoreBuilder {
+                keep_alive_duration,
+                ..self
+            }
         }
 
         /// Configure the `Ping` protocol for the network.
@@ -288,7 +295,7 @@ mod core {
 
         /// Configure the Runtime and Executor to support.
         /// It's basically async-std vs tokio.
-        /// 
+        ///
         /// Tokio does not yet support DNS translation, so you have to explicitly specify it.   
         pub fn with_provider(self, provider: Runtime) -> Self {
             CoreBuilder { provider, ..self }
@@ -300,13 +307,12 @@ mod core {
         }
 
         /// Build the [`Core`] data structure.
-        /// 
+        ///
         /// Handles the configuration of the libp2p Swarm structure and the selected transport protocols, behaviours and node identity.
-        pub async fn build(self) -> SwarmNlResult<Core>  {
+        pub async fn build(self) -> SwarmNlResult<Core> {
             // Build and configure the libp2p Swarm structure. Thereby configuring the selected transport protocols, behaviours and node identity.
             // The Swarm is wrapped in the Core construct which serves as the interface to interact with the internal networking layer
             let mut swarm = if self.provider == Runtime::AsyncStd {
-                
                 // We're dealing with async-std here
                 // Configure transports
                 let swarm_builder: SwarmBuilder<_, _> = match self.transport {
@@ -321,9 +327,16 @@ mod core {
                                 tcp::Config::default(),
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
+                            )
+                            .map_err(|_| {
+                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                    tcp_config: TcpConfig::Default,
+                                })
+                            })?
                             .with_quic()
-                            .with_dns().await.map_err(|_| SwarmNlError::DNSConfigError)?
+                            .with_dns()
+                            .await
+                            .map_err(|_| SwarmNlError::DNSConfigError)?
                         }
 
                         TcpConfig::Custom {
@@ -345,24 +358,37 @@ mod core {
                                 tcp_config,
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            )
+                            .map_err(|_| {
+                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                    tcp_config: TcpConfig::Custom {
+                                        ttl,
+                                        nodelay,
+                                        backlog,
+                                    },
+                                })
+                            })?
                             .with_quic()
-                            .with_dns().await.map_err(|_| SwarmNlError::DNSConfigError)?
+                            .with_dns()
+                            .await
+                            .map_err(|_| SwarmNlError::DNSConfigError)?
                         }
                     },
                 };
 
                 // Configure the selected protocols and their corresponding behaviours
                 swarm_builder
-                    .with_behaviour(|_| 
+                    .with_behaviour(|_|
                         // Configure the selected behaviours
                         CoreBehaviour {
                             ping: self.ping,
                             kademlia: self.kademlia
-                        }
-                    ).map_err(|_| SwarmNlError::ProtocolConfigError)?
+                        })
+                    .map_err(|_| SwarmNlError::ProtocolConfigError)?
                     .with_swarm_config(|cfg| {
-                        cfg.with_idle_connection_timeout(Duration::from_secs(self.keep_alive_duration))
+                        cfg.with_idle_connection_timeout(Duration::from_secs(
+                            self.keep_alive_duration,
+                        ))
                     })
                     .build()
             } else {
@@ -380,7 +406,12 @@ mod core {
                                 tcp::Config::default(),
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Default }))?
+                            )
+                            .map_err(|_| {
+                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                    tcp_config: TcpConfig::Default,
+                                })
+                            })?
                             .with_quic()
                         }
 
@@ -403,7 +434,16 @@ mod core {
                                 tcp_config,
                                 (tls::Config::new, noise::Config::new),
                                 yamux::Config::default,
-                            ).map_err(|_| SwarmNlError::TransportConfigError(TransportOpts::TcpQuic { tcp_config: TcpConfig::Custom { ttl, nodelay, backlog } }))?
+                            )
+                            .map_err(|_| {
+                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                    tcp_config: TcpConfig::Custom {
+                                        ttl,
+                                        nodelay,
+                                        backlog,
+                                    },
+                                })
+                            })?
                             .with_quic()
                         }
                     },
@@ -411,19 +451,21 @@ mod core {
 
                 // Configure the selected protocols and their corresponding behaviours
                 swarm_builder
-                    .with_behaviour(|_| 
+                    .with_behaviour(|_|
                         // Configure the selected behaviours
                         CoreBehaviour {
                             ping: self.ping,
                             kademlia: self.kademlia
-                        }
-                    ).map_err(|_| SwarmNlError::ProtocolConfigError)?
+                        })
+                    .map_err(|_| SwarmNlError::ProtocolConfigError)?
                     .with_swarm_config(|cfg| {
-                        cfg.with_idle_connection_timeout(Duration::from_secs(self.keep_alive_duration))
+                        cfg.with_idle_connection_timeout(Duration::from_secs(
+                            self.keep_alive_duration,
+                        ))
                     })
                     .build()
             };
-                    
+
             // Configure the transport multiaddress and begin listening.
             // It can handle multiple future tranports based on configuration e.g WebRTC
             match self.transport {
@@ -431,27 +473,31 @@ mod core {
                 TransportOpts::TcpQuic { tcp_config } => {
                     // Configure TCP/IP multiaddress
                     let listen_addr_tcp = Multiaddr::empty()
-                    .with(match self.ip_address {
-                        IpAddr::V4(address) => Protocol::from(address),
-                        IpAddr::V6(address) => Protocol::from(address),
-                    })
-                    .with(Protocol::Tcp(self.tcp_udp_port.0));
+                        .with(match self.ip_address {
+                            IpAddr::V4(address) => Protocol::from(address),
+                            IpAddr::V6(address) => Protocol::from(address),
+                        })
+                        .with(Protocol::Tcp(self.tcp_udp_port.0));
 
                     // Configure QUIC multiaddress
                     let listen_addr_quic = Multiaddr::empty()
-                    .with(match self.ip_address {
-                        IpAddr::V4(address) => Protocol::from(address),
-                        IpAddr::V6(address) => Protocol::from(address),
-                    })
-                    .with(Protocol::Udp(self.tcp_udp_port.1))
-                    .with(Protocol::QuicV1);
+                        .with(match self.ip_address {
+                            IpAddr::V4(address) => Protocol::from(address),
+                            IpAddr::V6(address) => Protocol::from(address),
+                        })
+                        .with(Protocol::Udp(self.tcp_udp_port.1))
+                        .with(Protocol::QuicV1);
 
                     // Begin listening
-                    swarm.listen_on(listen_addr_tcp.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string()))?;
-                    swarm.listen_on(listen_addr_quic.clone()).map_err(|_| SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string()))?;
+                    swarm.listen_on(listen_addr_tcp.clone()).map_err(|_| {
+                        SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string())
+                    })?;
+                    swarm.listen_on(listen_addr_quic.clone()).map_err(|_| {
+                        SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string())
+                    })?;
                 }
             }
-           
+
             // Add bootnodes to local routing table, if any
             for peer_info in self.boot_nodes {
                 // PeerId
@@ -459,19 +505,21 @@ mod core {
                     // Multiaddress
                     if let Ok(multiaddr) = multiaddr::from_url(&peer_info.1) {
                         swarm
-                        .behaviour_mut()
-                        .kademlia
-                        .add_address(&peer_id, multiaddr.clone());
+                            .behaviour_mut()
+                            .kademlia
+                            .add_address(&peer_id, multiaddr.clone());
 
                         // Dial them
-                        swarm.dial(multiaddr.clone()).map_err(|_| SwarmNlError::RemotePeerDialError(multiaddr.to_string()))?;
+                        swarm.dial(multiaddr.clone()).map_err(|_| {
+                            SwarmNlError::RemotePeerDialError(multiaddr.to_string())
+                        })?;
                     }
                 }
             }
 
             // TODO!
             // There must be a way for the application to communicate with the underlying networking core.
-            // This could be pro-active or reactive. We will open a single-consumer (the core) and multiple producers stream to serve as 
+            // This could be pro-active or reactive. We will open a single-consumer (the core) and multiple producers stream to serve as
             // the bridge from the application layer to the networking layer.
             // let (msg_sender, msg_receiver) = mpsc::channel::<ChannelMsg>(0);
 
@@ -480,9 +528,9 @@ mod core {
             // single comsumer: To recieve data from the network
             // They are diffrent streams
 
-            // Listening for commands 
+            // Listening for commands
 
-            // Pushing data 
+            // Pushing data
 
             // A stream wer're polling
             // Messages are coming in from the application layer
@@ -498,7 +546,6 @@ mod core {
             //     ...
             // }
 
-            
             // Spin up a loop that polls the event stream and other important streams. This will be run in a separate asynchronous task
             // if self.provider == Runtime::Tokio {
             //     // spinup a tokio task
@@ -510,7 +557,7 @@ mod core {
             // Build the network core
             Ok(Core {
                 keypair: self.keypair,
-                swarm
+                swarm,
             })
         }
     }
@@ -518,15 +565,15 @@ mod core {
     /// The core library struct for SwarmNl
     struct Core {
         keypair: WrappedKeyPair,
-        swarm: Swarm<CoreBehaviour>
+        swarm: Swarm<CoreBehaviour>,
     }
 
     impl Core {
         /// Serialize keypair to protobuf format and write to config file on disk.
-        /// 
+        ///
         /// It returns a boolean to indicate success of operation.
         /// Only key types other than RSA can be serialized to protobuf format for now.
-        /// 
+        ///
         /// TODO! Save keyType automatically to file.
         pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
             // Check if key type is something other than RSA

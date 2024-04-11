@@ -1,7 +1,6 @@
 /// Copyright (c) 2024 Algorealm
-/// 
+///
 /// This file is part of the SwarmNl library.
-
 use crate::{prelude::*, setup::BootstrapConfig};
 use ini::Ini;
 use std::{collections::HashMap, str::FromStr};

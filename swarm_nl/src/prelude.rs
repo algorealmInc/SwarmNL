@@ -1,7 +1,6 @@
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
-
 use libp2p_identity::KeyType;
 use libp2p_identity::{rsa::Keypair as RsaKeypair, Keypair};
 use thiserror::Error;
@@ -88,7 +87,7 @@ impl WrappedKeyPair {
 #[derive(Hash, Eq, PartialEq)]
 pub enum Runtime {
     AsyncStd,
-    Tokio
+    Tokio,
 }
 
 /// Supported transport protocols
@@ -96,7 +95,7 @@ pub enum Runtime {
 pub enum TransportOpts {
     /// QUIC transport protocol enabled with TCP/IP as fallback.
     /// DNS lookup is also configured by default
-    TcpQuic { tcp_config: TcpConfig } 
+    TcpQuic { tcp_config: TcpConfig },
 }
 
 /// TCP setup Config
