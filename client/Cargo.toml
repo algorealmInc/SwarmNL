@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 rust-ini = "0.20.0"
 swarm_nl = { path = "../swarm_nl" }
+tokio = { version = "1.37.0", features = ["full"] }

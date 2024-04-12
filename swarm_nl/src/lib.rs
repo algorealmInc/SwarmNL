@@ -152,7 +152,7 @@ pub mod setup {
 }
 
 /// The module containing the core data structures for SwarmNl.
-mod core {
+pub mod core {
     use std::{
         collections::HashMap,
         net::{IpAddr, Ipv4Addr},
@@ -606,9 +606,9 @@ mod core {
     pub struct Core {
         keypair: WrappedKeyPair,
         // The producing end of the stream that sends data to the network layer from the application
-        application_sender: Sender<StreamData>,
+        pub application_sender: Sender<StreamData>,
         // The consuming end of the stream that recieves data from the network layer
-        application_receiver: Receiver<StreamData>,
+        pub application_receiver: Receiver<StreamData>,
     }
 
     impl Core {
