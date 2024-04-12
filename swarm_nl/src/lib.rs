@@ -44,9 +44,9 @@ pub mod setup {
         pub fn new() -> Self {
             BootstrapConfig {
                 // Default TCP/IP port if not specified
-                tcp_port: 1509,
+                tcp_port: 49352,
                 // Default UDP port if not specified
-                udp_port: 2707,
+                udp_port: 49852,
                 // Default node keypair type i.e Ed25519
                 keypair: WrappedKeyPair::Other(Keypair::generate_ed25519()),
                 boot_nodes: Default::default(),
@@ -59,13 +59,23 @@ pub mod setup {
         }
 
         /// Configure the TCP/IP port
+        /// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
         pub fn with_tcp(self, tcp_port: Port) -> Self {
-            BootstrapConfig { tcp_port, ..self }
+            if tcp_port > MIN_PORT && tcp_port < MAX_PORT {
+                BootstrapConfig { tcp_port, ..self }
+            } else {
+                self
+            }
         }
 
         /// Configure the UDP port
+        /// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
         pub fn with_udp(self, udp_port: Port) -> Self {
-            BootstrapConfig { udp_port, ..self }
+            if udp_port > MIN_PORT && udp_port < MAX_PORT {
+                BootstrapConfig { udp_port, ..self }
+            } else {
+                self
+            }
         }
 
         /// Generate a Cryptographic Keypair.
@@ -149,15 +159,24 @@ mod core {
         time::Duration,
     };
 
-    use futures::channel::mpsc;
+    use futures::{
+        channel::mpsc::{self, Receiver, Sender},
+        StreamExt,
+    };
     use libp2p::{
         kad::{self, store::MemoryStore},
-        multiaddr::{self, Protocol},
+        multiaddr::Protocol,
         noise, ping,
-        swarm::NetworkBehaviour,
+        swarm::{NetworkBehaviour, SwarmEvent},
         tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
     };
     use libp2p_identity::PeerId;
+
+    #[cfg(feature = "tokio-runtime")]
+    use tokio::task;
+
+    #[cfg(feature = "async-std-runtime")]
+    use async_std::task;
 
     use super::*;
     use crate::setup::BootstrapConfig;
@@ -199,7 +218,6 @@ mod core {
         tcp_udp_port: (Port, Port),
         boot_nodes: HashMap<PeerIdString, MultiaddrString>,
         ip_address: IpAddr,
-        provider: Runtime,
         /// Connection keep-alive duration while idle
         keep_alive_duration: Seconds,
         transport: TransportOpts, // Maybe this can be a collection in the future to support additive transports
@@ -239,8 +257,6 @@ mod core {
                 boot_nodes: Default::default(),
                 // Default is to listen on all interfaces (ipv4)
                 ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                // Runtime & executor, tokio by default
-                provider: Runtime::Tokio,
                 // Default to 60 seconds
                 keep_alive_duration: 60,
                 transport: default_transport,
@@ -249,15 +265,20 @@ mod core {
             }
         }
 
-        /// TODO! To be able to explitcly provide a network id for the network
-        pub fn with_network_id(self, id: &str) -> Self {
-            unimplemented!()
+        /// Explicitly configure the network (protocol) id e.g /swarmnl/1.0.
+        /// Note that it must begin eith a forward-slash "/" else it will default to "/swarmnl/1.0"
+        pub fn with_network_id(self, protocol: String) -> Self {
+            if protocol.len() > 2 && protocol.starts_with("/") {
+                CoreBuilder {
+                    network_id: StreamProtocol::try_from_owned(protocol).unwrap(),
+                    ..self
+                }
+            } else {
+                self
+            }
         }
 
         /// Configure the IP address to listen on
-        ///
-        /// TODO! Accept custom domain names e.g swarmnl.com
-        /// TODO! Type-stating
         pub fn listen_on(self, ip_address: IpAddr) -> Self {
             CoreBuilder { ip_address, ..self }
         }
@@ -293,14 +314,6 @@ mod core {
             CoreBuilder { kademlia, ..self }
         }
 
-        /// Configure the Runtime and Executor to support.
-        /// It's basically async-std vs tokio.
-        ///
-        /// Tokio does not yet support DNS translation, so you have to explicitly specify it.   
-        pub fn with_provider(self, provider: Runtime) -> Self {
-            CoreBuilder { provider, ..self }
-        }
-
         /// Configure the transports to support.
         pub fn with_transports(self, transport: TransportOpts) -> Self {
             CoreBuilder { transport, ..self }
@@ -312,7 +325,9 @@ mod core {
         pub async fn build(self) -> SwarmNlResult<Core> {
             // Build and configure the libp2p Swarm structure. Thereby configuring the selected transport protocols, behaviours and node identity.
             // The Swarm is wrapped in the Core construct which serves as the interface to interact with the internal networking layer
-            let mut swarm = if self.provider == Runtime::AsyncStd {
+
+            #[cfg(feature = "async-std-runtime")]
+            let mut swarm = {
                 // We're dealing with async-std here
                 // Configure transports
                 let swarm_builder: SwarmBuilder<_, _> = match self.transport {
@@ -391,7 +406,10 @@ mod core {
                         ))
                     })
                     .build()
-            } else {
+            };
+
+            #[cfg(feature = "tokio-runtime")]
+            let mut swarm = {
                 // We're dealing with tokio here
                 // Configure transports
                 let swarm_builder: SwarmBuilder<_, _> = match self.transport {
@@ -470,7 +488,7 @@ mod core {
             // It can handle multiple future tranports based on configuration e.g WebRTC
             match self.transport {
                 // TCP/IP and QUIC
-                TransportOpts::TcpQuic { tcp_config } => {
+                TransportOpts::TcpQuic { tcp_config: _ } => {
                     // Configure TCP/IP multiaddress
                     let listen_addr_tcp = Multiaddr::empty()
                         .with(match self.ip_address {
@@ -489,9 +507,12 @@ mod core {
                         .with(Protocol::QuicV1);
 
                     // Begin listening
+                    #[cfg(any(feature = "tokio-runtime", feature = "async-std-runtime"))]
                     swarm.listen_on(listen_addr_tcp.clone()).map_err(|_| {
                         SwarmNlError::MultiaddressListenError(listen_addr_tcp.to_string())
                     })?;
+
+                    #[cfg(any(feature = "tokio-runtime", feature = "async-std-runtime"))]
                     swarm.listen_on(listen_addr_quic.clone()).map_err(|_| {
                         SwarmNlError::MultiaddressListenError(listen_addr_quic.to_string())
                     })?;
@@ -499,6 +520,7 @@ mod core {
             }
 
             // Add bootnodes to local routing table, if any
+            #[cfg(any(feature = "tokio-runtime", feature = "async-std-runtime"))]
             for peer_info in self.boot_nodes {
                 // PeerId
                 if let Ok(peer_id) = PeerId::from_bytes(peer_info.0.as_bytes()) {
@@ -517,73 +539,69 @@ mod core {
                 }
             }
 
-            // TODO!
             // There must be a way for the application to communicate with the underlying networking core.
-            // This could be pro-active or reactive. We will open a single-consumer (the core) and multiple producers stream to serve as
-            // the bridge from the application layer to the networking layer.
-            // let (msg_sender, msg_receiver) = mpsc::channel::<ChannelMsg>(0);
-
-            // passing to the appication:
-            // multiple producers: to send commands to the network
-            // single comsumer: To recieve data from the network
-            // They are diffrent streams
-
-            // Listening for commands
-
-            // Pushing data
-
-            // A stream wer're polling
-            // Messages are coming in from the application layer
-            // switch (msg) {
-            //     case StreamBridge::Gossip {
-            //         topic_id,
-            //         peer_id,
-            //         data = "blow_kitchen::deji15"
-            //     }
-            //     handle_it
-            //     case 'y':
-            //     handle_it
-            //     ...
-            // }
-
-            // Spin up a loop that polls the event stream and other important streams. This will be run in a separate asynchronous task
-            // if self.provider == Runtime::Tokio {
-            //     // spinup a tokio task
-            //     tokio
-            // } else {
-            //     // async-std
-            // }
+            // This will involve acceptiing data and pushing data to the application layer.
+            // Two streams will be opened: The first mpsc stream will allow SwarmNL push data to the application and the application will comsume it (single consumer)
+            // The second stream will have SwarmNl (being the consumer) recieve data and commands from multiple areas in the application;
+            let (network_sender, mut application_receiver) = mpsc::channel::<StreamData>(3);
+            let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
 
             // Build the network core
-            Ok(Core {
+            let core = Core {
                 keypair: self.keypair,
-                swarm,
-            })
+                application_sender,
+                application_receiver,
+            };
+
+            // spin up task to handle messages from the application layer
+            #[cfg(feature = "async-std-runtime")]
+            async_std::task::spawn(Core::handle_app_stream(network_receiver));
+
+            // spin up task to handle the events generated by the network.
+            // It notifies the application layer with important information over a (mpsc) stream
+            #[cfg(feature = "async-std-runtime")]
+            async_std::task::spawn(Core::handle_network_events(swarm, network_sender));
+
+            // spin up task to handle messages from the application layer
+            #[cfg(feature = "tokio-runtime")]
+            tokio::task::spawn(Core::handle_app_stream(network_receiver));
+
+            // spin up task to handle the events generated by the network.
+            // It notifies the application layer with important information over a (mpsc) stream
+            #[cfg(feature = "async-std-runtime")]
+            tokio::task::spawn(Core::handle_network_events(swarm, network_sender));
+
+            Ok(core)
         }
     }
 
     /// The core library struct for SwarmNl
     struct Core {
         keypair: WrappedKeyPair,
-        swarm: Swarm<CoreBehaviour>,
+        // The producing end of the stream that sends data to the network layer from the application
+        application_sender: Sender<StreamData>,
+        // The consuming end of the stream that recieves data from the network layer
+        application_receiver: Receiver<StreamData>,
     }
 
     impl Core {
         /// Serialize keypair to protobuf format and write to config file on disk.
-        ///
         /// It returns a boolean to indicate success of operation.
-        /// Only key types other than RSA can be serialized to protobuf format for now.
-        ///
-        /// TODO! Save keyType automatically to file.
+        /// Only key types other than RSA can be serialized to protobuf format for now
         pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
             // Check if key type is something other than RSA
             if let Some(keypair) = self.keypair.into_inner() {
                 if let Ok(protobuf_keypair) = keypair.to_protobuf_encoding() {
-                    // Write to config file
+                    // Write key type and serialized array key to config file
                     return util::write_config(
                         "auth",
                         "protobuf_keypair",
                         &format!("{:?}", protobuf_keypair),
+                        config_file_path,
+                    ) && util::write_config(
+                        "auth",
+                        "Crypto",
+                        &format!("{}", self.keypair.into_inner().unwrap().key_type()),
                         config_file_path,
                     );
                 }
@@ -592,6 +610,94 @@ mod core {
             }
 
             false
+        }
+
+        /// Return the node's `PeerId`
+        pub fn peer_id(&self) -> String {
+            self.keypair.into_inner().unwrap().public().to_peer_id().to_string()
+        }
+
+        /// Handles streams coming from the application layer.
+        async fn handle_app_stream(mut receiver: Receiver<StreamData>) {
+            // Loop to handle incoming application streams indefinitely.
+            loop {
+                match receiver.try_next() {
+                    Ok(Some(stream_data)) => {
+                        // handle incoming stream data
+                    }
+                    Err(e) => {
+                        // exit the loop if the stream has been closed
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        /// Handles events generated by network activities.
+        /// Important information is sent to the application layer over a (mpsc) stream
+        async fn handle_network_events(
+            mut swarm: Swarm<CoreBehaviour>,
+            sender: Sender<StreamData>,
+        ) {
+            // Loop to handle network events indefinitely.
+            loop {
+                match swarm.select_next_some().await {
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        println!("Listening on {address:?}")
+                    }
+                    SwarmEvent::Behaviour(event) => println!("{event:?}"),
+                    SwarmEvent::ConnectionEstablished {
+                        peer_id,
+                        connection_id,
+                        endpoint,
+                        num_established,
+                        concurrent_dial_errors,
+                        established_in,
+                    } => todo!(),
+                    SwarmEvent::ConnectionClosed {
+                        peer_id,
+                        connection_id,
+                        endpoint,
+                        num_established,
+                        cause,
+                    } => todo!(),
+                    SwarmEvent::IncomingConnection {
+                        connection_id,
+                        local_addr,
+                        send_back_addr,
+                    } => todo!(),
+                    SwarmEvent::IncomingConnectionError {
+                        connection_id,
+                        local_addr,
+                        send_back_addr,
+                        error,
+                    } => todo!(),
+                    SwarmEvent::OutgoingConnectionError {
+                        connection_id,
+                        peer_id,
+                        error,
+                    } => todo!(),
+                    SwarmEvent::ExpiredListenAddr {
+                        listener_id,
+                        address,
+                    } => todo!(),
+                    SwarmEvent::ListenerClosed {
+                        listener_id,
+                        addresses,
+                        reason,
+                    } => todo!(),
+                    SwarmEvent::ListenerError { listener_id, error } => todo!(),
+                    SwarmEvent::Dialing {
+                        peer_id,
+                        connection_id,
+                    } => todo!(),
+                    SwarmEvent::NewExternalAddrCandidate { address } => todo!(),
+                    SwarmEvent::ExternalAddrConfirmed { address } => todo!(),
+                    SwarmEvent::ExternalAddrExpired { address } => todo!(),
+                    _ => todo!(),
+                }
+            }
         }
     }
 

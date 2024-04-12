@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
@@ -34,6 +36,10 @@ pub type Seconds = u64;
 pub type PeerIdString = String;
 /// The stringified Multiaddr type
 pub type MultiaddrString = String;
+
+/// Port ranges
+pub const MIN_PORT: u16 = 49152;
+pub const MAX_PORT: u16 = 65535;
 
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
@@ -120,3 +126,6 @@ pub struct NotInitialiazed;
 
 /// A unique type that indicates that a struct has been default configured
 pub struct Initialized;
+
+/// Data exchanged over a stream between the application and network layer
+pub enum StreamData {}
