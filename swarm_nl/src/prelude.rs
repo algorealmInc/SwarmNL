@@ -128,4 +128,8 @@ pub struct NotInitialiazed;
 pub struct Initialized;
 
 /// Data exchanged over a stream between the application and network layer
-pub enum StreamData {}
+pub enum StreamData {
+    /// This is the first message send through the stream from the networking layer to the application.
+    /// It indicates a successful setup and readiness to begin operations
+    Ready
+}

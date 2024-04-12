@@ -161,13 +161,15 @@ mod core {
 
     use futures::{
         channel::mpsc::{self, Receiver, Sender},
-        StreamExt,
+        SinkExt, StreamExt,
     };
     use libp2p::{
+        core::ConnectedPoint,
+        identify,
         kad::{self, store::MemoryStore},
         multiaddr::Protocol,
         noise, ping,
-        swarm::{NetworkBehaviour, SwarmEvent},
+        swarm::{derive_prelude::ListenerId, ConnectionId, NetworkBehaviour, SwarmEvent},
         tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
     };
     use libp2p_identity::PeerId;
@@ -188,6 +190,7 @@ mod core {
     struct CoreBehaviour {
         ping: ping::Behaviour,
         kademlia: kad::Behaviour<MemoryStore>,
+        identify: identify::Behaviour,
     }
 
     /// Network events generated as a result of supported and configured `NetworkBehaviour`'s
@@ -195,6 +198,7 @@ mod core {
     enum CoreEvent {
         Ping(ping::Event),
         Kademlia(kad::Event),
+        Identify(identify::Event),
     }
 
     /// Implement ping events for [`CoreEvent`]
@@ -208,6 +212,13 @@ mod core {
     impl From<kad::Event> for CoreEvent {
         fn from(event: kad::Event) -> Self {
             CoreEvent::Kademlia(event)
+        }
+    }
+
+    /// Implement identify events for [`CoreEvent`]
+    impl From<identify::Event> for CoreEvent {
+        fn from(event: identify::Event) -> Self {
+            CoreEvent::Identify(event)
         }
     }
 
@@ -225,6 +236,8 @@ mod core {
         ping: ping::Behaviour,
         /// The `Behaviour` of the `Kademlia` protocol
         kademlia: kad::Behaviour<kad::store::MemoryStore>,
+        /// The `Behaviour` of the `Identify` protocol
+        identify: identify::Behaviour,
     }
 
     impl CoreBuilder {
@@ -249,6 +262,14 @@ mod core {
             let store = kad::store::MemoryStore::new(peer_id);
             let kademlia = kad::Behaviour::with_config(peer_id, store, cfg);
 
+            // Set up default config config for Kademlia
+            let cfg = identify::Config::new(
+                network_id.to_owned(),
+                config.keypair().into_inner().unwrap().public(),
+            )
+            .with_push_listen_addr_updates(true);
+            let identify = identify::Behaviour::new(cfg);
+
             // Initialize struct with information from `BootstrapConfig`
             CoreBuilder {
                 network_id: StreamProtocol::new(network_id),
@@ -262,11 +283,12 @@ mod core {
                 transport: default_transport,
                 ping: Default::default(),
                 kademlia,
+                identify,
             }
         }
 
         /// Explicitly configure the network (protocol) id e.g /swarmnl/1.0.
-        /// Note that it must begin eith a forward-slash "/" else it will default to "/swarmnl/1.0"
+        /// Note that it must be of the format "/protocol-name/version" else it will default to "/swarmnl/1.0"
         pub fn with_network_id(self, protocol: String) -> Self {
             if protocol.len() > 2 && protocol.starts_with("/") {
                 CoreBuilder {
@@ -397,7 +419,8 @@ mod core {
                         // Configure the selected behaviours
                         CoreBehaviour {
                             ping: self.ping,
-                            kademlia: self.kademlia
+                            kademlia: self.kademlia,
+                            identify: self.identify
                         })
                     .map_err(|_| SwarmNlError::ProtocolConfigError)?
                     .with_swarm_config(|cfg| {
@@ -473,7 +496,8 @@ mod core {
                         // Configure the selected behaviours
                         CoreBehaviour {
                             ping: self.ping,
-                            kademlia: self.kademlia
+                            kademlia: self.kademlia,
+                            identify: self.identify
                         })
                     .map_err(|_| SwarmNlError::ProtocolConfigError)?
                     .with_swarm_config(|cfg| {
@@ -543,7 +567,7 @@ mod core {
             // This will involve acceptiing data and pushing data to the application layer.
             // Two streams will be opened: The first mpsc stream will allow SwarmNL push data to the application and the application will comsume it (single consumer)
             // The second stream will have SwarmNl (being the consumer) recieve data and commands from multiple areas in the application;
-            let (network_sender, mut application_receiver) = mpsc::channel::<StreamData>(3);
+            let (mut network_sender, mut application_receiver) = mpsc::channel::<StreamData>(3);
             let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
 
             // Build the network core
@@ -552,6 +576,9 @@ mod core {
                 application_sender,
                 application_receiver,
             };
+
+            // send message to application to incidcate readiness
+            let _ = network_sender.send(StreamData::Ready).await;
 
             // spin up task to handle messages from the application layer
             #[cfg(feature = "async-std-runtime")]
@@ -568,7 +595,7 @@ mod core {
 
             // spin up task to handle the events generated by the network.
             // It notifies the application layer with important information over a (mpsc) stream
-            #[cfg(feature = "async-std-runtime")]
+            #[cfg(feature = "tokio-runtime")]
             tokio::task::spawn(Core::handle_network_events(swarm, network_sender));
 
             Ok(core)
@@ -576,7 +603,7 @@ mod core {
     }
 
     /// The core library struct for SwarmNl
-    struct Core {
+    pub struct Core {
         keypair: WrappedKeyPair,
         // The producing end of the stream that sends data to the network layer from the application
         application_sender: Sender<StreamData>,
@@ -614,7 +641,12 @@ mod core {
 
         /// Return the node's `PeerId`
         pub fn peer_id(&self) -> String {
-            self.keypair.into_inner().unwrap().public().to_peer_id().to_string()
+            self.keypair
+                .into_inner()
+                .unwrap()
+                .public()
+                .to_peer_id()
+                .to_string()
         }
 
         /// Handles streams coming from the application layer.
@@ -635,7 +667,7 @@ mod core {
         }
 
         /// Handles events generated by network activities.
-        /// Important information is sent to the application layer over a (mpsc) stream
+        /// Important information are sent to the application layer over a (mpsc) stream
         async fn handle_network_events(
             mut swarm: Swarm<CoreBehaviour>,
             sender: Sender<StreamData>,
@@ -646,7 +678,72 @@ mod core {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         println!("Listening on {address:?}")
                     }
-                    SwarmEvent::Behaviour(event) => println!("{event:?}"),
+                    SwarmEvent::Behaviour(event) => match event {
+                        CoreEvent::Ping(ping::Event {
+                            peer,
+                            connection: _,
+                            result,
+                        }) => {}
+                        CoreEvent::Kademlia(
+                            (kad::Event::OutboundQueryProgressed { result, .. }),
+                        ) => match result {
+                            kad::QueryResult::GetProviders(Ok(
+                                kad::GetProvidersOk::FoundProviders { key, providers, .. },
+                            )) => {
+                                for peer in providers {
+                                    println!(
+                                        "Peer {peer:?} provides key {:?}",
+                                        std::str::from_utf8(key.as_ref()).unwrap()
+                                    );
+                                }
+                            }
+                            kad::QueryResult::GetProviders(Err(err)) => {
+                                eprintln!("Failed to get providers: {err:?}");
+                            }
+                            kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
+                                kad::PeerRecord {
+                                    record: kad::Record { key, value, .. },
+                                    ..
+                                },
+                            ))) => {
+                                println!(
+                                    "Got record {:?} {:?}",
+                                    std::str::from_utf8(key.as_ref()).unwrap(),
+                                    std::str::from_utf8(&value).unwrap(),
+                                );
+                            }
+                            kad::QueryResult::GetRecord(Ok(_)) => {}
+                            kad::QueryResult::GetRecord(Err(err)) => {
+                                eprintln!("Failed to get record: {err:?}");
+                            }
+                            kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
+                                println!(
+                                    "Successfully put record {:?}",
+                                    std::str::from_utf8(key.as_ref()).unwrap()
+                                );
+                            }
+                            kad::QueryResult::PutRecord(Err(err)) => {
+                                eprintln!("Failed to put record: {err:?}");
+                            }
+                            kad::QueryResult::StartProviding(Ok(kad::AddProviderOk { key })) => {
+                                println!(
+                                    "Successfully put provider record {:?}",
+                                    std::str::from_utf8(key.as_ref()).unwrap()
+                                );
+                            }
+                            kad::QueryResult::StartProviding(Err(err)) => {
+                                eprintln!("Failed to put provider record: {err:?}");
+                            }
+                            _ => {}
+                        },
+                        CoreEvent::Identify(event) => match event {
+                            identify::Event::Sent { peer_id, .. } => {}
+                            identify::Event::Received { peer_id, info } => {}
+                            identify::Event::Pushed { peer_id, info } => todo!(),
+                            identify::Event::Error { peer_id, error } => todo!(),
+                        },
+                        _ => {}
+                    },
                     SwarmEvent::ConnectionEstablished {
                         peer_id,
                         connection_id,
@@ -661,22 +758,6 @@ mod core {
                         endpoint,
                         num_established,
                         cause,
-                    } => todo!(),
-                    SwarmEvent::IncomingConnection {
-                        connection_id,
-                        local_addr,
-                        send_back_addr,
-                    } => todo!(),
-                    SwarmEvent::IncomingConnectionError {
-                        connection_id,
-                        local_addr,
-                        send_back_addr,
-                        error,
-                    } => todo!(),
-                    SwarmEvent::OutgoingConnectionError {
-                        connection_id,
-                        peer_id,
-                        error,
                     } => todo!(),
                     SwarmEvent::ExpiredListenAddr {
                         listener_id,
@@ -695,7 +776,7 @@ mod core {
                     SwarmEvent::NewExternalAddrCandidate { address } => todo!(),
                     SwarmEvent::ExternalAddrConfirmed { address } => todo!(),
                     SwarmEvent::ExternalAddrExpired { address } => todo!(),
-                    _ => todo!(),
+                    _ => {}
                 }
             }
         }
@@ -709,5 +790,36 @@ mod core {
         /// The duration before which the request is considered failure.
         /// Default is 20 seconds
         pub timeout: Duration,
+    }
+
+    /// The high level trait that provides default implementations to handle most supported network events.
+    /// It is implemented for the libp2p `Swarm` construct
+    pub trait EventHandler {
+        /// Event that informs the network core that we have started listening on a new multiaddr.
+        fn new_listen_addr(&self, listener_id: ListenerId, addr: Multiaddr) {}
+
+        /// Event that informs the network core about a newly established connection to a peer.
+        fn connection_established(
+            &self,
+            peer_id: PeerId,
+            connection_id: ConnectionId,
+            endpoint: &ConnectedPoint,
+            failed_addresses: &[Multiaddr],
+            other_established: usize,
+        ) {
+        }
+
+        /// Event that informs the network core about a closed connection to a peer.
+        fn connection_closed(
+            &self,
+            peer_id: PeerId,
+            connection_id: ConnectionId,
+            endpoint: &ConnectedPoint,
+            remaining_established: usize,
+        ) {
+        }
+
+        /// Event that informs the behaviour that a multiaddr we were listening on has expired, which means that we are no longer listening on it.
+        fn expired_listen_addr(&self, listener_id: ListenerId, addr: &Multiaddr) {}
     }
 }
