@@ -28,7 +28,7 @@ async fn main() {
 
     // set up node
     let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
-    bootnodes.insert("12D3KooWCRDGicoLE6NcJnWcfRv1ZZMDTaYB1YHNJhw9smaAvJKx".to_string(), "/ip4/127.0.0.1/tcp/51510".to_string());
+    bootnodes.insert("12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string(), "/ip4/127.0.0.1/tcp/63307".to_string());
 
     // configure default data
     let config = swarm_nl::setup::BootstrapConfig::new().with_bootnodes(bootnodes);

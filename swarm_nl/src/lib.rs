@@ -62,8 +62,13 @@ pub mod setup {
         }
 
         /// Configure available bootnodes
-        pub fn with_bootnodes(self, boot_nodes: HashMap<PeerIdString, MultiaddrString>) -> Self {
-            BootstrapConfig { boot_nodes, ..self }
+        pub fn with_bootnodes(
+            mut self,
+            boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+        ) -> Self {
+            // additive operation
+            self.boot_nodes.extend(boot_nodes.into_iter());
+            self
         }
 
         /// Configure the TCP/IP port
@@ -155,6 +160,11 @@ pub mod setup {
         /// Return the configured ports in a tuple i.e (TCP Port, UDP port)
         pub fn ports(&self) -> (Port, Port) {
             (self.tcp_port, self.udp_port)
+        }
+
+        /// Return the configured bootnodes for the network
+        pub fn bootnodes(&self) -> HashMap<PeerIdString, MultiaddrString> {
+            self.boot_nodes.clone()
         }
     }
 }
@@ -281,7 +291,7 @@ pub mod core {
                 network_id: StreamProtocol::new(network_id),
                 keypair: config.keypair(),
                 tcp_udp_port: config.ports(),
-                boot_nodes: Default::default(),
+                boot_nodes: config.bootnodes(),
                 handler,
                 // Default is to listen on all interfaces (ipv4)
                 ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
@@ -575,7 +585,7 @@ pub mod core {
                             .kademlia
                             .add_address(&peer_id, multiaddr.clone());
 
-                        println!("fdinkmf");
+                        println!("{:?}", multiaddr);        
 
                         // Dial them
                         swarm.dial(multiaddr.clone()).map_err(|_| {
@@ -617,7 +627,7 @@ pub mod core {
                 manager,
             };
 
-            // Construct the useful network information
+            // Aggregate the useful network information
             let network_info = NetworkInfo { ping: ping_info };
 
             // Build the network core
@@ -730,7 +740,7 @@ pub mod core {
         async fn handle_network_events<T: EventHandler + Send + Sync + 'static>(
             mut swarm: Swarm<CoreBehaviour>,
             mut network_info: NetworkInfo,
-            sender: Sender<StreamData>,
+            _sender: Sender<StreamData>,
             handler: T,
         ) {
             // Loop to handle network events indefinitely.
@@ -907,11 +917,7 @@ pub mod core {
                                 // We just recieved an `Identify` info from a peer.
                                 handler.identify_info_recieved(peer_id, info);
                             }
-                            identify::Event::Sent { peer_id } => {
-                                // We just recieved an `Identify` info from a peer.
-                                println!("Sent it {}", peer_id);
-                            }
-                            // Remaining `Identify` events not actively handled
+                            // Remaining `Identify` events are not actively handled
                             _ => {}
                         },
                         _ => {}
