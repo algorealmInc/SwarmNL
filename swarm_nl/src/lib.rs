@@ -6,6 +6,10 @@ mod util;
 
 /// Re-exports
 pub use crate::prelude::*;
+pub use futures::{
+    channel::mpsc::{self, Receiver, Sender},
+    SinkExt, StreamExt,
+};
 pub use libp2p::{
     core::{transport::ListenerId, ConnectedPoint, Multiaddr},
     swarm::ConnectionId,
@@ -175,15 +179,9 @@ pub mod core {
         multiaddr::{self, Protocol},
         noise,
         ping::{self, Failure},
-        swarm::{handler, ConnectionError, NetworkBehaviour, SwarmEvent},
+        swarm::{ConnectionError, NetworkBehaviour, SwarmEvent},
         tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder, TransportError,
     };
-
-    #[cfg(feature = "tokio-runtime")]
-    use tokio::task;
-
-    #[cfg(feature = "async-std-runtime")]
-    use async_std::task;
 
     use super::*;
     use crate::setup::BootstrapConfig;
@@ -228,7 +226,7 @@ pub mod core {
     }
 
     /// Structure containing necessary data to build [`Core`]
-    pub struct CoreBuilder<T: EventHandler + Send> {
+    pub struct CoreBuilder<T: EventHandler + Send + Sync + 'static> {
         network_id: StreamProtocol,
         keypair: WrappedKeyPair,
         tcp_udp_port: (Port, Port),
@@ -247,7 +245,7 @@ pub mod core {
         identify: identify::Behaviour,
     }
 
-    impl<T: EventHandler + Send + 'static> CoreBuilder<T> {
+    impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
         /// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
         /// Here, it is certain that [`BootstrapConfig`] contains valid data.
         /// A type that implements [`EventHandler`] is passed to handle and react to network events.
@@ -577,6 +575,8 @@ pub mod core {
                             .kademlia
                             .add_address(&peer_id, multiaddr.clone());
 
+                        println!("fdinkmf");
+
                         // Dial them
                         swarm.dial(multiaddr.clone()).map_err(|_| {
                             SwarmNlError::RemotePeerDialError(multiaddr.to_string())
@@ -589,7 +589,7 @@ pub mod core {
             // This will involve acceptiing data and pushing data to the application layer.
             // Two streams will be opened: The first mpsc stream will allow SwarmNL push data to the application and the application will comsume it (single consumer)
             // The second stream will have SwarmNl (being the consumer) recieve data and commands from multiple areas in the application;
-            let (mut network_sender, mut application_receiver) = mpsc::channel::<StreamData>(3);
+            let (mut network_sender, application_receiver) = mpsc::channel::<StreamData>(3);
             let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
 
             // Set up the ping network info.
@@ -617,10 +617,12 @@ pub mod core {
                 manager,
             };
 
+            // Construct the useful network information
+            let network_info = NetworkInfo { ping: ping_info };
+
             // Build the network core
-            let mut core = Core {
+            let network_core = Core {
                 keypair: self.keypair,
-                network_info: NetworkInfo { ping: ping_info },
                 application_sender,
                 application_receiver,
             };
@@ -637,7 +639,7 @@ pub mod core {
             #[cfg(feature = "async-std-runtime")]
             async_std::task::spawn(Core::handle_network_events(
                 swarm,
-                self.network_info,
+                network_info,
                 network_sender,
                 self.handler,
             ));
@@ -651,20 +653,18 @@ pub mod core {
             #[cfg(feature = "tokio-runtime")]
             tokio::task::spawn(Core::handle_network_events(
                 swarm,
-                self.network_info,
+                network_info,
                 network_sender,
                 self.handler,
             ));
 
-            Ok(core)
+            Ok(network_core)
         }
     }
 
     /// The core interface for the application layer to interface with the networking layer
     pub struct Core {
         keypair: WrappedKeyPair,
-        /// Important information to inherit from the [`CoreBuilder`] to properly handle network operations
-        network_info: NetworkInfo,
         /// The producing end of the stream that sends data to the network layer from the application
         pub application_sender: Sender<StreamData>,
         /// The consuming end of the stream that recieves data from the network layer
@@ -713,16 +713,12 @@ pub mod core {
         async fn handle_app_stream(mut receiver: Receiver<StreamData>) {
             // Loop to handle incoming application streams indefinitely.
             loop {
-                match receiver.try_next() {
-                    Ok(Some(stream_data)) => {
+                match receiver.next().await {
+                    Some(stream_data) => {
                         // handle incoming stream data
                         match stream_data {
                             StreamData::Ready => {}
                         }
-                    }
-                    Err(e) => {
-                        // exit the loop if the stream has been closed
-                        break;
                     }
                     _ => {}
                 }
@@ -910,6 +906,10 @@ pub mod core {
                             identify::Event::Received { peer_id, info } => {
                                 // We just recieved an `Identify` info from a peer.
                                 handler.identify_info_recieved(peer_id, info);
+                            }
+                            identify::Event::Sent { peer_id } => {
+                                // We just recieved an `Identify` info from a peer.
+                                println!("Sent it {}", peer_id);
                             }
                             // Remaining `Identify` events not actively handled
                             _ => {}

@@ -5,7 +5,7 @@
 
 
 use std::collections::HashMap;
-use swarm_nl::{PeerIdString, MultiaddrString, StreamData, core::{EventHandler, DefaultHandler}, ListenerId, Multiaddr};
+use swarm_nl::{PeerIdString, MultiaddrString, StreamData, core::{EventHandler, DefaultHandler}, ListenerId, Multiaddr, StreamExt};
 
 pub static CONFIG_FILE_PATH: &str = "test_config.ini";
 
@@ -28,7 +28,7 @@ async fn main() {
 
     // set up node
     let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
-    bootnodes.insert("12D3KooWDNQyTrTKBVQ9BB9iVbUdrdR5BibQmWWhg8dgN3Fef49M".to_string(), "/ip4/127.0.0.1/tcp/52872".to_string());
+    bootnodes.insert("12D3KooWCRDGicoLE6NcJnWcfRv1ZZMDTaYB1YHNJhw9smaAvJKx".to_string(), "/ip4/127.0.0.1/tcp/51510".to_string());
 
     // configure default data
     let config = swarm_nl::setup::BootstrapConfig::new().with_bootnodes(bootnodes);
@@ -37,17 +37,16 @@ async fn main() {
     let mut network = swarm_nl::core::CoreBuilder::with_config(config, complex_handler).build().await.unwrap();
 
     // read first (ready) message
-    if let Some(StreamData::Ready) = network.application_receiver.try_next().unwrap() {
+    if let Some(StreamData::Ready) = network.application_receiver.next().await {
         println!("Database is online");
 
         // begin listening
         loop {
-            if let Some(data) = network.application_receiver.try_next().unwrap() {
+            if let Some(data) = network.application_receiver.next().await {
                 println!("{:?}", data);
             }
         }
     }
-
 }
 
 #[cfg(test)]
