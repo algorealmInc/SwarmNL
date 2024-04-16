@@ -1,8 +1,9 @@
-use std::net::IpAddr;
-
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
+
+
+
 use libp2p_identity::KeyType;
 use libp2p_identity::{rsa::Keypair as RsaKeypair, Keypair};
 use thiserror::Error;
@@ -128,8 +129,9 @@ pub struct NotInitialiazed;
 pub struct Initialized;
 
 /// Data exchanged over a stream between the application and network layer
+#[derive(Debug)]
 pub enum StreamData {
-    /// This is the first message send through the stream from the networking layer to the application.
-    /// It indicates a successful setup and readiness to begin operations
+    /// This is the first message sent through the stream from the networking layer to the application. 
+    /// It indicates a successful setup and readiness to begin operations.
     Ready
 }

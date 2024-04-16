@@ -6,7 +6,11 @@ mod util;
 
 /// Re-exports
 pub use crate::prelude::*;
-pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair};
+pub use libp2p::{
+    core::{transport::ListenerId, ConnectedPoint, Multiaddr},
+    swarm::ConnectionId,
+};
+pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 
 /// The module containing the data structures and functions to setup a node identity and configure it for networking.
 pub mod setup {
@@ -155,7 +159,9 @@ pub mod setup {
 pub mod core {
     use std::{
         collections::HashMap,
+        io::Error,
         net::{IpAddr, Ipv4Addr},
+        num::NonZeroU32,
         time::Duration,
     };
 
@@ -164,15 +170,14 @@ pub mod core {
         SinkExt, StreamExt,
     };
     use libp2p::{
-        core::ConnectedPoint,
-        identify,
+        identify::{self, Info},
         kad::{self, store::MemoryStore},
-        multiaddr::Protocol,
-        noise, ping,
-        swarm::{derive_prelude::ListenerId, ConnectionId, NetworkBehaviour, SwarmEvent},
-        tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
+        multiaddr::{self, Protocol},
+        noise,
+        ping::{self, Failure},
+        swarm::{handler, ConnectionError, NetworkBehaviour, SwarmEvent},
+        tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder, TransportError,
     };
-    use libp2p_identity::PeerId;
 
     #[cfg(feature = "tokio-runtime")]
     use tokio::task;
@@ -223,27 +228,30 @@ pub mod core {
     }
 
     /// Structure containing necessary data to build [`Core`]
-    pub struct CoreBuilder {
+    pub struct CoreBuilder<T: EventHandler + Send> {
         network_id: StreamProtocol,
         keypair: WrappedKeyPair,
         tcp_udp_port: (Port, Port),
         boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+        /// the network event handler
+        handler: T,
         ip_address: IpAddr,
         /// Connection keep-alive duration while idle
         keep_alive_duration: Seconds,
         transport: TransportOpts, // Maybe this can be a collection in the future to support additive transports
         /// The `Behaviour` of the `Ping` protocol
-        ping: ping::Behaviour,
+        ping: (ping::Behaviour, PingErrorPolicy),
         /// The `Behaviour` of the `Kademlia` protocol
         kademlia: kad::Behaviour<kad::store::MemoryStore>,
         /// The `Behaviour` of the `Identify` protocol
         identify: identify::Behaviour,
     }
 
-    impl CoreBuilder {
+    impl<T: EventHandler + Send + 'static> CoreBuilder<T> {
         /// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
         /// Here, it is certain that [`BootstrapConfig`] contains valid data.
-        pub fn with_config(config: BootstrapConfig) -> Self {
+        /// A type that implements [`EventHandler`] is passed to handle and react to network events.
+        pub fn with_config(config: BootstrapConfig, handler: T) -> Self {
             // The default network id
             let network_id = "/swarmnl/1.0";
 
@@ -276,12 +284,17 @@ pub mod core {
                 keypair: config.keypair(),
                 tcp_udp_port: config.ports(),
                 boot_nodes: Default::default(),
+                handler,
                 // Default is to listen on all interfaces (ipv4)
                 ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                 // Default to 60 seconds
                 keep_alive_duration: 60,
                 transport: default_transport,
-                ping: Default::default(),
+                // The peer will be disconnected after 20 successive timeout errors are recorded
+                ping: (
+                    Default::default(),
+                    PingErrorPolicy::DisconnectAfterMaxTimeouts(20),
+                ),
                 kademlia,
                 identify,
             }
@@ -317,10 +330,13 @@ pub mod core {
         pub fn with_ping(self, config: PingConfig) -> Self {
             // Set the ping protocol
             CoreBuilder {
-                ping: ping::Behaviour::new(
-                    ping::Config::new()
-                        .with_interval(config.interval)
-                        .with_timeout(config.timeout),
+                ping: (
+                    ping::Behaviour::new(
+                        ping::Config::new()
+                            .with_interval(config.interval)
+                            .with_timeout(config.timeout),
+                    ),
+                    self.ping.1,
                 ),
                 ..self
             }
@@ -339,6 +355,12 @@ pub mod core {
         /// Configure the transports to support.
         pub fn with_transports(self, transport: TransportOpts) -> Self {
             CoreBuilder { transport, ..self }
+        }
+
+        /// Configure network event handler.
+        /// This configures the functions to be called when various network events take place
+        pub fn configure_network_events(self, handler: T) -> Self {
+            CoreBuilder { handler, ..self }
         }
 
         /// Build the [`Core`] data structure.
@@ -418,7 +440,7 @@ pub mod core {
                     .with_behaviour(|_|
                         // Configure the selected behaviours
                         CoreBehaviour {
-                            ping: self.ping,
+                            ping: self.ping.0,
                             kademlia: self.kademlia,
                             identify: self.identify
                         })
@@ -495,7 +517,7 @@ pub mod core {
                     .with_behaviour(|_|
                         // Configure the selected behaviours
                         CoreBehaviour {
-                            ping: self.ping,
+                            ping: self.ping.0,
                             kademlia: self.kademlia,
                             identify: self.identify
                         })
@@ -570,44 +592,82 @@ pub mod core {
             let (mut network_sender, mut application_receiver) = mpsc::channel::<StreamData>(3);
             let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
 
+            // Set up the ping network info.
+            // `PeerId` does not implement `Default` so we will add the peerId of this node as seed and set the count to 0.
+            // The count can NEVER increase because we cannot `Ping` ourselves.
+            let peer_id = self.keypair.into_inner().unwrap().public().to_peer_id();
+
+            // Timeouts
+            let mut timeouts = HashMap::<PeerId, u16>::new();
+            timeouts.insert(peer_id.clone(), 0);
+
+            // Outbound errors
+            let mut outbound_errors = HashMap::<PeerId, u16>::new();
+            outbound_errors.insert(peer_id.clone(), 0);
+
+            // Ping manager
+            let manager = PingManager {
+                timeouts,
+                outbound_errors,
+            };
+
+            // Set up Ping network information
+            let ping_info = PingInfo {
+                policy: self.ping.1,
+                manager,
+            };
+
             // Build the network core
-            let core = Core {
+            let mut core = Core {
                 keypair: self.keypair,
+                network_info: NetworkInfo { ping: ping_info },
                 application_sender,
                 application_receiver,
             };
 
-            // send message to application to incidcate readiness
+            // Send message to application to indicate readiness
             let _ = network_sender.send(StreamData::Ready).await;
 
-            // spin up task to handle messages from the application layer
+            // Spin up task to handle messages from the application layer
             #[cfg(feature = "async-std-runtime")]
             async_std::task::spawn(Core::handle_app_stream(network_receiver));
 
-            // spin up task to handle the events generated by the network.
+            // Spin up task to handle the events generated by the network.
             // It notifies the application layer with important information over a (mpsc) stream
             #[cfg(feature = "async-std-runtime")]
-            async_std::task::spawn(Core::handle_network_events(swarm, network_sender));
+            async_std::task::spawn(Core::handle_network_events(
+                swarm,
+                self.network_info,
+                network_sender,
+                self.handler,
+            ));
 
-            // spin up task to handle messages from the application layer
+            // Spin up task to handle messages from the application layer
             #[cfg(feature = "tokio-runtime")]
             tokio::task::spawn(Core::handle_app_stream(network_receiver));
 
-            // spin up task to handle the events generated by the network.
+            // Spin up task to handle the events generated by the network.
             // It notifies the application layer with important information over a (mpsc) stream
             #[cfg(feature = "tokio-runtime")]
-            tokio::task::spawn(Core::handle_network_events(swarm, network_sender));
+            tokio::task::spawn(Core::handle_network_events(
+                swarm,
+                self.network_info,
+                network_sender,
+                self.handler,
+            ));
 
             Ok(core)
         }
     }
 
-    /// The core library struct for SwarmNl
+    /// The core interface for the application layer to interface with the networking layer
     pub struct Core {
         keypair: WrappedKeyPair,
-        // The producing end of the stream that sends data to the network layer from the application
+        /// Important information to inherit from the [`CoreBuilder`] to properly handle network operations
+        network_info: NetworkInfo,
+        /// The producing end of the stream that sends data to the network layer from the application
         pub application_sender: Sender<StreamData>,
-        // The consuming end of the stream that recieves data from the network layer
+        /// The consuming end of the stream that recieves data from the network layer
         pub application_receiver: Receiver<StreamData>,
     }
 
@@ -656,6 +716,9 @@ pub mod core {
                 match receiver.try_next() {
                     Ok(Some(stream_data)) => {
                         // handle incoming stream data
+                        match stream_data {
+                            StreamData::Ready => {}
+                        }
                     }
                     Err(e) => {
                         // exit the loop if the stream has been closed
@@ -668,25 +731,132 @@ pub mod core {
 
         /// Handles events generated by network activities.
         /// Important information are sent to the application layer over a (mpsc) stream
-        async fn handle_network_events(
+        async fn handle_network_events<T: EventHandler + Send + Sync + 'static>(
             mut swarm: Swarm<CoreBehaviour>,
+            mut network_info: NetworkInfo,
             sender: Sender<StreamData>,
+            handler: T,
         ) {
             // Loop to handle network events indefinitely.
             loop {
                 match swarm.select_next_some().await {
-                    SwarmEvent::NewListenAddr { address, .. } => {
-                        println!("Listening on {address:?}")
+                    SwarmEvent::NewListenAddr {
+                        listener_id,
+                        address,
+                    } => {
+                        // call configured handler
+                        handler.new_listen_addr(listener_id, address);
                     }
                     SwarmEvent::Behaviour(event) => match event {
                         CoreEvent::Ping(ping::Event {
                             peer,
                             connection: _,
                             result,
-                        }) => {}
-                        CoreEvent::Kademlia(
-                            (kad::Event::OutboundQueryProgressed { result, .. }),
-                        ) => match result {
+                        }) => {
+                            match result {
+                                // Inbound ping succes
+                                Ok(duration) => {
+                                    // In handling the ping error policies, we only bump up an error count when there is CONCURRENT failure.
+                                    // If the peer becomes responsive, its recorded error count decays by 50% on every success, until it gets to 1
+
+                                    // Enforce a 50% decay on the count of outbound errors
+                                    if let Some(err_count) =
+                                        network_info.ping.manager.outbound_errors.get(&peer)
+                                    {
+                                        let new_err_count = (err_count / 2) as u16;
+                                        network_info
+                                            .ping
+                                            .manager
+                                            .outbound_errors
+                                            .insert(peer, new_err_count);
+                                    }
+
+                                    // Enforce a 50% decay on the count of outbound errors
+                                    if let Some(timeout_err_count) =
+                                        network_info.ping.manager.timeouts.get(&peer)
+                                    {
+                                        let new_err_count = (timeout_err_count / 2) as u16;
+                                        network_info
+                                            .ping
+                                            .manager
+                                            .timeouts
+                                            .insert(peer, new_err_count);
+                                    }
+
+                                    // Call custom handler
+                                    handler.inbound_ping_success(peer, duration);
+                                }
+                                // Outbound ping failure
+                                Err(err_type) => {
+                                    // Handle error by examining selected policy
+                                    match network_info.ping.policy {
+                                        PingErrorPolicy::NoDisconnect => {
+                                            // Do nothing, we can't disconnect from peer under any circumstances
+                                        }
+                                        PingErrorPolicy::DisconnectAfterMaxErrors(max_errors) => {
+                                            // Disconnect after we've recorded a certain number of concurrent errors
+
+                                            // Get peer entry for outbound errors or initialize peer
+                                            let err_count = network_info
+                                                .ping
+                                                .manager
+                                                .outbound_errors
+                                                .entry(peer)
+                                                .or_insert(0);
+
+                                            if *err_count != max_errors {
+                                                // Disconnect peer
+                                                let _ = swarm.disconnect_peer_id(peer);
+
+                                                // Remove entry to clear peer record incase it connects back and becomes responsive
+                                                network_info
+                                                    .ping
+                                                    .manager
+                                                    .outbound_errors
+                                                    .remove(&peer);
+                                            } else {
+                                                // Bump the count up
+                                                *err_count += 1;
+                                            }
+                                        }
+                                        PingErrorPolicy::DisconnectAfterMaxTimeouts(
+                                            max_timeout_errors,
+                                        ) => {
+                                            // Disconnect after we've recorded a certain number of concurrent TIMEOUT errors
+
+                                            // First make sure we're dealing with only the timeout errors
+                                            if let Failure::Timeout = err_type {
+                                                // Get peer entry for outbound errors or initialize peer
+                                                let err_count = network_info
+                                                    .ping
+                                                    .manager
+                                                    .timeouts
+                                                    .entry(peer)
+                                                    .or_insert(0);
+
+                                                if *err_count != max_timeout_errors {
+                                                    // Disconnect peer
+                                                    let _ = swarm.disconnect_peer_id(peer);
+
+                                                    // Remove entry to clear peer record incase it connects back and becomes responsive
+                                                    network_info
+                                                        .ping
+                                                        .manager
+                                                        .timeouts
+                                                        .remove(&peer);
+                                                } else {
+                                                    // Bump the count up
+                                                    *err_count += 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        CoreEvent::Kademlia(kad::Event::OutboundQueryProgressed {
+                            result, ..
+                        }) => match result {
                             kad::QueryResult::GetProviders(Ok(
                                 kad::GetProvidersOk::FoundProviders { key, providers, .. },
                             )) => {
@@ -737,10 +907,12 @@ pub mod core {
                             _ => {}
                         },
                         CoreEvent::Identify(event) => match event {
-                            identify::Event::Sent { peer_id, .. } => {}
-                            identify::Event::Received { peer_id, info } => {}
-                            identify::Event::Pushed { peer_id, info } => todo!(),
-                            identify::Event::Error { peer_id, error } => todo!(),
+                            identify::Event::Received { peer_id, info } => {
+                                // We just recieved an `Identify` info from a peer.
+                                handler.identify_info_recieved(peer_id, info);
+                            }
+                            // Remaining `Identify` events not actively handled
+                            _ => {}
                         },
                         _ => {}
                     },
@@ -751,32 +923,104 @@ pub mod core {
                         num_established,
                         concurrent_dial_errors,
                         established_in,
-                    } => todo!(),
+                    } => {
+                        // call configured handler
+                        handler.connection_established(
+                            peer_id,
+                            connection_id,
+                            &endpoint,
+                            num_established,
+                            concurrent_dial_errors,
+                            established_in,
+                        );
+                    }
                     SwarmEvent::ConnectionClosed {
                         peer_id,
                         connection_id,
                         endpoint,
                         num_established,
                         cause,
-                    } => todo!(),
+                    } => {
+                        // call configured handler
+                        handler.connection_closed(
+                            peer_id,
+                            connection_id,
+                            &endpoint,
+                            num_established,
+                            cause,
+                        );
+                    }
                     SwarmEvent::ExpiredListenAddr {
                         listener_id,
                         address,
-                    } => todo!(),
+                    } => {
+                        // call configured handler
+                        handler.expired_listen_addr(listener_id, address);
+                    }
                     SwarmEvent::ListenerClosed {
                         listener_id,
                         addresses,
-                        reason,
-                    } => todo!(),
-                    SwarmEvent::ListenerError { listener_id, error } => todo!(),
+                        reason: _,
+                    } => {
+                        // call configured handler
+                        handler.listener_closed(listener_id, addresses);
+                    }
+                    SwarmEvent::ListenerError {
+                        listener_id,
+                        error: _,
+                    } => {
+                        // call configured handler
+                        handler.listener_error(listener_id);
+                    }
                     SwarmEvent::Dialing {
                         peer_id,
                         connection_id,
-                    } => todo!(),
-                    SwarmEvent::NewExternalAddrCandidate { address } => todo!(),
-                    SwarmEvent::ExternalAddrConfirmed { address } => todo!(),
-                    SwarmEvent::ExternalAddrExpired { address } => todo!(),
-                    _ => {}
+                    } => {
+                        // call configured handler
+                        handler.dialing(peer_id, connection_id);
+                    }
+                    SwarmEvent::NewExternalAddrCandidate { address } => {
+                        // call configured handler
+                        handler.new_external_addr_candidate(address);
+                    }
+                    SwarmEvent::ExternalAddrConfirmed { address } => {
+                        // call configured handler
+                        handler.external_addr_confirmed(address);
+                    }
+                    SwarmEvent::ExternalAddrExpired { address } => {
+                        // call configured handler
+                        handler.external_addr_expired(address);
+                    }
+                    SwarmEvent::IncomingConnection {
+                        connection_id,
+                        local_addr,
+                        send_back_addr,
+                    } => {
+                        // call configured handler
+                        handler.incoming_connection(connection_id, local_addr, send_back_addr);
+                    }
+                    SwarmEvent::IncomingConnectionError {
+                        connection_id,
+                        local_addr,
+                        send_back_addr,
+                        error: _,
+                    } => {
+                        // call configured handler
+                        handler.incoming_connection_error(
+                            connection_id,
+                            local_addr,
+                            send_back_addr,
+                        );
+                    }
+                    SwarmEvent::OutgoingConnectionError {
+                        connection_id,
+                        peer_id,
+                        error: _,
+                    } => {
+                        // call configured handler
+                        handler.outgoing_connection_error(connection_id, peer_id);
+                    }
+                    _ => todo!(),
                 }
             }
         }
@@ -792,34 +1036,147 @@ pub mod core {
         pub timeout: Duration,
     }
 
-    /// The high level trait that provides default implementations to handle most supported network events.
-    /// It is implemented for the libp2p `Swarm` construct
+    /// The high level trait that provides default implementations to handle most supported network swarm events.
     pub trait EventHandler {
         /// Event that informs the network core that we have started listening on a new multiaddr.
-        fn new_listen_addr(&self, listener_id: ListenerId, addr: Multiaddr) {}
+        fn new_listen_addr(&self, _listener_id: ListenerId, _addr: Multiaddr) {}
 
         /// Event that informs the network core about a newly established connection to a peer.
         fn connection_established(
             &self,
-            peer_id: PeerId,
-            connection_id: ConnectionId,
-            endpoint: &ConnectedPoint,
-            failed_addresses: &[Multiaddr],
-            other_established: usize,
+            _peer_id: PeerId,
+            _connection_id: ConnectionId,
+            _endpoint: &ConnectedPoint,
+            _num_established: NonZeroU32,
+            _concurrent_dial_errors: Option<Vec<(Multiaddr, TransportError<Error>)>>,
+            _established_in: Duration,
         ) {
+            // Default implementation
         }
 
         /// Event that informs the network core about a closed connection to a peer.
         fn connection_closed(
             &self,
-            peer_id: PeerId,
-            connection_id: ConnectionId,
-            endpoint: &ConnectedPoint,
-            remaining_established: usize,
+            _peer_id: PeerId,
+            _connection_id: ConnectionId,
+            _endpoint: &ConnectedPoint,
+            _num_established: u32,
+            _cause: Option<ConnectionError>,
         ) {
+            // Default implementation
         }
 
-        /// Event that informs the behaviour that a multiaddr we were listening on has expired, which means that we are no longer listening on it.
-        fn expired_listen_addr(&self, listener_id: ListenerId, addr: &Multiaddr) {}
+        /// Event that announces expired listen address.
+        fn expired_listen_addr(&self, _listener_id: ListenerId, _address: Multiaddr) {
+            // Default implementation
+        }
+
+        /// Event that announces a closed listener.
+        fn listener_closed(&self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>) {
+            // Default implementation
+        }
+
+        /// Event that announces a listener error.
+        fn listener_error(&self, _listener_id: ListenerId) {
+            // Default implementation
+        }
+
+        /// Event that announces a dialing attempt.
+        fn dialing(&self, _peer_id: Option<PeerId>, _connection_id: ConnectionId) {
+            // Default implementation
+        }
+
+        /// Event that announces a new external address candidate.
+        fn new_external_addr_candidate(&self, _address: Multiaddr) {
+            // Default implementation
+        }
+
+        /// Event that announces a confirmed external address.
+        fn external_addr_confirmed(&self, _address: Multiaddr) {
+            // Default implementation
+        }
+
+        /// Event that announces an expired external address.
+        fn external_addr_expired(&self, _address: Multiaddr) {
+            // Default implementation
+        }
+
+        /// Event that announces new connection arriving on a listener and in the process of protocol negotiation.
+        fn incoming_connection(
+            &self,
+            _connection_id: ConnectionId,
+            _local_addr: Multiaddr,
+            _send_back_addr: Multiaddr,
+        ) {
+            // Default implementation
+        }
+
+        /// Event that announces an error happening on an inbound connection during its initial handshake.
+        fn incoming_connection_error(
+            &self,
+            _connection_id: ConnectionId,
+            _local_addr: Multiaddr,
+            _send_back_addr: Multiaddr,
+        ) {
+            // Default implementation
+        }
+
+        /// Event that announces an error happening on an outbound connection during its initial handshake.
+        fn outgoing_connection_error(
+            &self,
+            _connection_id: ConnectionId,
+            _peer_id: Option<PeerId>,
+        ) {
+            // Default implementation
+        }
+
+        /// Event that announces the arrival of a ping message from a peer.
+        /// The duration it took for a round trip is also returned
+        fn inbound_ping_success(&self, _peer_id: PeerId, _duration: Duration) {
+            // Default implementation
+        }
+
+        /// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
+        fn identify_info_recieved(&self, _peer_id: PeerId, info: Info) {
+            // Default implementation
+        }
+    }
+
+    /// Default network event handler
+    pub struct DefaultHandler;
+
+    /// Implement [`EventHandler`] for [`DefaultHandler`]
+    impl EventHandler for DefaultHandler {}
+
+    /// Policies to handle a `Ping` error
+    /// - All connections to peers are closed during a disconnect operation.
+    enum PingErrorPolicy {
+        /// Do not disconnect under any circumstances
+        NoDisconnect,
+        /// Disconnect after a number of outbound errors
+        DisconnectAfterMaxErrors(u16),
+        /// Disconnect after a certain number of timeouts
+        DisconnectAfterMaxTimeouts(u16),
+    }
+
+    /// Important information to obtain from the [`CoreBuilder`], to properly handle network operations
+    struct NetworkInfo {
+        /// Important information to manage `Ping` operations
+        ping: PingInfo,
+    }
+
+    /// Struct that stores critical information for the execution of the [`PingErrorPolicy`]
+    #[derive(Debug)]
+    struct PingManager {
+        /// The number of timeout errors encountered from a peer
+        timeouts: HashMap<PeerId, u16>,
+        /// The number of outbound errors encountered from a peer
+        outbound_errors: HashMap<PeerId, u16>,
+    }
+
+    /// Critical information to manage `Ping` operations
+    struct PingInfo {
+        policy: PingErrorPolicy,
+        manager: PingManager,
     }
 }

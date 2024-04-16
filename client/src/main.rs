@@ -5,12 +5,27 @@
 
 
 use std::collections::HashMap;
-use swarm_nl::{PeerIdString, MultiaddrString, StreamData};
+use swarm_nl::{PeerIdString, MultiaddrString, StreamData, core::{EventHandler, DefaultHandler}, ListenerId, Multiaddr};
 
 pub static CONFIG_FILE_PATH: &str = "test_config.ini";
 
+/// Complex Event Handler
+struct ComplexHandler;
+
+impl EventHandler for ComplexHandler {
+    fn new_listen_addr(&self, _listener_id: ListenerId, addr: Multiaddr) {
+        // Log the address we begin listening on
+        println!("We're now listening on: {}", addr);
+    }
+}
+
 #[tokio::main]
 async fn main() {
+    // handler for events happening in the network layer (majorly for technical use)
+    // use default handler
+    let handler = DefaultHandler;
+    let complex_handler = ComplexHandler;
+
     // set up node
     let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
     bootnodes.insert("12D3KooWDNQyTrTKBVQ9BB9iVbUdrdR5BibQmWWhg8dgN3Fef49M".to_string(), "/ip4/127.0.0.1/tcp/52872".to_string());
@@ -19,11 +34,18 @@ async fn main() {
     let config = swarm_nl::setup::BootstrapConfig::new().with_bootnodes(bootnodes);
 
     // set up network core
-    let mut network = swarm_nl::core::CoreBuilder::with_config(config).build().await.unwrap();
+    let mut network = swarm_nl::core::CoreBuilder::with_config(config, complex_handler).build().await.unwrap();
 
     // read first (ready) message
     if let Some(StreamData::Ready) = network.application_receiver.try_next().unwrap() {
         println!("Database is online");
+
+        // begin listening
+        loop {
+            if let Some(data) = network.application_receiver.try_next().unwrap() {
+                println!("{:?}", data);
+            }
+        }
     }
 
 }
