@@ -195,6 +195,7 @@ pub mod core {
 
     use super::*;
     use crate::setup::BootstrapConfig;
+    use ping_config::*;
 
     /// The Core Behaviour implemented which highlights the various protocols
     /// we'll be adding support for
@@ -344,7 +345,7 @@ pub mod core {
                             .with_interval(config.interval)
                             .with_timeout(config.timeout),
                     ),
-                    self.ping.1,
+                    config.err_policy,
                 ),
                 ..self
             }
@@ -574,7 +575,6 @@ pub mod core {
             }
 
             // Add bootnodes to local routing table, if any
-            #[cfg(any(feature = "tokio-runtime", feature = "async-std-runtime"))]
             for peer_info in self.boot_nodes {
                 // PeerId
                 if let Ok(peer_id) = PeerId::from_bytes(peer_info.0.as_bytes()) {
@@ -585,7 +585,7 @@ pub mod core {
                             .kademlia
                             .add_address(&peer_id, multiaddr.clone());
 
-                        println!("{:?}", multiaddr);        
+                        println!("{:?}", multiaddr);
 
                         // Dial them
                         swarm.dial(multiaddr.clone()).map_err(|_| {
@@ -594,6 +594,9 @@ pub mod core {
                     }
                 }
             }
+
+            // Begin DHT bootstrap, hopefully bootnodes were supplied
+            let _ = swarm.behaviour_mut().kademlia.bootstrap();
 
             // There must be a way for the application to communicate with the underlying networking core.
             // This will involve acceptiing data and pushing data to the application layer.
@@ -727,7 +730,16 @@ pub mod core {
                     Some(stream_data) => {
                         // handle incoming stream data
                         match stream_data {
+                            // Not handled
                             StreamData::Ready => {}
+                            // Store a value in the DHT
+                            StreamData::KademliaStore { key, value } => {}
+                            // Perform a lookup in the DHT
+                            StreamData::KademliaLookup { key } => {}
+                            // Refresh DHT
+                            StreamData::KademliaRefreshRoutingTable => {}
+                            // Return important information about DHT
+                            StreamData::KademliaGetRoutingTableInfo => {}
                         }
                     }
                     _ => {}
@@ -741,7 +753,7 @@ pub mod core {
             mut swarm: Swarm<CoreBehaviour>,
             mut network_info: NetworkInfo,
             _sender: Sender<StreamData>,
-            handler: T,
+            mut handler: T,
         ) {
             // Loop to handle network events indefinitely.
             loop {
@@ -754,6 +766,7 @@ pub mod core {
                         handler.new_listen_addr(listener_id, address);
                     }
                     SwarmEvent::Behaviour(event) => match event {
+                        // Ping
                         CoreEvent::Ping(ping::Event {
                             peer,
                             connection: _,
@@ -857,61 +870,100 @@ pub mod core {
                                             }
                                         }
                                     }
+
+                                    // Call custom handler
+                                    handler.outbound_ping_error(peer, err_type);
                                 }
                             }
                         }
-                        CoreEvent::Kademlia(kad::Event::OutboundQueryProgressed {
-                            result, ..
-                        }) => match result {
-                            kad::QueryResult::GetProviders(Ok(
-                                kad::GetProvidersOk::FoundProviders { key, providers, .. },
-                            )) => {
-                                for peer in providers {
+                        // Kademlia
+                        CoreEvent::Kademlia(event) => match event {
+                            kad::Event::OutboundQueryProgressed { result, .. } => match result {
+                                kad::QueryResult::GetProviders(Ok(
+                                    kad::GetProvidersOk::FoundProviders { key, providers, .. },
+                                )) => {
+                                    for peer in providers {
+                                        println!(
+                                            "Peer {peer:?} provides key {:?}",
+                                            std::str::from_utf8(key.as_ref()).unwrap()
+                                        );
+                                    }
+                                }
+                                kad::QueryResult::GetProviders(Err(err)) => {
+                                    eprintln!("Failed to get providers: {err:?}");
+                                }
+                                kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
+                                    kad::PeerRecord {
+                                        record: kad::Record { key, value, .. },
+                                        ..
+                                    },
+                                ))) => {
                                     println!(
-                                        "Peer {peer:?} provides key {:?}",
+                                        "Got record {:?} {:?}",
+                                        std::str::from_utf8(key.as_ref()).unwrap(),
+                                        std::str::from_utf8(&value).unwrap(),
+                                    );
+                                }
+                                kad::QueryResult::GetRecord(Ok(_)) => {}
+                                kad::QueryResult::GetRecord(Err(err)) => {
+                                    eprintln!("Failed to get record: {err:?}");
+                                }
+                                kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
+                                    println!(
+                                        "Successfully put record {:?}",
                                         std::str::from_utf8(key.as_ref()).unwrap()
                                     );
                                 }
-                            }
-                            kad::QueryResult::GetProviders(Err(err)) => {
-                                eprintln!("Failed to get providers: {err:?}");
-                            }
-                            kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
-                                kad::PeerRecord {
-                                    record: kad::Record { key, value, .. },
-                                    ..
-                                },
-                            ))) => {
-                                println!(
-                                    "Got record {:?} {:?}",
-                                    std::str::from_utf8(key.as_ref()).unwrap(),
-                                    std::str::from_utf8(&value).unwrap(),
-                                );
-                            }
-                            kad::QueryResult::GetRecord(Ok(_)) => {}
-                            kad::QueryResult::GetRecord(Err(err)) => {
-                                eprintln!("Failed to get record: {err:?}");
-                            }
-                            kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
-                                println!(
-                                    "Successfully put record {:?}",
-                                    std::str::from_utf8(key.as_ref()).unwrap()
-                                );
-                            }
-                            kad::QueryResult::PutRecord(Err(err)) => {
-                                eprintln!("Failed to put record: {err:?}");
-                            }
-                            kad::QueryResult::StartProviding(Ok(kad::AddProviderOk { key })) => {
-                                println!(
-                                    "Successfully put provider record {:?}",
-                                    std::str::from_utf8(key.as_ref()).unwrap()
-                                );
-                            }
-                            kad::QueryResult::StartProviding(Err(err)) => {
-                                eprintln!("Failed to put provider record: {err:?}");
-                            }
-                            _ => {}
+                                kad::QueryResult::PutRecord(Err(err)) => {
+                                    eprintln!("Failed to put record: {err:?}");
+                                }
+                                kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
+                                    key,
+                                })) => {
+                                    println!(
+                                        "Successfully put provider record {:?}",
+                                        std::str::from_utf8(key.as_ref()).unwrap()
+                                    );
+                                }
+                                kad::QueryResult::StartProviding(Err(err)) => {
+                                    eprintln!("Failed to put provider record: {err:?}");
+                                }
+                                kad::QueryResult::Bootstrap(_) => todo!(),
+                                kad::QueryResult::GetClosestPeers(_) => todo!(),
+                                kad::QueryResult::RepublishProvider(_) => todo!(),
+                                kad::QueryResult::RepublishRecord(_) => todo!(),
+                                _ => {}
+                            },
+                            kad::Event::InboundRequest { request } => match request {
+                                kad::InboundRequest::FindNode { num_closer_peers } => todo!(),
+                                kad::InboundRequest::GetProvider {
+                                    num_closer_peers,
+                                    num_provider_peers,
+                                } => todo!(),
+                                kad::InboundRequest::AddProvider { record } => todo!(),
+                                kad::InboundRequest::GetRecord {
+                                    num_closer_peers,
+                                    present_locally,
+                                } => todo!(),
+                                kad::InboundRequest::PutRecord {
+                                    source,
+                                    connection,
+                                    record,
+                                } => todo!(),
+                            },
+                            kad::Event::RoutingUpdated {
+                                peer,
+                                is_new_peer,
+                                addresses,
+                                bucket_range,
+                                old_peer,
+                            } => todo!(),
+                            kad::Event::UnroutablePeer { peer } => todo!(),
+                            kad::Event::RoutablePeer { peer, address } => todo!(),
+                            kad::Event::PendingRoutablePeer { peer, address } => todo!(),
+                            kad::Event::ModeChanged { new_mode } => todo!(),
                         },
+                        // Identify
                         CoreEvent::Identify(event) => match event {
                             identify::Event::Received { peer_id, info } => {
                                 // We just recieved an `Identify` info from a peer.
@@ -1032,24 +1084,14 @@ pub mod core {
         }
     }
 
-    /// The configuration for the `Ping` protocol
-    pub struct PingConfig {
-        /// The interval between successive pings.
-        /// Default is 15 seconds
-        pub interval: Duration,
-        /// The duration before which the request is considered failure.
-        /// Default is 20 seconds
-        pub timeout: Duration,
-    }
-
     /// The high level trait that provides default implementations to handle most supported network swarm events.
     pub trait EventHandler {
         /// Event that informs the network core that we have started listening on a new multiaddr.
-        fn new_listen_addr(&self, _listener_id: ListenerId, _addr: Multiaddr) {}
+        fn new_listen_addr(&mut self, _listener_id: ListenerId, _addr: Multiaddr) {}
 
         /// Event that informs the network core about a newly established connection to a peer.
         fn connection_established(
-            &self,
+            &mut self,
             _peer_id: PeerId,
             _connection_id: ConnectionId,
             _endpoint: &ConnectedPoint,
@@ -1062,7 +1104,7 @@ pub mod core {
 
         /// Event that informs the network core about a closed connection to a peer.
         fn connection_closed(
-            &self,
+            &mut self,
             _peer_id: PeerId,
             _connection_id: ConnectionId,
             _endpoint: &ConnectedPoint,
@@ -1073,43 +1115,43 @@ pub mod core {
         }
 
         /// Event that announces expired listen address.
-        fn expired_listen_addr(&self, _listener_id: ListenerId, _address: Multiaddr) {
+        fn expired_listen_addr(&mut self, _listener_id: ListenerId, _address: Multiaddr) {
             // Default implementation
         }
 
         /// Event that announces a closed listener.
-        fn listener_closed(&self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>) {
+        fn listener_closed(&mut self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>) {
             // Default implementation
         }
 
         /// Event that announces a listener error.
-        fn listener_error(&self, _listener_id: ListenerId) {
+        fn listener_error(&mut self, _listener_id: ListenerId) {
             // Default implementation
         }
 
         /// Event that announces a dialing attempt.
-        fn dialing(&self, _peer_id: Option<PeerId>, _connection_id: ConnectionId) {
+        fn dialing(&mut self, _peer_id: Option<PeerId>, _connection_id: ConnectionId) {
             // Default implementation
         }
 
         /// Event that announces a new external address candidate.
-        fn new_external_addr_candidate(&self, _address: Multiaddr) {
+        fn new_external_addr_candidate(&mut self, _address: Multiaddr) {
             // Default implementation
         }
 
         /// Event that announces a confirmed external address.
-        fn external_addr_confirmed(&self, _address: Multiaddr) {
+        fn external_addr_confirmed(&mut self, _address: Multiaddr) {
             // Default implementation
         }
 
         /// Event that announces an expired external address.
-        fn external_addr_expired(&self, _address: Multiaddr) {
+        fn external_addr_expired(&mut self, _address: Multiaddr) {
             // Default implementation
         }
 
         /// Event that announces new connection arriving on a listener and in the process of protocol negotiation.
         fn incoming_connection(
-            &self,
+            &mut self,
             _connection_id: ConnectionId,
             _local_addr: Multiaddr,
             _send_back_addr: Multiaddr,
@@ -1119,7 +1161,7 @@ pub mod core {
 
         /// Event that announces an error happening on an inbound connection during its initial handshake.
         fn incoming_connection_error(
-            &self,
+            &mut self,
             _connection_id: ConnectionId,
             _local_addr: Multiaddr,
             _send_back_addr: Multiaddr,
@@ -1129,7 +1171,7 @@ pub mod core {
 
         /// Event that announces an error happening on an outbound connection during its initial handshake.
         fn outgoing_connection_error(
-            &self,
+            &mut self,
             _connection_id: ConnectionId,
             _peer_id: Option<PeerId>,
         ) {
@@ -1138,12 +1180,17 @@ pub mod core {
 
         /// Event that announces the arrival of a ping message from a peer.
         /// The duration it took for a round trip is also returned
-        fn inbound_ping_success(&self, _peer_id: PeerId, _duration: Duration) {
+        fn inbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
+            // Default implementation
+        }
+
+        /// Event that announces a `Ping` error
+        fn outbound_ping_error(&mut self, _peer_id: PeerId, err_type: Failure) {
             // Default implementation
         }
 
         /// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-        fn identify_info_recieved(&self, _peer_id: PeerId, info: Info) {
+        fn identify_info_recieved(&mut self, _peer_id: PeerId, info: Info) {
             // Default implementation
         }
     }
@@ -1154,35 +1201,53 @@ pub mod core {
     /// Implement [`EventHandler`] for [`DefaultHandler`]
     impl EventHandler for DefaultHandler {}
 
-    /// Policies to handle a `Ping` error
-    /// - All connections to peers are closed during a disconnect operation.
-    enum PingErrorPolicy {
-        /// Do not disconnect under any circumstances
-        NoDisconnect,
-        /// Disconnect after a number of outbound errors
-        DisconnectAfterMaxErrors(u16),
-        /// Disconnect after a certain number of timeouts
-        DisconnectAfterMaxTimeouts(u16),
-    }
-
     /// Important information to obtain from the [`CoreBuilder`], to properly handle network operations
     struct NetworkInfo {
         /// Important information to manage `Ping` operations
         ping: PingInfo,
     }
 
-    /// Struct that stores critical information for the execution of the [`PingErrorPolicy`]
-    #[derive(Debug)]
-    struct PingManager {
-        /// The number of timeout errors encountered from a peer
-        timeouts: HashMap<PeerId, u16>,
-        /// The number of outbound errors encountered from a peer
-        outbound_errors: HashMap<PeerId, u16>,
-    }
+    /// Module that contains important data structures to manage `Ping` operations on the network
+    mod ping_config {
+        use libp2p_identity::PeerId;
+        use std::{collections::HashMap, time::Duration};
 
-    /// Critical information to manage `Ping` operations
-    struct PingInfo {
-        policy: PingErrorPolicy,
-        manager: PingManager,
+        /// Policies to handle a `Ping` error
+        /// - All connections to peers are closed during a disconnect operation.
+        pub enum PingErrorPolicy {
+            /// Do not disconnect under any circumstances
+            NoDisconnect,
+            /// Disconnect after a number of outbound errors
+            DisconnectAfterMaxErrors(u16),
+            /// Disconnect after a certain number of concurrent timeouts
+            DisconnectAfterMaxTimeouts(u16),
+        }
+
+        /// Struct that stores critical information for the execution of the [`PingErrorPolicy`]
+        #[derive(Debug)]
+        pub struct PingManager {
+            /// The number of timeout errors encountered from a peer
+            pub timeouts: HashMap<PeerId, u16>,
+            /// The number of outbound errors encountered from a peer
+            pub outbound_errors: HashMap<PeerId, u16>,
+        }
+
+        /// The configuration for the `Ping` protocol
+        pub struct PingConfig {
+            /// The interval between successive pings.
+            /// Default is 15 seconds
+            pub interval: Duration,
+            /// The duration before which the request is considered failure.
+            /// Default is 20 seconds
+            pub timeout: Duration,
+            /// Error policy
+            pub err_policy: PingErrorPolicy,
+        }
+
+        /// Critical information to manage `Ping` operations
+        pub struct PingInfo {
+            pub policy: PingErrorPolicy,
+            pub manager: PingManager,
+        }
     }
 }

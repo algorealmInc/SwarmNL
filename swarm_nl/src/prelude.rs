@@ -133,5 +133,18 @@ pub struct Initialized;
 pub enum StreamData {
     /// This is the first message sent through the stream from the networking layer to the application. 
     /// It indicates a successful setup and readiness to begin operations.
-    Ready
+    Ready,
+    /// Store a value associated with a given key in the Kademlia DHT
+    KademliaStore {
+        key: Vec<u8>,
+        value: Vec<u8>
+    },
+    /// Perform a lookup of a value associated with a given key in the Kademlia DHT
+    KademliaLookup {
+        key: Vec<u8>
+    },
+    /// Refresh the local routing table
+    KademliaRefreshRoutingTable,
+    /// Return important information about the local routing table
+    KademliaGetRoutingTableInfo
 }

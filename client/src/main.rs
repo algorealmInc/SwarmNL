@@ -13,7 +13,7 @@ pub static CONFIG_FILE_PATH: &str = "test_config.ini";
 struct ComplexHandler;
 
 impl EventHandler for ComplexHandler {
-    fn new_listen_addr(&self, _listener_id: ListenerId, addr: Multiaddr) {
+    fn new_listen_addr(&mut self, _listener_id: ListenerId, addr: Multiaddr) {
         // Log the address we begin listening on
         println!("We're now listening on: {}", addr);
     }
