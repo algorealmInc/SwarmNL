@@ -1,6 +1,9 @@
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
+
+
+
 use libp2p_identity::KeyType;
 use libp2p_identity::{rsa::Keypair as RsaKeypair, Keypair};
 use thiserror::Error;
@@ -34,6 +37,10 @@ pub type Seconds = u64;
 pub type PeerIdString = String;
 /// The stringified Multiaddr type
 pub type MultiaddrString = String;
+
+/// Port ranges
+pub const MIN_PORT: u16 = 49152;
+pub const MAX_PORT: u16 = 65535;
 
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
@@ -120,3 +127,24 @@ pub struct NotInitialiazed;
 
 /// A unique type that indicates that a struct has been default configured
 pub struct Initialized;
+
+/// Data exchanged over a stream between the application and network layer
+#[derive(Debug)]
+pub enum StreamData {
+    /// This is the first message sent through the stream from the networking layer to the application. 
+    /// It indicates a successful setup and readiness to begin operations.
+    Ready,
+    /// Store a value associated with a given key in the Kademlia DHT
+    KademliaStore {
+        key: Vec<u8>,
+        value: Vec<u8>
+    },
+    /// Perform a lookup of a value associated with a given key in the Kademlia DHT
+    KademliaLookup {
+        key: Vec<u8>
+    },
+    /// Refresh the local routing table
+    KademliaRefreshRoutingTable,
+    /// Return important information about the local routing table
+    KademliaGetRoutingTableInfo
+}

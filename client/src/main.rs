@@ -3,9 +3,51 @@
 /// This crate is simply for quick-testing the swarmNL library APIs and assisting in developement. It is not the default or de-facto test crate/module, as it is only used
 /// in-dev and will be removed subsequently.
 
+
+use std::collections::HashMap;
+use swarm_nl::{PeerIdString, MultiaddrString, StreamData, core::{EventHandler, DefaultHandler}, ListenerId, Multiaddr, StreamExt};
+
 pub static CONFIG_FILE_PATH: &str = "test_config.ini";
 
-fn main() {}
+/// Complex Event Handler
+struct ComplexHandler;
+
+impl EventHandler for ComplexHandler {
+    fn new_listen_addr(&mut self, _listener_id: ListenerId, addr: Multiaddr) {
+        // Log the address we begin listening on
+        println!("We're now listening on: {}", addr);
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    // handler for events happening in the network layer (majorly for technical use)
+    // use default handler
+    let handler = DefaultHandler;
+    let complex_handler = ComplexHandler;
+
+    // set up node
+    let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
+    bootnodes.insert("12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string(), "/ip4/127.0.0.1/tcp/63307".to_string());
+
+    // configure default data
+    let config = swarm_nl::setup::BootstrapConfig::new().with_bootnodes(bootnodes);
+
+    // set up network core
+    let mut network = swarm_nl::core::CoreBuilder::with_config(config, complex_handler).build().await.unwrap();
+
+    // read first (ready) message
+    if let Some(StreamData::Ready) = network.application_receiver.next().await {
+        println!("Database is online");
+
+        // begin listening
+        loop {
+            if let Some(data) = network.application_receiver.next().await {
+                println!("{:?}", data);
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
