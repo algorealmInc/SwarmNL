@@ -1,9 +1,8 @@
+use std::time::Instant;
+
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
-
-
-
 use libp2p_identity::KeyType;
 use libp2p_identity::{rsa::Keypair as RsaKeypair, Keypair};
 use thiserror::Error;
@@ -131,20 +130,48 @@ pub struct Initialized;
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug)]
 pub enum StreamData {
-    /// This is the first message sent through the stream from the networking layer to the application. 
+    /// This is the first message sent through the stream from the networking layer to the application.
     /// It indicates a successful setup and readiness to begin operations.
     Ready,
+    /// A simple echo message
+    Echo(String),
+    /// Application data sent over the stream
+    Application(AppData),
+    /// Network data sent over the stream
+    Network(NetworkData),
+}
+
+/// Data sent from the application layer to the networking layer
+#[derive(Debug)]
+pub enum AppData {
     /// Store a value associated with a given key in the Kademlia DHT
     KademliaStore {
         key: Vec<u8>,
-        value: Vec<u8>
+        value: Vec<u8>,
+        expiration_time: Option<Instant>,
     },
     /// Perform a lookup of a value associated with a given key in the Kademlia DHT
-    KademliaLookup {
-        key: Vec<u8>
-    },
+    KademliaLookup { key: Vec<u8> },
     /// Refresh the local routing table
     KademliaRefreshRoutingTable,
     /// Return important information about the local routing table
-    KademliaGetRoutingTableInfo
+    KademliaGetRoutingTableInfo,
+}
+
+/// Data sent from the networking layer to the application layer or to itself
+#[derive(Debug)]
+pub(crate) enum NetworkData {
+    /// Return the result of a DHT lookup
+    KademliaLookupResult(DhtLookupResult),
+    /// Return important information about the DHT
+    KademliaDhtInfo { protocol_id: String },
+    /// Dail peer
+    DailPeer(String),
+}
+
+/// Result of the Kademlia DHT Lookup operation
+#[derive(Debug)]
+pub(crate) enum DhtLookupResult {
+    RecordFound { key: Vec<u8>, value: Vec<u8> },
+    RecordNotFound,
 }
