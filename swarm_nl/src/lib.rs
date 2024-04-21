@@ -31,7 +31,7 @@ pub mod setup {
         /// The port to listen on if using the UDP or QUIC protocol
         udp_port: Port,
         /// The Cryptographic Keypair for node identification and message auth
-        keypair: WrappedKeyPair,
+        keypair: Keypair,
         /// Bootstrap peers
         boot_nodes: HashMap<PeerIdString, MultiaddrString>,
     }
@@ -56,7 +56,7 @@ pub mod setup {
                 // Default UDP port if not specified
                 udp_port: 49852,
                 // Default node keypair type i.e Ed25519
-                keypair: WrappedKeyPair::Other(Keypair::generate_ed25519()),
+                keypair: Keypair::generate_ed25519(),
                 boot_nodes: Default::default(),
             }
         }
@@ -92,25 +92,25 @@ pub mod setup {
         }
 
         /// Generate a Cryptographic Keypair.
-        ///
+        /// An RSA keypair cannot be generated on-the-fly. It has to be generated from a `.pk8` file.
+        /// Hence the `Option` parameter is always `None` except in the case of RSA.
         /// Please note that calling this function overrides whatever might have been read from the `.ini` file
         ///
-        /// TODO! Generate RSA properly by reading from its binary.
-        pub fn generate_keypair(self, key_type: KeyType) -> Self {
+        /// # Panics (Only applies to the RSA keypair instance)
+        ///
+        /// This function will panic if the RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
+        /// It will panic if the file contains invalid data and an RSA keypair cannot be generated from it.
+        pub fn generate_keypair(self, key_type: KeyType, rsa_pk8_filepath: Option<&str>) -> Self {
             let keypair = match key_type {
                 // Generate a Ed25519 Keypair
-                KeyType::Ed25519 => WrappedKeyPair::Other(Keypair::generate_ed25519()),
+                KeyType::Ed25519 => Keypair::generate_ed25519(),
                 KeyType::RSA => {
-                    // First generate an Ed25519 Keypair and then try to cast it into RSA.
-                    // Return an Ed25519 keyType if casting fails
-                    let keypair = Keypair::generate_ed25519();
-                    match keypair.clone().try_into_rsa() {
-                        Ok(rsa_keypair) => WrappedKeyPair::Rsa(rsa_keypair),
-                        Err(_) => WrappedKeyPair::Other(keypair),
-                    }
+                    let mut bytes = std::fs::read(rsa_pk8_filepath.unwrap()).unwrap_or_default();
+                    // return RSA keypair generated from a .pk8 binary file
+                    Keypair::rsa_from_pkcs8(&mut bytes).unwrap()
                 }
-                KeyType::Secp256k1 => WrappedKeyPair::Other(Keypair::generate_secp256k1()),
-                KeyType::Ecdsa => WrappedKeyPair::Other(Keypair::generate_ecdsa()),
+                KeyType::Secp256k1 => Keypair::generate_secp256k1(),
+                KeyType::Ecdsa => Keypair::generate_ecdsa(),
             };
 
             BootstrapConfig { keypair, ..self }
@@ -134,26 +134,20 @@ pub mod setup {
             let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
             let keypair = match key_type {
                 // Generate a Ed25519 Keypair
-                KeyType::Ed25519 => {
-                    WrappedKeyPair::Other(Keypair::try_into_ed25519(raw_keypair).unwrap().into())
-                }
+                KeyType::Ed25519 => Keypair::try_into_ed25519(raw_keypair).unwrap().into(),
                 // Generate a RSA Keypair
-                KeyType::RSA => WrappedKeyPair::Rsa(raw_keypair.try_into_rsa().unwrap()),
+                KeyType::RSA => Keypair::rsa_from_pkcs8(bytes).unwrap(),
                 // Generate a Secp256k1 Keypair
-                KeyType::Secp256k1 => {
-                    WrappedKeyPair::Other(Keypair::try_into_secp256k1(raw_keypair).unwrap().into())
-                }
+                KeyType::Secp256k1 => Keypair::try_into_secp256k1(raw_keypair).unwrap().into(),
                 // Generate a Ecdsa Keypair
-                KeyType::Ecdsa => {
-                    WrappedKeyPair::Other(Keypair::try_into_ecdsa(raw_keypair).unwrap().into())
-                }
+                KeyType::Ecdsa => Keypair::try_into_ecdsa(raw_keypair).unwrap().into(),
             };
 
             BootstrapConfig { keypair, ..self }
         }
 
-        /// Return a node's (wrapped) cryptographic keypair
-        pub fn keypair(&self) -> WrappedKeyPair {
+        /// Return a node's cryptographic keypair
+        pub fn keypair(&self) -> Keypair {
             self.keypair.clone()
         }
 
@@ -239,7 +233,7 @@ pub mod core {
     /// Structure containing necessary data to build [`Core`]
     pub struct CoreBuilder<T: EventHandler + Send + Sync + 'static> {
         network_id: StreamProtocol,
-        keypair: WrappedKeyPair,
+        keypair: Keypair,
         tcp_udp_port: (Port, Port),
         boot_nodes: HashMap<PeerIdString, MultiaddrString>,
         /// the network event handler
@@ -270,7 +264,7 @@ pub mod core {
             };
 
             // Peer Id
-            let peer_id = config.keypair().into_inner().unwrap().public().to_peer_id();
+            let peer_id = config.keypair().public().to_peer_id();
 
             // Set up default config for Kademlia
             let mut cfg = kad::Config::default();
@@ -280,11 +274,8 @@ pub mod core {
             let kademlia = kad::Behaviour::with_config(peer_id, store, cfg);
 
             // Set up default config config for Kademlia
-            let cfg = identify::Config::new(
-                network_id.to_owned(),
-                config.keypair().into_inner().unwrap().public(),
-            )
-            .with_push_listen_addr_updates(true);
+            let cfg = identify::Config::new(network_id.to_owned(), config.keypair().public())
+                .with_push_listen_addr_updates(true);
             let identify = identify::Behaviour::new(cfg);
 
             // Initialize struct with information from `BootstrapConfig`
@@ -354,7 +345,7 @@ pub mod core {
         /// Configure the `Kademlia` protocol for the network.
         pub fn with_kademlia(self, config: kad::Config) -> Self {
             // PeerId
-            let peer_id = self.keypair.into_inner().unwrap().public().to_peer_id();
+            let peer_id = self.keypair.public().to_peer_id();
             let store = kad::store::MemoryStore::new(peer_id);
             let kademlia = kad::Behaviour::with_config(peer_id, store, config);
 
@@ -387,24 +378,22 @@ pub mod core {
                     TransportOpts::TcpQuic { tcp_config } => match tcp_config {
                         TcpConfig::Default => {
                             // Use the default config
-                            libp2p::SwarmBuilder::with_existing_identity(
-                                self.keypair.into_inner().unwrap(),
-                            )
-                            .with_async_std()
-                            .with_tcp(
-                                tcp::Config::default(),
-                                (tls::Config::new, noise::Config::new),
-                                yamux::Config::default,
-                            )
-                            .map_err(|_| {
-                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
-                                    tcp_config: TcpConfig::Default,
-                                })
-                            })?
-                            .with_quic()
-                            .with_dns()
-                            .await
-                            .map_err(|_| SwarmNlError::DNSConfigError)?
+                            libp2p::SwarmBuilder::with_existing_identity(self.keypair.clone())
+                                .with_async_std()
+                                .with_tcp(
+                                    tcp::Config::default(),
+                                    (tls::Config::new, noise::Config::new),
+                                    yamux::Config::default,
+                                )
+                                .map_err(|_| {
+                                    SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                        tcp_config: TcpConfig::Default,
+                                    })
+                                })?
+                                .with_quic()
+                                .with_dns()
+                                .await
+                                .map_err(|_| SwarmNlError::DNSConfigError)?
                         }
 
                         TcpConfig::Custom {
@@ -418,28 +407,26 @@ pub mod core {
                                 .nodelay(nodelay)
                                 .listen_backlog(backlog);
 
-                            libp2p::SwarmBuilder::with_existing_identity(
-                                self.keypair.into_inner().unwrap(),
-                            )
-                            .with_async_std()
-                            .with_tcp(
-                                tcp_config,
-                                (tls::Config::new, noise::Config::new),
-                                yamux::Config::default,
-                            )
-                            .map_err(|_| {
-                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
-                                    tcp_config: TcpConfig::Custom {
-                                        ttl,
-                                        nodelay,
-                                        backlog,
-                                    },
-                                })
-                            })?
-                            .with_quic()
-                            .with_dns()
-                            .await
-                            .map_err(|_| SwarmNlError::DNSConfigError)?
+                            libp2p::SwarmBuilder::with_existing_identity(self.keypair.clone())
+                                .with_async_std()
+                                .with_tcp(
+                                    tcp_config,
+                                    (tls::Config::new, noise::Config::new),
+                                    yamux::Config::default,
+                                )
+                                .map_err(|_| {
+                                    SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                        tcp_config: TcpConfig::Custom {
+                                            ttl,
+                                            nodelay,
+                                            backlog,
+                                        },
+                                    })
+                                })?
+                                .with_quic()
+                                .with_dns()
+                                .await
+                                .map_err(|_| SwarmNlError::DNSConfigError)?
                         }
                     },
                 };
@@ -470,21 +457,19 @@ pub mod core {
                     TransportOpts::TcpQuic { tcp_config } => match tcp_config {
                         TcpConfig::Default => {
                             // Use the default config
-                            libp2p::SwarmBuilder::with_existing_identity(
-                                self.keypair.into_inner().unwrap(),
-                            )
-                            .with_tokio()
-                            .with_tcp(
-                                tcp::Config::default(),
-                                (tls::Config::new, noise::Config::new),
-                                yamux::Config::default,
-                            )
-                            .map_err(|_| {
-                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
-                                    tcp_config: TcpConfig::Default,
-                                })
-                            })?
-                            .with_quic()
+                            libp2p::SwarmBuilder::with_existing_identity(self.keypair.clone())
+                                .with_tokio()
+                                .with_tcp(
+                                    tcp::Config::default(),
+                                    (tls::Config::new, noise::Config::new),
+                                    yamux::Config::default,
+                                )
+                                .map_err(|_| {
+                                    SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                        tcp_config: TcpConfig::Default,
+                                    })
+                                })?
+                                .with_quic()
                         }
 
                         TcpConfig::Custom {
@@ -498,25 +483,23 @@ pub mod core {
                                 .nodelay(nodelay)
                                 .listen_backlog(backlog);
 
-                            libp2p::SwarmBuilder::with_existing_identity(
-                                self.keypair.into_inner().unwrap(),
-                            )
-                            .with_tokio()
-                            .with_tcp(
-                                tcp_config,
-                                (tls::Config::new, noise::Config::new),
-                                yamux::Config::default,
-                            )
-                            .map_err(|_| {
-                                SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
-                                    tcp_config: TcpConfig::Custom {
-                                        ttl,
-                                        nodelay,
-                                        backlog,
-                                    },
-                                })
-                            })?
-                            .with_quic()
+                            libp2p::SwarmBuilder::with_existing_identity(self.keypair.clone())
+                                .with_tokio()
+                                .with_tcp(
+                                    tcp_config,
+                                    (tls::Config::new, noise::Config::new),
+                                    yamux::Config::default,
+                                )
+                                .map_err(|_| {
+                                    SwarmNlError::TransportConfigError(TransportOpts::TcpQuic {
+                                        tcp_config: TcpConfig::Custom {
+                                            ttl,
+                                            nodelay,
+                                            backlog,
+                                        },
+                                    })
+                                })?
+                                .with_quic()
                         }
                     },
                 };
@@ -608,7 +591,7 @@ pub mod core {
             // Set up the ping network info.
             // `PeerId` does not implement `Default` so we will add the peerId of this node as seed and set the count to 0.
             // The count can NEVER increase because we cannot `Ping` ourselves.
-            let peer_id = self.keypair.into_inner().unwrap().public().to_peer_id();
+            let peer_id = self.keypair.public().to_peer_id();
 
             // Timeouts
             let mut timeouts = HashMap::<PeerId, u16>::new();
@@ -677,7 +660,7 @@ pub mod core {
 
     /// The core interface for the application layer to interface with the networking layer
     pub struct Core {
-        keypair: WrappedKeyPair,
+        keypair: Keypair,
         /// The producing end of the stream that sends data to the network layer from the application
         pub application_sender: Sender<StreamData>,
         /// The consuming end of the stream that recieves data from the network layer
@@ -687,11 +670,11 @@ pub mod core {
     impl Core {
         /// Serialize keypair to protobuf format and write to config file on disk.
         /// It returns a boolean to indicate success of operation.
-        /// Only key types other than RSA can be serialized to protobuf format for now
+        /// Only key types other than RSA can be serialized to protobuf format.
         pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
             // Check if key type is something other than RSA
-            if let Some(keypair) = self.keypair.into_inner() {
-                if let Ok(protobuf_keypair) = keypair.to_protobuf_encoding() {
+            if KeyType::RSA != self.keypair.key_type() {
+                if let Ok(protobuf_keypair) = self.keypair.to_protobuf_encoding() {
                     // Write key type and serialized array key to config file
                     return util::write_config(
                         "auth",
@@ -701,12 +684,10 @@ pub mod core {
                     ) && util::write_config(
                         "auth",
                         "Crypto",
-                        &format!("{}", self.keypair.into_inner().unwrap().key_type()),
+                        &format!("{}", self.keypair.key_type()),
                         config_file_path,
                     );
                 }
-            } else {
-                // It is most certainly RSA
             }
 
             false
@@ -714,12 +695,7 @@ pub mod core {
 
         /// Return the node's `PeerId`
         pub fn peer_id(&self) -> String {
-            self.keypair
-                .into_inner()
-                .unwrap()
-                .public()
-                .to_peer_id()
-                .to_string()
+            self.keypair.public().to_peer_id().to_string()
         }
 
         /// Handles streams coming from the application layer.
