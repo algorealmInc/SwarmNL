@@ -38,6 +38,14 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			// get serialized keypair
 			let serialized_keypair =
 				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
+			// get serialized keypair
+			let serialized_keypair =
+				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
+
+			(key_type, serialized_keypair)
+		} else {
+			Default::default()
+		};
 
 			(key_type, serialized_keypair)
 		} else {
@@ -107,21 +115,63 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
 
+	use libp2p_identity::{KeyType, Keypair};
+
 	use super::*;
 	use std::fs;
 
-	// Function to create INI file for testing
-	fn create_test_ini_file(file_path: &str) {
+	// Function to create INI file without a static keypair
+	fn create_test_ini_file_without_keypair(file_path: &str) {
 		let mut config = Ini::new();
 		config
 			.with_section(Some("ports"))
 			.set("tcp", "3500")
 			.set("udp", "4300");
+
+		config.with_section(Some("bootstrap")).set(
+			"boot_nodes",
+			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
+		);
+		// write config to a new INI file
+		config.write_to_file(file_path).unwrap_or_default();
+	}
+
+	// Function to create INI file without a static keypair
+	fn create_test_ini_file_with_keypair(file_path: &str, key_type: KeyType) {
+		let mut config = Ini::new();
 		config
-			.with_section(Some("auth"))
-			.set("crypto", "ed25519")
-			.set("protobuf_keypair", "[]");
-		config.with_section(Some("Bootstrap")).set(
+			.with_section(Some("ports"))
+			.set("tcp", "3500")
+			.set("udp", "4300");
+
+		match key_type {
+			KeyType::Ed25519 => {
+				let keypair_ed25519 = Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
+				config
+					.with_section(Some("auth"))
+					.set("crypto", "ed25519")
+					.set("protobuf_keypair", &format!("{:?}", keypair_ed25519));
+			},
+			KeyType::Secp256k1 => {
+				let keypair_secp256k1 = Keypair::generate_secp256k1()
+					.to_protobuf_encoding()
+					.unwrap();
+				config
+					.with_section(Some("auth"))
+					.set("crypto", "secp256k1")
+					.set("protobuf_keypair", &format!("{:?}", keypair_secp256k1));
+			},
+			KeyType::Ecdsa => {
+				let keypair_ecdsa = Keypair::generate_ecdsa().to_protobuf_encoding().unwrap();
+				config
+					.with_section(Some("auth"))
+					.set("crypto", "ecdsa")
+					.set("protobuf_keypair", &format!("{:?}", keypair_ecdsa));
+			},
+			_ => {},
+		}
+
+		config.with_section(Some("bootstrap")).set(
 			"boot_nodes",
 			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
 		);
@@ -142,8 +192,11 @@ mod tests {
 
 	#[test]
 	fn write_config_works() {
-		let file_path = "temp_test_ini_file.ini";
-		create_test_ini_file(file_path);
+		// create temp INI file
+		let mut file_path = "temp_test_ini_file.ini";
+
+		// without keypair
+		create_test_ini_file_without_keypair(file_path);
 
 		let add_keypair = write_config(
 			"auth",
@@ -159,59 +212,60 @@ mod tests {
 
 		//clean up
 		clean_up_temp_file(file_path);
+
+		// with keypair (this also tests generating the keypair from protobuf)
+		create_test_ini_file_with_keypair(file_path, KeyType::Ed25519);
+
+		assert_eq!(read_ini_file(file_path).is_ok(), true);
 	}
 
-    // generating a keypair from protobuf works
-    // check for `BoostrapDataParseError`, might panic
-    // #[test]
-    // fn generate_keypair_from_protobuf() {
-    //     let file_path = "temp_test_ini_file.ini";
-    //     create_test_ini_file(file_path);
-    //     let result = read_ini_file(file_path);
+	// TODO: why is this test failing?
+	#[test]
+	fn read_ini_file_works() {
+		// create temp INI file
+		let temp_file_path = "temp_test_ini_file.ini";
+		create_test_ini_file_without_keypair(temp_file_path);
 
-    //     // TODO
-    // }
+		let result: BootstrapConfig = read_ini_file(temp_file_path).unwrap();
 
-    // // TODO: why is this test failing?
-	// #[test]
-	// fn read_ini_file_works() {
-	// 	// create temp INI file
-	// 	let temp_file_path = "temp_test_ini_file.ini";
-	// 	create_test_ini_file(temp_file_path);
+		assert_eq!(result.ports().0, 3500);
+		assert_eq!(result.ports().1, 4300);
 
-	// 	let result = read_ini_file(temp_file_path);
+		// checking for the default keypair that's generated (ED25519) if none are provided
+		assert_eq!(result.keypair().into_inner().unwrap().key_type(), KeyType::Ed25519);
 
-	// 	// // println!("👀{:?}", result);
-	// 	// assert_eq!(result.is_ok(), true);
-
-	// 	// // cleanup temp file
-	// 	// clean_up_temp_file(temp_file_path);
-	// }
+		// // cleanup temp file
+		// clean_up_temp_file(temp_file_path);
+	}
 
 	#[test]
 	fn string_to_vec_works() {
 		// Define test input
 		let input = "[1, 2, 3]";
+		let input_2 = "[]";
 
 		// Call the function
 		let result: Vec<i32> = string_to_vec(input);
+		let result_2: Vec<i32> = string_to_vec(input_2);
 
 		// Assert that the result is as expected
 		assert_eq!(result, vec![1, 2, 3]);
+		assert_eq!(result_2, vec![]);
 	}
 
 	#[test]
 	fn string_to_hashmap_works() {
+	
 		// Define test input
-		let input = "{key1: value1, key2: value2}";
+		let input = "[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]";
 
 		// Call the function
 		let result = string_to_hashmap(input);
 
 		// Assert that the result is as expected
 		let mut expected = HashMap::new();
-		expected.insert("key1".to_string(), "value1".to_string());
-		expected.insert("key2".to_string(), "value2".to_string());
+		expected.insert("12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq".to_string(), "/ip4/192.168.1.205/tcp/1509".to_string());
+		
 		assert_eq!(result, expected);
 	}
 }
