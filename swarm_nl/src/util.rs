@@ -34,7 +34,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 		let (key_type, mut serialized_keypair) = if let Some(section) = config.section(Some("auth"))
 		{
 			(
-			    // get the preferred key type
+				// get the preferred key type
 				section.get("crypto").unwrap_or_default(),
 				// get serialized keypair
 				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default()),
@@ -109,8 +109,8 @@ mod tests {
 	use libp2p_identity::{KeyType, Keypair};
 
 	use super::*;
+	use crate::prelude::{MAX_PORT, MIN_PORT};
 	use std::fs;
-	use crate::prelude::{MIN_PORT, MAX_PORT};
 
 	// define custom ports for testing
 	const CUSTOM_TCP_PORT: Port = 49666;
@@ -198,7 +198,12 @@ mod tests {
 			"serialized_keypair",
 			&format!(
 				"{:?}",
-				vec![8, 1, 18, 64, 116, 193, 199, 84, 83, 25, 220, 116, 119, 194, 155, 173, 2, 241, 82, 0, 130, 225, 121, 9, 232, 244, 8, 253, 170, 13, 100, 24, 195, 179, 60, 133, 128, 221, 43, 214, 180, 33, 61, 73, 124, 161, 127, 119, 40, 146, 226, 50, 65, 35, 97, 188, 159, 169, 250, 241, 98, 36, 146, 9, 139, 98, 114, 224]
+				vec![
+					8, 1, 18, 64, 116, 193, 199, 84, 83, 25, 220, 116, 119, 194, 155, 173, 2, 241,
+					82, 0, 130, 225, 121, 9, 232, 244, 8, 253, 170, 13, 100, 24, 195, 179, 60, 133,
+					128, 221, 43, 214, 180, 33, 61, 73, 124, 161, 127, 119, 40, 146, 226, 50, 65,
+					35, 97, 188, 159, 169, 250, 241, 98, 36, 146, 9, 139, 98, 114, 224
+				]
 			),
 			file_path,
 		);
@@ -224,7 +229,10 @@ mod tests {
 		assert_eq!(ini_file_result.ports().1, CUSTOM_UDP_PORT);
 
 		// checking for the default keypair that's generated (ED25519) if none are provided
-		assert_eq!(ini_file_result.keypair().into_inner().unwrap().key_type(), KeyType::Ed25519);
+		assert_eq!(
+			ini_file_result.keypair().into_inner().unwrap().key_type(),
+			KeyType::Ed25519
+		);
 
 		// delete temp file
 		clean_up_temp_file(file_path);
@@ -232,24 +240,27 @@ mod tests {
 
 	#[test]
 	fn read_ini_file_with_default_setup_works() {
-
 		// create INI file
-		let file_path = "temp_test_ini_file_default.ini";	
+		let file_path = "temp_test_ini_file_default.ini";
 		create_test_ini_file_with_keypair(file_path, KeyType::Ecdsa);
 
 		// assert that the content has no [port] section
 		let ini_file_content = fs::read_to_string(file_path).unwrap();
 		assert!(!ini_file_content.contains("[port]"));
 
-		// but when we call read_ini_file it generates a BootstrapConfig with default ports from crate::prelude::{MIN_PORT, MAX_PORT}
+		// but when we call read_ini_file it generates a BootstrapConfig with default ports from
+		// crate::prelude::{MIN_PORT, MAX_PORT}
 		let ini_file_result = read_ini_file(file_path).unwrap();
 
 		assert_eq!(ini_file_result.ports().0, MIN_PORT);
 		assert_eq!(ini_file_result.ports().1, MAX_PORT);
 
 		// checking that the default keypair matches the configured keytype
-		assert_eq!(ini_file_result.keypair().into_inner().unwrap().key_type(), KeyType::Ecdsa);
-		
+		assert_eq!(
+			ini_file_result.keypair().into_inner().unwrap().key_type(),
+			KeyType::Ecdsa
+		);
+
 		// delete temp file
 		clean_up_temp_file(file_path);
 	}
@@ -287,5 +298,4 @@ mod tests {
 
 		assert_eq!(result, expected);
 	}
-	
 }
