@@ -87,7 +87,7 @@ fn string_to_vec<T: FromStr>(input: &str) -> Vec<T> {
 /// Parse string into a hashmap
 fn string_to_hashmap(input: &str) -> HashMap<String, String> {
     input
-        .trim_matches(|c| c == '{' || c == '}')
+        .trim_matches(|c| c == '[' || c == ']')
         .split(',')
         .filter(|s| s.contains(':'))
         .fold(HashMap::new(), |mut acc, s| {
