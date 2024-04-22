@@ -44,7 +44,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 
 		// Now, move on the read bootnodes if any
 		let section = config
-			.section(Some("Bootstrap"))
+			.section(Some("bootstrap"))
 			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
 
 		// get the provided bootnodes
@@ -111,12 +111,13 @@ mod tests {
 	use std::fs;
 
 	// Function to create INI file without a static keypair
+	// here we specify a valid range for ports
 	fn create_test_ini_file_without_keypair(file_path: &str) {
 		let mut config = Ini::new();
 		config
 			.with_section(Some("ports"))
-			.set("tcp", "3500")
-			.set("udp", "4300");
+			.set("tcp", "49666")
+			.set("udp", "49852");
 
 		config.with_section(Some("bootstrap")).set(
 			"boot_nodes",
@@ -129,10 +130,6 @@ mod tests {
 	// Function to create INI file without a static keypair
 	fn create_test_ini_file_with_keypair(file_path: &str, key_type: KeyType) {
 		let mut config = Ini::new();
-		config
-			.with_section(Some("ports"))
-			.set("tcp", "3500")
-			.set("udp", "4300");
 
 		match key_type {
 			KeyType::Ed25519 => {
@@ -183,9 +180,8 @@ mod tests {
 	#[test]
 	fn write_config_works() {
 		// create temp INI file
-		let mut file_path = "temp_test_ini_file.ini";
+		let file_path = "temp_test_ini_file.ini";
 
-		// without keypair
 		create_test_ini_file_without_keypair(file_path);
 
 		let add_keypair = write_config(
@@ -193,40 +189,50 @@ mod tests {
 			"serialized_keypair",
 			&format!(
 				"{:?}",
-				vec![12, 234, 45, 34, 54, 34, 43, 34, 43, 23, 43, 43, 34, 67, 98]
+				vec![8, 1, 18, 64, 116, 193, 199, 84, 83, 25, 220, 116, 119, 194, 155, 173, 2, 241, 82, 0, 130, 225, 121, 9, 232, 244, 8, 253, 170, 13, 100, 24, 195, 179, 60, 133, 128, 221, 43, 214, 180, 33, 61, 73, 124, 161, 127, 119, 40, 146, 226, 50, 65, 35, 97, 188, 159, 169, 250, 241, 98, 36, 146, 9, 139, 98, 114, 224]
 			),
 			file_path,
 		);
 
 		assert_eq!(add_keypair, true);
 
-		//clean up
-		clean_up_temp_file(file_path);
-
-		// with keypair (this also tests generating the keypair from protobuf)
-		create_test_ini_file_with_keypair(file_path, KeyType::Ed25519);
-
-		assert_eq!(read_ini_file(file_path).is_ok(), true);
+		// clean_up_temp_file(file_path);
 	}
 
-	// TODO: why is this test failing?
+	// read without keypair file
 	#[test]
-	fn read_ini_file_works() {
+	fn read_ini_file_with_custom_works() {
 		// create temp INI file
-		let temp_file_path = "temp_test_ini_file.ini";
-		create_test_ini_file_without_keypair(temp_file_path);
+		let temp_file_path_1 = "temp_test_ini_file_custom.ini";
 
-		let result: BootstrapConfig = read_ini_file(temp_file_path).unwrap();
+		// we've set our ports to tcp=49666 and upd=49852
+		create_test_ini_file_without_keypair(temp_file_path_1);
 
-		assert_eq!(result.ports().0, 3500);
-		assert_eq!(result.ports().1, 4300);
+		let custom_ini_file_1_result: BootstrapConfig = read_ini_file(temp_file_path_1).unwrap();
+
+		assert_eq!(custom_ini_file_1_result.ports().0, 49666);
+		assert_eq!(custom_ini_file_1_result.ports().1, 49852);
 
 		// checking for the default keypair that's generated (ED25519) if none are provided
-		assert_eq!(
-			result.keypair().into_inner().unwrap().key_type(),
-			KeyType::Ed25519
-		);
+		assert_eq!(custom_ini_file_1_result.keypair().into_inner().unwrap().key_type(), KeyType::Ed25519);
+	}
 
+	#[test]
+	fn read_ini_file_with_default_works() {
+
+		// create INI file
+		let temp_file = "temp_test_ini_file_default.ini";	
+		create_test_ini_file_with_keypair(temp_file, KeyType::Ecdsa);
+
+		// we know from the docs that the default ports are tcp=49352 and udp=49852
+		let ini_file_result = read_ini_file(temp_file).unwrap();
+
+		assert_eq!(ini_file_result.ports().0, 49352);
+		assert_eq!(ini_file_result.ports().1, 49852);
+
+		// checking that the default keypair matches the configured keytype
+		assert_eq!(ini_file_result.keypair().into_inner().unwrap().key_type(), KeyType::Ecdsa);
+		
 		// // cleanup temp file
 		// clean_up_temp_file(temp_file_path);
 	}
@@ -234,12 +240,12 @@ mod tests {
 	#[test]
 	fn string_to_vec_works() {
 		// Define test input
-		let input = "[1, 2, 3]";
-		let input_2 = "[]";
+		let test_input_1 = "[1, 2, 3]";
+		let test_input_2 = "[]";
 
 		// Call the function
-		let result: Vec<i32> = string_to_vec(input);
-		let result_2: Vec<i32> = string_to_vec(input_2);
+		let result: Vec<i32> = string_to_vec(test_input_1);
+		let result_2: Vec<i32> = string_to_vec(test_input_2);
 
 		// Assert that the result is as expected
 		assert_eq!(result, vec![1, 2, 3]);
@@ -264,4 +270,5 @@ mod tests {
 
 		assert_eq!(result, expected);
 	}
+	
 }
