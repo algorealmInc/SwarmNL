@@ -54,9 +54,9 @@ pub mod setup {
 		pub fn new() -> Self {
 			BootstrapConfig {
 				// Default TCP/IP port if not specified
-				tcp_port: 49352,
+				tcp_port: MIN_PORT,
 				// Default UDP port if not specified
-				udp_port: 49852,
+				udp_port: MAX_PORT,
 				// Default node keypair type i.e Ed25519
 				keypair: WrappedKeyPair::Other(Keypair::generate_ed25519()),
 				boot_nodes: Default::default(),

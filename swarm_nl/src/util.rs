@@ -10,43 +10,38 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 	// read the file from disk
 	if let Ok(config) = Ini::load_from_file(file_path) {
 		// ports section
-		let section = config
-			.section(Some("ports"))
-			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
+		// get TCP port & UDP port
+		let (tcp_port, udp_port) = if let Some(section) = config.section(Some("ports")) {
+			(
+				section
+					.get("tcp")
+					.unwrap_or_default()
+					.parse::<Port>()
+					.unwrap_or_default(),
+				section
+					.get("udp")
+					.unwrap_or_default()
+					.parse::<Port>()
+					.unwrap_or_default(),
+			)
+		} else {
+			(MIN_PORT, MAX_PORT)
+		};
 
-		// get TCP port
-		let tcp_port = section
-			.get("tcp")
-			.unwrap_or_default()
-			.parse::<Port>()
-			.unwrap_or_default();
-
-		// get UDP port
-		let udp_port = section
-			.get("udp")
-			.unwrap_or_default()
-			.parse::<Port>()
-			.unwrap_or_default();
-
-        // try to read the serialized keypair
-        // auth section
+		// try to read the serialized keypair
+		// auth section
 		let (key_type, mut serialized_keypair) = if let Some(section) = config.section(Some("auth"))
 		{
-			// get the preferred key type
-			let key_type = section.get("crypto").unwrap_or_default();
-
-			// get serialized keypair
-			let serialized_keypair =
-				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
-			// get serialized keypair
-			let serialized_keypair =
-				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
-
-			(key_type, serialized_keypair)
+			(
+			    // get the preferred key type
+				section.get("crypto").unwrap_or_default(),
+				// get serialized keypair
+				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default()),
+			)
 		} else {
 			Default::default()
 		};
-        
+
 		// Now, move on the read bootnodes if any
 		let section = config
 			.section(Some("Bootstrap"))
@@ -92,19 +87,19 @@ fn string_to_vec<T: FromStr>(input: &str) -> Vec<T> {
 
 /// Parse string into a hashmap
 fn string_to_hashmap(input: &str) -> HashMap<String, String> {
-    input
-        .trim_matches(|c| c == '[' || c == ']')
-        .split(',')
-        .filter(|s| s.contains(':'))
-        .fold(HashMap::new(), |mut acc, s| {
-            let mut parts = s.trim().splitn(2, ':');
-            if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
-                if key.len() > 1 {
-                    acc.insert(key.trim().to_owned(), value.trim().to_owned());
-                }
-            }
-            acc
-        })
+	input
+		.trim_matches(|c| c == '[' || c == ']')
+		.split(',')
+		.filter(|s| s.contains(':'))
+		.fold(HashMap::new(), |mut acc, s| {
+			let mut parts = s.trim().splitn(2, ':');
+			if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+				if key.len() > 1 {
+					acc.insert(key.trim().to_owned(), value.trim().to_owned());
+				}
+			}
+			acc
+		})
 }
 
 #[cfg(test)]
@@ -227,7 +222,10 @@ mod tests {
 		assert_eq!(result.ports().1, 4300);
 
 		// checking for the default keypair that's generated (ED25519) if none are provided
-		assert_eq!(result.keypair().into_inner().unwrap().key_type(), KeyType::Ed25519);
+		assert_eq!(
+			result.keypair().into_inner().unwrap().key_type(),
+			KeyType::Ed25519
+		);
 
 		// // cleanup temp file
 		// clean_up_temp_file(temp_file_path);
@@ -250,17 +248,20 @@ mod tests {
 
 	#[test]
 	fn string_to_hashmap_works() {
-	
 		// Define test input
-		let input = "[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]";
+		let input =
+			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]";
 
 		// Call the function
 		let result = string_to_hashmap(input);
 
 		// Assert that the result is as expected
 		let mut expected = HashMap::new();
-		expected.insert("12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq".to_string(), "/ip4/192.168.1.205/tcp/1509".to_string());
-		
+		expected.insert(
+			"12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq".to_string(),
+			"/ip4/192.168.1.205/tcp/1509".to_string(),
+		);
+
 		assert_eq!(result, expected);
 	}
 }
