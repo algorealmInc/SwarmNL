@@ -28,18 +28,21 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			.parse::<Port>()
 			.unwrap_or_default();
 
-		// try to read the serialized keypair
-		// auth section
-		let section = config
-			.section(Some("auth"))
-			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
+        // try to read the serialized keypair
+        // auth section
+		let (key_type, mut serialized_keypair) = if let Some(section) = config.section(Some("auth"))
+		{
+			// get the preferred key type
+			let key_type = section.get("crypto").unwrap_or_default();
 
-		// get the preferred key type
-		let key_type = section.get("crypto").unwrap_or_default();
+			// get serialized keypair
+			let serialized_keypair =
+				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
 
-		// get serialized keypair
-		let mut serialized_keypair =
-			string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
+			(key_type, serialized_keypair)
+		} else {
+			Default::default()
+		};
 
 		// Now, move on the read bootnodes if any
 		let section = config
@@ -86,19 +89,19 @@ fn string_to_vec<T: FromStr>(input: &str) -> Vec<T> {
 
 /// Parse string into a hashmap
 fn string_to_hashmap(input: &str) -> HashMap<String, String> {
-	input
-		.trim_matches(|c| c == '{' || c == '}')
-		.split(',')
-		.filter(|s| s.contains(':'))
-		.fold(HashMap::new(), |mut acc, s| {
-			let mut parts = s.trim().splitn(2, ':');
-			if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
-				if key.len() > 1 {
-					acc.insert(key.trim().to_owned(), value.trim().to_owned());
-				}
-			}
-			acc
-		})
+    input
+        .trim_matches(|c| c == '[' || c == ']')
+        .split(',')
+        .filter(|s| s.contains(':'))
+        .fold(HashMap::new(), |mut acc, s| {
+            let mut parts = s.trim().splitn(2, ':');
+            if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+                if key.len() > 1 {
+                    acc.insert(key.trim().to_owned(), value.trim().to_owned());
+                }
+            }
+            acc
+        })
 }
 
 #[cfg(test)]
