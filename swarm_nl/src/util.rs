@@ -46,12 +46,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 		} else {
 			Default::default()
 		};
-
-			(key_type, serialized_keypair)
-		} else {
-			Default::default()
-		};
-
+        
 		// Now, move on the read bootnodes if any
 		let section = config
 			.section(Some("Bootstrap"))

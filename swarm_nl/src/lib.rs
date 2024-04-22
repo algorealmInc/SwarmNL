@@ -128,31 +128,30 @@ pub mod setup {
 		/// This function will panic if the `u8` buffer is not parsable into the specified key type
 		pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
 			// Parse the key type
-			let key_type = <KeyType as CustomFrom>::from(key_type_str)
-				.ok_or(SwarmNlError::BoostrapDataParseError(
-					key_type_str.to_owned(),
-				))
-				.unwrap();
+			if let Some(key_type) = <KeyType as CustomFrom>::from(key_type_str) {
+				let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
+				let keypair = match key_type {
+					// Generate a Ed25519 Keypair
+					KeyType::Ed25519 => WrappedKeyPair::Other(
+						Keypair::try_into_ed25519(raw_keypair).unwrap().into(),
+					),
+					// Generate a RSA Keypair
+					KeyType::RSA => WrappedKeyPair::Rsa(raw_keypair.try_into_rsa().unwrap()),
+					// Generate a Secp256k1 Keypair
+					KeyType::Secp256k1 => WrappedKeyPair::Other(
+						Keypair::try_into_secp256k1(raw_keypair).unwrap().into(),
+					),
+					// Generate a Ecdsa Keypair
+					KeyType::Ecdsa => {
+						WrappedKeyPair::Other(Keypair::try_into_ecdsa(raw_keypair).unwrap().into())
+					},
+				};
 
-			let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
-			let keypair = match key_type {
-				// Generate a Ed25519 Keypair
-				KeyType::Ed25519 => {
-					WrappedKeyPair::Other(Keypair::try_into_ed25519(raw_keypair).unwrap().into())
-				},
-				// Generate a RSA Keypair
-				KeyType::RSA => WrappedKeyPair::Rsa(raw_keypair.try_into_rsa().unwrap()),
-				// Generate a Secp256k1 Keypair
-				KeyType::Secp256k1 => {
-					WrappedKeyPair::Other(Keypair::try_into_secp256k1(raw_keypair).unwrap().into())
-				},
-				// Generate a Ecdsa Keypair
-				KeyType::Ecdsa => {
-					WrappedKeyPair::Other(Keypair::try_into_ecdsa(raw_keypair).unwrap().into())
-				},
-			};
-
-			BootstrapConfig { keypair, ..self }
+				BootstrapConfig { keypair, ..self }
+			} else {
+				// we'll just generate a default keypair
+				self.generate_keypair(KeyType::Ed25519)
+			}
 		}
 
 		/// Return a node's (wrapped) cryptographic keypair
