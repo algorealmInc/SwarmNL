@@ -574,29 +574,29 @@ pub mod core {
                 }
             }
 
-            // Add bootnodes to local routing table, if any
-            for peer_info in self.boot_nodes {
-                // PeerId
-                if let Ok(peer_id) = PeerId::from_bytes(peer_info.0.as_bytes()) {
-                    // Multiaddress
-                    if let Ok(multiaddr) = multiaddr::from_url(&peer_info.1) {
-                        swarm
-                            .behaviour_mut()
-                            .kademlia
-                            .add_address(&peer_id, multiaddr.clone());
+            // // Add bootnodes to local routing table, if any
+            // for peer_info in self.boot_nodes {
+            //     // PeerId
+            //     if let Ok(peer_id) = PeerId::from_bytes(peer_info.0.as_bytes()) {
+            //         // Multiaddress
+            //         if let Ok(multiaddr) = multiaddr::from_url(&peer_info.1) {
+            //             swarm
+            //                 .behaviour_mut()
+            //                 .kademlia
+            //                 .add_address(&peer_id, multiaddr.clone());
 
-                        println!("{:?}", multiaddr);
+            //             println!("{:?}", multiaddr);
 
-                        // Dial them
-                        swarm.dial(multiaddr.clone()).map_err(|_| {
-                            SwarmNlError::RemotePeerDialError(multiaddr.to_string())
-                        })?;
-                    }
-                }
-            }
+            //             // Dial them
+            //             swarm.dial(multiaddr.clone()).map_err(|_| {
+            //                 SwarmNlError::RemotePeerDialError(multiaddr.to_string())
+            //             })?;
+            //         }
+            //     }
+            // }
 
-            // Begin DHT bootstrap, hopefully bootnodes were supplied
-            let _ = swarm.behaviour_mut().kademlia.bootstrap();
+            // // Begin DHT bootstrap, hopefully bootnodes were supplied
+            // let _ = swarm.behaviour_mut().kademlia.bootstrap();
 
             // There must be a way for the application to communicate with the underlying networking core.
             // This will involve acceptiing data and pushing data to the application layer.
