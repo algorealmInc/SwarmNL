@@ -30,16 +30,19 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 
         // try to read the serialized keypair
         // auth section
-        let section = config
-            .section(Some("auth"))
-            .ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
+		let (key_type, mut serialized_keypair) = if let Some(section) = config.section(Some("auth"))
+		{
+			// get the preferred key type
+			let key_type = section.get("crypto").unwrap_or_default();
 
-        // get the preferred key type
-        let key_type = section.get("crypto").unwrap_or_default();
+			// get serialized keypair
+			let serialized_keypair =
+				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
 
-        // get serialized keypair
-        let mut serialized_keypair =
-            string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default());
+			(key_type, serialized_keypair)
+		} else {
+			Default::default()
+		};
 
         // Now, move on the read bootnodes if any
         let section = config
