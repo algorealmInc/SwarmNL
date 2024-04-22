@@ -5,7 +5,7 @@ use crate::{prelude::*, setup::BootstrapConfig};
 use ini::Ini;
 use std::{collections::HashMap, str::FromStr};
 
-/// Read an .ini file containing bootstrap config information.
+/// Read an INI file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 	// read the file from disk
 	if let Ok(config) = Ini::load_from_file(file_path) {
@@ -25,6 +25,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 					.unwrap_or_default(),
 			)
 		} else {
+			// fallback to default ports
 			(MIN_PORT, MAX_PORT)
 		};
 
@@ -42,7 +43,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			Default::default()
 		};
 
-		// Now, move on the read bootnodes if any
+		// now, move onto reading the bootnodes if any
 		let section = config
 			.section(Some("bootstrap"))
 			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
@@ -109,15 +110,20 @@ mod tests {
 
 	use super::*;
 	use std::fs;
+	use crate::prelude::{MIN_PORT, MAX_PORT};
 
-	// Function to create INI file without a static keypair
+	// define custom ports for testing
+	const CUSTOM_TCP_PORT: Port = 49666;
+	const CUSTOM_UDP_PORT: Port = 49852;
+
+	// helper to create an INI file without a static keypair
 	// here we specify a valid range for ports
 	fn create_test_ini_file_without_keypair(file_path: &str) {
 		let mut config = Ini::new();
 		config
 			.with_section(Some("ports"))
-			.set("tcp", "49666")
-			.set("udp", "49852");
+			.set("tcp", CUSTOM_TCP_PORT.to_string())
+			.set("udp", CUSTOM_UDP_PORT.to_string());
 
 		config.with_section(Some("bootstrap")).set(
 			"boot_nodes",
@@ -127,7 +133,7 @@ mod tests {
 		config.write_to_file(file_path).unwrap_or_default();
 	}
 
-	// Function to create INI file without a static keypair
+	// helper to create an INI file with keypair
 	fn create_test_ini_file_with_keypair(file_path: &str, key_type: KeyType) {
 		let mut config = Ini::new();
 
@@ -163,27 +169,30 @@ mod tests {
 			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
 		);
 
-		// write config to a new INI file
+		// write config to the new INI file
 		config.write_to_file(file_path).unwrap_or_default();
 	}
 
-	// Function to clean up temp file
+	// helper to clean up temp file
 	fn clean_up_temp_file(file_path: &str) {
 		fs::remove_file(file_path).unwrap_or_default();
 	}
 
 	#[test]
 	fn file_does_not_exist() {
+		// try to read a non-existent file should panic
 		assert_eq!(read_ini_file("non_existent_file.ini").is_err(), true);
 	}
 
 	#[test]
 	fn write_config_works() {
 		// create temp INI file
-		let file_path = "temp_test_ini_file.ini";
+		let file_path = "temp_test_write_ini_file.ini";
 
+		// create INI file without keypair for simplicity
 		create_test_ini_file_without_keypair(file_path);
 
+		// try to write some keypair to the INI file
 		let add_keypair = write_config(
 			"auth",
 			"serialized_keypair",
@@ -196,45 +205,53 @@ mod tests {
 
 		assert_eq!(add_keypair, true);
 
-		// clean_up_temp_file(file_path);
+		// delete temp file
+		clean_up_temp_file(file_path);
 	}
 
 	// read without keypair file
 	#[test]
-	fn read_ini_file_with_custom_works() {
+	fn read_ini_file_with_custom_setup_works() {
 		// create temp INI file
-		let temp_file_path_1 = "temp_test_ini_file_custom.ini";
+		let file_path = "temp_test_read_ini_file_custom.ini";
 
 		// we've set our ports to tcp=49666 and upd=49852
-		create_test_ini_file_without_keypair(temp_file_path_1);
+		create_test_ini_file_without_keypair(file_path);
 
-		let custom_ini_file_1_result: BootstrapConfig = read_ini_file(temp_file_path_1).unwrap();
+		let ini_file_result: BootstrapConfig = read_ini_file(file_path).unwrap();
 
-		assert_eq!(custom_ini_file_1_result.ports().0, 49666);
-		assert_eq!(custom_ini_file_1_result.ports().1, 49852);
+		assert_eq!(ini_file_result.ports().0, CUSTOM_TCP_PORT);
+		assert_eq!(ini_file_result.ports().1, CUSTOM_UDP_PORT);
 
 		// checking for the default keypair that's generated (ED25519) if none are provided
-		assert_eq!(custom_ini_file_1_result.keypair().into_inner().unwrap().key_type(), KeyType::Ed25519);
+		assert_eq!(ini_file_result.keypair().into_inner().unwrap().key_type(), KeyType::Ed25519);
+
+		// delete temp file
+		clean_up_temp_file(file_path);
 	}
 
 	#[test]
-	fn read_ini_file_with_default_works() {
+	fn read_ini_file_with_default_setup_works() {
 
 		// create INI file
-		let temp_file = "temp_test_ini_file_default.ini";	
-		create_test_ini_file_with_keypair(temp_file, KeyType::Ecdsa);
+		let file_path = "temp_test_ini_file_default.ini";	
+		create_test_ini_file_with_keypair(file_path, KeyType::Ecdsa);
 
-		// we know from the docs that the default ports are tcp=49352 and udp=49852
-		let ini_file_result = read_ini_file(temp_file).unwrap();
+		// assert that the content has no [port] section
+		let ini_file_content = fs::read_to_string(file_path).unwrap();
+		assert!(!ini_file_content.contains("[port]"));
 
-		assert_eq!(ini_file_result.ports().0, 49352);
-		assert_eq!(ini_file_result.ports().1, 49852);
+		// but when we call read_ini_file it generates a BootstrapConfig with default ports from crate::prelude::{MIN_PORT, MAX_PORT}
+		let ini_file_result = read_ini_file(file_path).unwrap();
+
+		assert_eq!(ini_file_result.ports().0, MIN_PORT);
+		assert_eq!(ini_file_result.ports().1, MAX_PORT);
 
 		// checking that the default keypair matches the configured keytype
 		assert_eq!(ini_file_result.keypair().into_inner().unwrap().key_type(), KeyType::Ecdsa);
 		
-		// // cleanup temp file
-		// clean_up_temp_file(temp_file_path);
+		// delete temp file
+		clean_up_temp_file(file_path);
 	}
 
 	#[test]
