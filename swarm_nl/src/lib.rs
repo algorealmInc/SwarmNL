@@ -183,7 +183,7 @@ pub mod core {
 	};
 	use libp2p::{
 		identify::{self, Info},
-		kad::{self, store::MemoryStore, PutRecordError, Record},
+		kad::{self, store::MemoryStore, Record},
 		multiaddr::{self, Protocol},
 		noise,
 		ping::{self, Failure},
@@ -773,17 +773,18 @@ pub mod core {
 										swarm.behaviour_mut().kademlia.get_providers(key.into());
 									}
 									// Stop providing a record on the network
-									AppData::KademliaStopProviding => {
-										swarm
+									AppData::KademliaStopProviding { key } => {
+										swarm.behaviour_mut().kademlia.stop_providing(&key.into());
 									}
-
-									// // Refresh DHT
-									// AppData::KademliaRefreshRoutingTable => {}
-									// // Return important information about DHT
-									// AppData::KademliaGetRoutingTableInfo => {
-									//     let _ = sender.send(StreamData::Network(NetworkData::KademliaDhtInfo { protocol_id: network_info.id.to_string() })).await;
-									// }
-									_ => {}
+									// Remove record from local store
+									AppData::KademliaDeleteRecord { key } => {
+										swarm.behaviour_mut().kademlia.remove_record(&key.into());
+									}
+									// Return important routing table info
+									AppData::KademliaGetRoutingTableInfo => {
+										// send information
+										let _ = sender.send(StreamData::Network(NetworkData::KademliaDhtInfo { protocol_id: network_info.id.to_string() })).await;
+									}
 								}
 							}
 							StreamData::Network(network_data) => {
@@ -924,15 +925,17 @@ pub mod core {
 									kad::QueryResult::GetProviders(Ok(
 										kad::GetProvidersOk::FoundProviders { key, providers, .. },
 									)) => {
-										for peer in providers {
-											println!(
-												"Peer {peer:?} provides key {:?}",
-												std::str::from_utf8(key.as_ref()).unwrap()
-											);
-										}
+										// Stringify the PeerIds
+										let peer_id_strings = providers.iter().map(|peer_id| {
+											peer_id.to_base58()
+										}).collect::<Vec<_>>();
+
+										// Inform the application that requested for it
+										let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }) )).await;
 									}
-									kad::QueryResult::GetProviders(Err(err)) => {
-										eprintln!("Failed to get providers: {err:?}");
+									kad::QueryResult::GetProviders(Err(_)) => {
+										// No providers for a particular key found
+										let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::NoProvidersFound))).await;
 									}
 									kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
 										kad::PeerRecord {
@@ -940,63 +943,63 @@ pub mod core {
 											..
 										},
 									))) => {
-										// send result of the Kademlia DHT lookup to the application layer
-										let _ = sender.send(StreamData::Network(NetworkData::KademliaLookupResult(DhtLookupResult::RecordFound {
+										// Send result of the Kademlia DHT lookup to the application layer
+										let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::RecordFound {
 											key: key.to_vec(), value
 										}))).await;
 									}
 									kad::QueryResult::GetRecord(Ok(_)) => {
-										// no record found
-										let _ = sender.send(StreamData::Network(NetworkData::KademliaLookupResult(DhtLookupResult::RecordNotFound))).await;
+										// No record found
+										let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::RecordNotFound))).await;
 									}
-									kad::QueryResult::GetRecord(Err(err)) => {
-										// no record found
-										let _ = sender.send(StreamData::Network(NetworkData::KademliaLookupResult(DhtLookupResult::RecordNotFound))).await;
+									kad::QueryResult::GetRecord(Err(_)) => {
+										// No record found
+										let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::RecordNotFound))).await;
 									}
 									kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
-										// Announce node as provider
-										let _ = swarm.behaviour_mut().kademlia.start_providing(key.into());
-
 										// Call handler
 										handler.kademlia_put_record_success(key.to_vec());
 									}
-									kad::QueryResult::PutRecord(Err(err)) => {
+									kad::QueryResult::PutRecord(Err(_)) => {
 										// Call handler
-										handler.kademlia_put_record_failure(err);
+										handler.kademlia_put_record_error();
 									}
 									kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
 										key,
 									})) => {
-										println!(
-											"Successfully put provider record {:?}",
-											std::str::from_utf8(key.as_ref()).unwrap()
-										);
+										// Call handler
+										handler.kademlia_start_providing_success(key.to_vec());
 									}
-									kad::QueryResult::StartProviding(Err(err)) => {
-										eprintln!("Failed to put provider record: {err:?}");
+									kad::QueryResult::StartProviding(Err(_)) => {
+										// Call handler
+										handler.kademlia_start_providing_error();
 									}
-									kad::QueryResult::Bootstrap(_) => todo!(),
-									kad::QueryResult::GetClosestPeers(_) => todo!(),
-									kad::QueryResult::RepublishProvider(_) => todo!(),
-									kad::QueryResult::RepublishRecord(_) => todo!(),
 									_ => {}
 								},
 								kad::Event::InboundRequest { request } => match request {
-									kad::InboundRequest::FindNode { num_closer_peers } => todo!(),
 									kad::InboundRequest::GetProvider {
 										num_closer_peers,
 										num_provider_peers,
-									} => todo!(),
-									kad::InboundRequest::AddProvider { record } => todo!(),
+									} => {
+                                        
+                                    },
+									kad::InboundRequest::AddProvider { record } => {
+                                        
+                                    },
 									kad::InboundRequest::GetRecord {
 										num_closer_peers,
 										present_locally,
-									} => todo!(),
+									} => {
+                                        
+                                    },
 									kad::InboundRequest::PutRecord {
 										source,
 										connection,
 										record,
-									} => todo!(),
+									} => {
+                                        
+                                    },
+									_ => {}
 								},
 								kad::Event::RoutingUpdated {
 									peer,
@@ -1028,7 +1031,6 @@ pub mod core {
 								// Remaining `Identify` events are not actively handled
 								_ => {}
 							},
-							_ => {}
 						},
 						SwarmEvent::ConnectionEstablished {
 							peer_id,
@@ -1246,21 +1248,32 @@ pub mod core {
 		}
 
 		/// Event that announces a `Ping` error
-		fn outbound_ping_error(&mut self, _peer_id: PeerId, err_type: Failure) {
+		fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure) {
 			// Default implementation
 		}
 
 		/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-		fn identify_info_recieved(&mut self, _peer_id: PeerId, info: Info) {
+		fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info) {
 			// Default implementation
 		}
 
-		/// Event that announced the successful write of a record to the DHT
-		fn kademlia_put_record_success(&mut self, key: Vec<u8>) {
+		/// Event that announces the successful write of a record to the DHT
+		fn kademlia_put_record_success(&mut self, _key: Vec<u8>) {
 			// Default implementation
 		}
 
-		fn kademlia_put_record_failure(&mut self, error: PutRecordError) {
+		/// Event that announces the failure of a node to save a record
+		fn kademlia_put_record_error(&mut self) {
+			// Default implementation
+		}
+
+		/// Event that announces a node as a provider of a record in the DHT
+		fn kademlia_start_providing_success(&mut self, _key: Vec<u8>) {
+			// Default implementation
+		}
+
+		/// Event that announces the failure of a node to become a provider of a record in the DHT
+		fn kademlia_start_providing_error(&mut self) {
 			// Default implementation
 		}
 	}

@@ -140,16 +140,25 @@ pub enum AppData {
 #[derive(Debug)]
 pub(crate) enum NetworkData {
 	/// Return the result of a DHT lookup
-	KademliaLookupResult(DhtLookupResult),
-	/// Return important information about the DHT
+	Kademlia(DhtOps),
+	/// Return important information about the DHT, this will be increased shortly
 	KademliaDhtInfo { protocol_id: String },
 	/// Dail peer
 	DailPeer(MultiaddrString),
 }
 
-/// Result of the Kademlia DHT Lookup operation
+/// Operations performed on the Kademlia DHT
 #[derive(Debug)]
-pub(crate) enum DhtLookupResult {
+pub(crate) enum DhtOps {
+	/// Value found in the DHT
 	RecordFound { key: Vec<u8>, value: Vec<u8> },
+	/// No value found
 	RecordNotFound,
+	/// Nodes found that provide value for key
+	ProvidersFound {
+		key: Vec<u8>,
+		providers: Vec<PeerIdString>,
+	},
+	/// No providers returned (This is most likely due to an error)
+	NoProvidersFound,
 }
