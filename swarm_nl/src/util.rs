@@ -230,7 +230,7 @@ mod tests {
 
 		// checking for the default keypair that's generated (ED25519) if none are provided
 		assert_eq!(
-			ini_file_result.keypair().into_inner().unwrap().key_type(),
+			ini_file_result.keypair().key_type(),
 			KeyType::Ed25519
 		);
 
@@ -257,7 +257,7 @@ mod tests {
 
 		// checking that the default keypair matches the configured keytype
 		assert_eq!(
-			ini_file_result.keypair().into_inner().unwrap().key_type(),
+			ini_file_result.keypair().key_type(),
 			KeyType::Ecdsa
 		);
 
