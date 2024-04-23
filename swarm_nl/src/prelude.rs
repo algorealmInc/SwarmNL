@@ -1,8 +1,8 @@
+use libp2p_identity::KeyType;
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
-use libp2p_identity::KeyType;
-use libp2p_identity::{rsa::Keypair as RsaKeypair, Keypair};
+use std::time::Instant;
 use thiserror::Error;
 
 /// Library error type containing all custom errors that could be encountered
@@ -12,7 +12,7 @@ pub enum SwarmNlError {
 	BoostrapFileReadError(String),
 	#[error("could not parse data read from bootstrap config file")]
 	BoostrapDataParseError(String),
-	#[error("could not configure transport. It is likely is not supported on machine")]
+	#[error("could not configure transport. It is likely not supported on machine")]
 	TransportConfigError(TransportOpts),
 	#[error("could not configure DNS resolution into transport")]
 	DNSConfigError,
@@ -96,12 +96,60 @@ pub enum StreamData {
 	/// This is the first message sent through the stream from the networking layer to the
 	/// application. It indicates a successful setup and readiness to begin operations.
 	Ready,
+	/// A simple echo message
+	Echo(String),
+	/// Application data sent over the stream
+	Application(AppData),
+	/// Network data sent over the stream
+	Network(NetworkData),
+}
+
+/// Data sent from the application layer to the networking layer
+#[derive(Debug)]
+pub enum AppData {
 	/// Store a value associated with a given key in the Kademlia DHT
-	KademliaStore { key: Vec<u8>, value: Vec<u8> },
+	KademliaStoreRecord {
+		key: Vec<u8>,
+		value: Vec<u8>,
+		// expiration time for local records
+		expiration_time: Option<Instant>,
+		// store on explicit peers
+		explicit_peers: Option<Vec<PeerIdString>>,
+	},
 	/// Perform a lookup of a value associated with a given key in the Kademlia DHT
-	KademliaLookup { key: Vec<u8> },
-	/// Refresh the local routing table
-	KademliaRefreshRoutingTable,
+	KademliaLookupRecord { key: Vec<u8> },
+	/// Perform a lookup of peers that store a record
+	KademliaGetProviders { key: Vec<u8> },
+	/// Stop providing a record on the network
+	KademliaStopProviding { key: Vec<u8> },
+	/// Remove record from local store
+	KademliaDeleteRecord { key: Vec<u8> },
 	/// Return important information about the local routing table
 	KademliaGetRoutingTableInfo,
+}
+
+/// I have a file (i'm a provider)
+/// I want to store this file on the dht or send it to a specific node (replication) (important when
+/// get requests come in and how to respond to it e,g check the filesystem)
+/// I want a list of people with this file
+/// I need this specific file from a person or everyone
+// I need info
+// I dont longer have this file (delete fron hashtable)
+
+/// Data sent from the networking layer to the application layer or to itself
+#[derive(Debug)]
+pub(crate) enum NetworkData {
+	/// Return the result of a DHT lookup
+	KademliaLookupResult(DhtLookupResult),
+	/// Return important information about the DHT
+	KademliaDhtInfo { protocol_id: String },
+	/// Dail peer
+	DailPeer(MultiaddrString),
+}
+
+/// Result of the Kademlia DHT Lookup operation
+#[derive(Debug)]
+pub(crate) enum DhtLookupResult {
+	RecordFound { key: Vec<u8>, value: Vec<u8> },
+	RecordNotFound,
 }
