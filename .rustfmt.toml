@@ -11,5 +11,4 @@ wrap_comments = true
 
 # Consistency
 newline_style = "Unix"
-chain_width = 80
 match_block_trailing_comma = true

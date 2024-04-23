@@ -7,16 +7,17 @@ mod util;
 /// Re-exports
 pub use crate::prelude::*;
 pub use futures::{
-    channel::mpsc::{self, Receiver, Sender},
-    SinkExt, StreamExt,
+	channel::mpsc::{self, Receiver, Sender},
+	SinkExt, StreamExt,
 };
 pub use libp2p::{
-    core::{transport::ListenerId, ConnectedPoint, Multiaddr},
-    swarm::ConnectionId,
+	core::{transport::ListenerId, ConnectedPoint, Multiaddr},
+	swarm::ConnectionId,
 };
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 
-/// The module containing the data structures and functions to setup a node identity and configure it for networking.
+/// The module containing the data structures and functions to setup a node identity and configure
+/// it for networking.
 pub mod setup {
     use std::collections::HashMap;
 

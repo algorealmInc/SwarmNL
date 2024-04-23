@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
@@ -10,20 +8,20 @@ use thiserror::Error;
 /// Library error type containing all custom errors that could be encountered
 #[derive(Error, Debug)]
 pub enum SwarmNlError {
-    #[error("could not read bootstrap config file")]
-    BoostrapFileReadError(String),
-    #[error("could not parse data read from bootstrap config file")]
-    BoostrapDataParseError(String),
-    #[error("could not configure transport. It is likely is not supported on machine")]
-    TransportConfigError(TransportOpts),
-    #[error("could not configure DNS resolution into transport")]
-    DNSConfigError,
-    #[error("could not configure the selected protocols")]
-    ProtocolConfigError,
-    #[error("could not listen on specified address")]
-    MultiaddressListenError(String),
-    #[error("could not dial remote peer")]
-    RemotePeerDialError(String),
+	#[error("could not read bootstrap config file")]
+	BoostrapFileReadError(String),
+	#[error("could not parse data read from bootstrap config file")]
+	BoostrapDataParseError(String),
+	#[error("could not configure transport. It is likely is not supported on machine")]
+	TransportConfigError(TransportOpts),
+	#[error("could not configure DNS resolution into transport")]
+	DNSConfigError,
+	#[error("could not configure the selected protocols")]
+	ProtocolConfigError,
+	#[error("could not listen on specified address")]
+	MultiaddressListenError(String),
+	#[error("could not dial remote peer")]
+	RemotePeerDialError(String),
 }
 
 /// Generic SwarmNl result type
@@ -44,46 +42,46 @@ pub const MAX_PORT: u16 = 65535;
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
 pub trait CustomFrom {
-    fn from(string: &str) -> Option<Self>
-    where
-        Self: Sized;
+	fn from(string: &str) -> Option<Self>
+	where
+		Self: Sized;
 }
 
 impl CustomFrom for KeyType {
-    fn from(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "ed25519" => Some(KeyType::Ed25519),
-            "rsa" => Some(KeyType::RSA),
-            "secp256k1" => Some(KeyType::Secp256k1),
-            "ecdsa" => Some(KeyType::Ecdsa),
-            _ => None,
-        }
-    }
+	fn from(s: &str) -> Option<Self> {
+		match s.to_lowercase().as_str() {
+			"ed25519" => Some(KeyType::Ed25519),
+			"rsa" => Some(KeyType::RSA),
+			"secp256k1" => Some(KeyType::Secp256k1),
+			"ecdsa" => Some(KeyType::Ecdsa),
+			_ => None,
+		}
+	}
 }
 
 /// Supported transport protocols
 #[derive(Hash, Eq, PartialEq, Debug)]
 pub enum TransportOpts {
-    /// QUIC transport protocol enabled with TCP/IP as fallback.
-    /// DNS lookup is also configured by default
-    TcpQuic { tcp_config: TcpConfig },
+	/// QUIC transport protocol enabled with TCP/IP as fallback.
+	/// DNS lookup is also configured by default
+	TcpQuic { tcp_config: TcpConfig },
 }
 
 /// TCP setup Config
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum TcpConfig {
-    /// Default configuration specified in the [libp2p docs](https://docs.rs/libp2p/latest/libp2p/tcp/struct.Config.html#method.new).
-    Default,
-    Custom {
-        /// Configures the IP_TTL option for new sockets.
-        ttl: u32,
-        /// Configures the TCP_NODELAY option for new sockets.
-        nodelay: bool,
-        /// Configures the listen backlog for new listen sockets.
-        backlog: u32,
-        // false by default, we're not dealing with NAT traversal for now.
-        // port_resuse: bool
-    },
+	/// Default configuration specified in the [libp2p docs](https://docs.rs/libp2p/latest/libp2p/tcp/struct.Config.html#method.new).
+	Default,
+	Custom {
+		/// Configures the IP_TTL option for new sockets.
+		ttl: u32,
+		/// Configures the TCP_NODELAY option for new sockets.
+		nodelay: bool,
+		/// Configures the listen backlog for new listen sockets.
+		backlog: u32,
+		// false by default, we're not dealing with NAT traversal for now.
+		// port_resuse: bool
+	},
 }
 
 /// A unique type that indicates that a struct is not yet initialized to its default state
@@ -95,48 +93,15 @@ pub struct Initialized;
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug)]
 pub enum StreamData {
-    /// This is the first message sent through the stream from the networking layer to the application.
-    /// It indicates a successful setup and readiness to begin operations.
-    Ready,
-    /// A simple echo message
-    Echo(String),
-    /// Application data sent over the stream
-    Application(AppData),
-    /// Network data sent over the stream
-    Network(NetworkData),
-}
-
-/// Data sent from the application layer to the networking layer
-#[derive(Debug)]
-pub enum AppData {
-    /// Store a value associated with a given key in the Kademlia DHT
-    KademliaStore {
-        key: Vec<u8>,
-        value: Vec<u8>,
-        expiration_time: Option<Instant>,
-    },
-    /// Perform a lookup of a value associated with a given key in the Kademlia DHT
-    KademliaLookup { key: Vec<u8> },
-    /// Refresh the local routing table
-    KademliaRefreshRoutingTable,
-    /// Return important information about the local routing table
-    KademliaGetRoutingTableInfo,
-}
-
-/// Data sent from the networking layer to the application layer or to itself
-#[derive(Debug)]
-pub(crate) enum NetworkData {
-    /// Return the result of a DHT lookup
-    KademliaLookupResult(DhtLookupResult),
-    /// Return important information about the DHT
-    KademliaDhtInfo { protocol_id: String },
-    /// Dail peer
-    DailPeer(String),
-}
-
-/// Result of the Kademlia DHT Lookup operation
-#[derive(Debug)]
-pub(crate) enum DhtLookupResult {
-    RecordFound { key: Vec<u8>, value: Vec<u8> },
-    RecordNotFound,
+	/// This is the first message sent through the stream from the networking layer to the
+	/// application. It indicates a successful setup and readiness to begin operations.
+	Ready,
+	/// Store a value associated with a given key in the Kademlia DHT
+	KademliaStore { key: Vec<u8>, value: Vec<u8> },
+	/// Perform a lookup of a value associated with a given key in the Kademlia DHT
+	KademliaLookup { key: Vec<u8> },
+	/// Refresh the local routing table
+	KademliaRefreshRoutingTable,
+	/// Return important information about the local routing table
+	KademliaGetRoutingTableInfo,
 }
