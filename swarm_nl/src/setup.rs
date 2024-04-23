@@ -1,5 +1,5 @@
-/// The module containing the data structures and functions to setup a node identity and configure
-/// it for networking.
+/// The module containing the data structures and functions to setup a node identity and
+/// configure it for networking.
 ///
 /// This file is part of the SwarmNl library.
 use std::collections::HashMap;
@@ -32,7 +32,8 @@ impl BootstrapConfig {
 
 	/// Return a new `BootstrapConfig` struct populated by default (empty) values.
 	///
-	/// Must be called first if the config is to be explicitly built without reading `.ini` file from disk
+	/// Must be called first if the config is to be explicitly built without reading `.ini` file
+	/// from disk
 	pub fn new() -> Self {
 		BootstrapConfig {
 			// Default TCP/IP port if not specified
@@ -75,12 +76,13 @@ impl BootstrapConfig {
 	/// Generate a Cryptographic Keypair.
 	/// An RSA keypair cannot be generated on-the-fly. It has to be generated from a `.pk8` file.
 	/// Hence the `Option` parameter is always `None` except in the case of RSA.
-	/// Please note that calling this function overrides whatever might have been read from the `.ini` file
+	/// Please note that calling this function overrides whatever might have been read from the
+	/// `.ini` file
 	///
 	/// # Panics (Only applies to the RSA keypair instance)
 	///
 	/// This function will panic if:
-    /// 1. The RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
+	/// 1. The RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
 	/// 2. If the file contains invalid data and an RSA keypair cannot be generated from it.
 	pub fn generate_keypair(self, key_type: KeyType, rsa_pk8_filepath: Option<&str>) -> Self {
 		let keypair = match key_type {
@@ -104,8 +106,8 @@ impl BootstrapConfig {
 	///
 	/// # Panics
 	///
-	/// This function will panic if the `u8` buffer is not parsable into the specified key type. This could be for
-	/// one of two reasons:
+	/// This function will panic if the `u8` buffer is not parsable into the specified key type.
+	/// This could be for one of two reasons:
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
@@ -255,7 +257,7 @@ mod tests {
 			.iter()
 			.map(|key_type| {
 				let mut invalid_keypair: [u8; 64] = [0; 64];
-                let bootstrap_config = BootstrapConfig::new();
+				let bootstrap_config = BootstrapConfig::new();
 
 				// should panic
 				panic::catch_unwind(move || {
@@ -266,19 +268,18 @@ mod tests {
 			.all(|result| { result.is_err() }));
 	}
 
-    #[test]
-    fn rsa_should_panic(){
+	#[test]
+	fn rsa_should_panic() {
 
-        // TODO 
-        // rsa_pk8_filepath is set to None
-        // - read from the file
-        // - filepath is set to None
+		// TODO
+		// rsa_pk8_filepath is set to None
+		// - read from the file
+		// - filepath is set to None
 
-        // invalid RSA cryptographic file
-        // - read from the file
-        // -RSA keypair cannot be generated from it
-    }
-
+		// invalid RSA cryptographic file
+		// - read from the file
+		// -RSA keypair cannot be generated from it
+	}
 
 	// #[test]
 	// fn test_generate_keypair_from_protobuf_should_fail() {
