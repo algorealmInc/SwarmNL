@@ -229,10 +229,7 @@ mod tests {
 		assert_eq!(ini_file_result.ports().1, CUSTOM_UDP_PORT);
 
 		// checking for the default keypair that's generated (ED25519) if none are provided
-		assert_eq!(
-			ini_file_result.keypair().into_inner().unwrap().key_type(),
-			KeyType::Ed25519
-		);
+		assert_eq!(ini_file_result.keypair().key_type(), KeyType::Ed25519);
 
 		// delete temp file
 		clean_up_temp_file(file_path);
@@ -256,10 +253,7 @@ mod tests {
 		assert_eq!(ini_file_result.ports().1, MAX_PORT);
 
 		// checking that the default keypair matches the configured keytype
-		assert_eq!(
-			ini_file_result.keypair().into_inner().unwrap().key_type(),
-			KeyType::Ecdsa
-		);
+		assert_eq!(ini_file_result.keypair().key_type(), KeyType::Ecdsa);
 
 		// delete temp file
 		clean_up_temp_file(file_path);
