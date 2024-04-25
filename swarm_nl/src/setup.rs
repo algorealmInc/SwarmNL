@@ -149,6 +149,13 @@ impl BootstrapConfig {
 	}
 }
 
+/// Implement [`Default`] for [`BootstrapConfig`]
+impl Default for BootstrapConfig {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use libp2p_identity::ed25519;
@@ -166,7 +173,7 @@ mod tests {
 
 	#[test]
 	fn default_config_works() {
-		let bootstrap_config = BootstrapConfig::new();
+		let bootstrap_config = BootstrapConfig::default();
 
 		// default port values
 		assert_eq!(bootstrap_config.tcp_port, MIN_PORT);
@@ -204,7 +211,7 @@ mod tests {
 	#[test]
 	fn new_config_with_tcp_port_works() {
 		// first assert that the default is MIN_PORT
-		let bootstrap_config = BootstrapConfig::new();
+		let bootstrap_config = BootstrapConfig::default();
 		assert_eq!(bootstrap_config.ports().0, MIN_PORT);
 
 		// now set a custom port
@@ -222,7 +229,7 @@ mod tests {
 	#[test]
 	fn new_config_with_udp_port_works() {
 		// default should be MAX_PORT
-		let bootstrap_config = BootstrapConfig::new();
+		let bootstrap_config = BootstrapConfig::default();
 		assert_eq!(bootstrap_config.ports().1, MAX_PORT);
 
 		// now set a custom port
@@ -237,7 +244,7 @@ mod tests {
 	// TODO check for should_panic macro
 	#[test]
 	fn key_type_is_invalid() {
-		let bootstrap_config = BootstrapConfig::new();
+		let bootstrap_config = BootstrapConfig::default();
 		let mut ed25519_keypair = Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
 		// should panic
@@ -257,7 +264,7 @@ mod tests {
 			.iter()
 			.map(|key_type| {
 				let mut invalid_keypair: [u8; 64] = [0; 64];
-				let bootstrap_config = BootstrapConfig::new();
+				let bootstrap_config = BootstrapConfig::default();
 
 				// should panic
 				panic::catch_unwind(move || {
