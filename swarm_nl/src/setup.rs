@@ -127,7 +127,7 @@ impl BootstrapConfig {
 			};
 
 			BootstrapConfig { keypair, ..self }
-			
+
 		} else {
 			// generate a default Ed25519 keypair
 			BootstrapConfig { keypair : Keypair::generate_ed25519(), ..self }
@@ -246,15 +246,16 @@ mod tests {
 	#[test]
 	fn key_type_is_invalid() {
 		let bootstrap_config = BootstrapConfig::default();
-		let mut ed25519_keypair = Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
+		// valid keypair
+		let mut ed25519_serialized_keypair = Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
-		// should panic
+		// should not panic but default to ed25519
 		let result = panic::catch_unwind(move || {
 			let _ = bootstrap_config
-				.generate_keypair_from_protobuf("DejisMagicCryptoType", &mut ed25519_keypair);
+				.generate_keypair_from_protobuf("DejisMagicCryptoType", &mut ed25519_serialized_keypair);
 		});
 
-		assert!(result.is_err());
+		assert!(result.is_ok());
 	}
 
 	#[test]
