@@ -111,26 +111,27 @@ impl BootstrapConfig {
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
+		
 		// Parse the key type
-		let key_type = <KeyType as CustomFrom>::from(key_type_str)
-			.ok_or(SwarmNlError::BoostrapDataParseError(
-				key_type_str.to_owned(),
-			))
-			.unwrap();
+		if let Some(key_type) = <KeyType as CustomFrom>::from(key_type_str) {	
+			let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
+			let keypair = match key_type {
+				// Generate a Ed25519 Keypair
+				KeyType::Ed25519 => Keypair::try_into_ed25519(raw_keypair).unwrap().into(),
+				// Generate a RSA Keypair
+				KeyType::RSA => Keypair::rsa_from_pkcs8(bytes).unwrap(),
+				// Generate a Secp256k1 Keypair
+				KeyType::Secp256k1 => Keypair::try_into_secp256k1(raw_keypair).unwrap().into(),
+				// Generate a Ecdsa Keypair
+				KeyType::Ecdsa => Keypair::try_into_ecdsa(raw_keypair).unwrap().into(),
+			};
 
-		let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
-		let keypair = match key_type {
-			// Generate a Ed25519 Keypair
-			KeyType::Ed25519 => Keypair::try_into_ed25519(raw_keypair).unwrap().into(),
-			// Generate a RSA Keypair
-			KeyType::RSA => Keypair::rsa_from_pkcs8(bytes).unwrap(),
-			// Generate a Secp256k1 Keypair
-			KeyType::Secp256k1 => Keypair::try_into_secp256k1(raw_keypair).unwrap().into(),
-			// Generate a Ecdsa Keypair
-			KeyType::Ecdsa => Keypair::try_into_ecdsa(raw_keypair).unwrap().into(),
-		};
-
-		BootstrapConfig { keypair, ..self }
+			BootstrapConfig { keypair, ..self }
+			
+		} else {
+			// generate a default Ed25519 keypair
+			BootstrapConfig { keypair : Keypair::generate_ed25519(), ..self }
+		}
 	}
 
 	/// Return a node's cryptographic keypair
