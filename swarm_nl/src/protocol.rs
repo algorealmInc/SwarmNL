@@ -286,6 +286,92 @@ mod fetch {
 					State::Active => {},
 				}
 
+				// Respond to fetch request
+				if let Some(fut) = self.inbound.as_mut() {
+					match fut.poll_unpin(cx) {
+						Poll::Pending => {},
+						Poll::Ready(Err(e)) => {
+							tracing::debug!("Fetch request error: {:?}", e);
+							self.inbound = None;
+						},
+						Poll::Ready(Ok(stream)) => {
+							tracing::trace!("answered fetch request from peer");
+
+							// A ping from a remote peer has been answered, wait for the next.
+							self.inbound = Some(protocol::recv_ping(stream).boxed());
+						},
+					}
+				}
+
+				loop {
+					// Check for outbound ping failures.
+					if let Some(error) = self.pending_errors.pop_back() {
+						tracing::debug!("Ping failure: {:?}", error);
+
+						self.failures += 1;
+
+						// Note: For backward-compatibility the first failure is always "free"
+						// and silent. This allows peers who use a new substream
+						// for each ping to have successful ping exchanges with peers
+						// that use a single substream, since every successful ping
+						// resets `failures` to `0`.
+						if self.failures > 1 {
+							return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Err(
+								error,
+							)));
+						}
+					}
+
+					// Continue outbound pings.
+					match self.outbound.take() {
+						Some(OutboundState::Ping(mut ping)) => match ping.poll_unpin(cx) {
+							Poll::Pending => {
+								self.outbound = Some(OutboundState::Ping(ping));
+								break;
+							},
+							Poll::Ready(Ok((stream, rtt))) => {
+								tracing::debug!(?rtt, "ping succeeded");
+								self.failures = 0;
+								self.interval.reset(self.config.interval);
+								self.outbound = Some(OutboundState::Idle(stream));
+								return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Ok(
+									rtt,
+								)));
+							},
+							Poll::Ready(Err(e)) => {
+								self.interval.reset(self.config.interval);
+								self.pending_errors.push_front(e);
+							},
+						},
+						Some(OutboundState::Idle(stream)) => match self.interval.poll_unpin(cx) {
+							Poll::Pending => {
+								self.outbound = Some(OutboundState::Idle(stream));
+								break;
+							},
+							Poll::Ready(()) => {
+								self.outbound = Some(OutboundState::Ping(
+									send_ping(stream, self.config.timeout).boxed(),
+								));
+							},
+						},
+						Some(OutboundState::OpenStream) => {
+							self.outbound = Some(OutboundState::OpenStream);
+							break;
+						},
+						None => match self.interval.poll_unpin(cx) {
+							Poll::Pending => break,
+							Poll::Ready(()) => {
+								self.outbound = Some(OutboundState::OpenStream);
+								let protocol =
+									SubstreamProtocol::new(ReadyUpgrade::new(PROTOCOL_NAME), ());
+								return Poll::Ready(
+									ConnectionHandlerEvent::OutboundSubstreamRequest { protocol },
+								);
+							},
+						},
+					}
+				}
+
 				Poll::Pending
 			}
 
