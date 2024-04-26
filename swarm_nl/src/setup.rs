@@ -1,4 +1,6 @@
-/// The module containing the data structures and functions to setup a node identity and
+/// Copyright (c) 2024 Algorealm
+
+// The module containing the data structures and functions to setup a node identity and
 /// configure it for networking.
 ///
 /// This file is part of the SwarmNl library.

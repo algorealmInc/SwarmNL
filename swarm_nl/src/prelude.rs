@@ -126,15 +126,9 @@ pub enum AppData {
 	KademliaDeleteRecord { key: Vec<u8> },
 	/// Return important information about the local routing table
 	KademliaGetRoutingTableInfo,
+	/// Fetch data(s) quickly from a peer over the network
+	FetchData { keys: Vec<Vec<u8>>, peer: PeerIdString },
 }
-
-/// I have a file (i'm a provider)
-/// I want to store this file on the dht or send it to a specific node (replication) (important when
-/// get requests come in and how to respond to it e,g check the filesystem)
-/// I want a list of people with this file
-/// I need this specific file from a person or everyone
-// I need info
-// I dont longer have this file (delete fron hashtable)
 
 /// Data sent from the networking layer to the application layer or to itself
 #[derive(Debug)]
