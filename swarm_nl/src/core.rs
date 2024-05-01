@@ -611,6 +611,15 @@ impl Core {
 								AppData::KademliaGetRoutingTableInfo => {
 									// send information
 									let _ = sender.send(StreamData::Network(NetworkData::KademliaDhtInfo { protocol_id: network_info.id.to_string() })).await;
+								},
+								// Fetch data quickly from a peer over the network
+								AppData::FetchData { keys, peer } => {
+									// inform the swarm to make the request
+									if let Ok(peer_id) = PeerId::from_bytes(peer.as_bytes()) {
+										// let _ = swarm.behaviour_mut().fetch.request_data(key, peer_id);
+									} else {
+
+									}
 								}
 							}
 						}

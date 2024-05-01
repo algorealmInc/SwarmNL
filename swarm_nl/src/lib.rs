@@ -15,6 +15,6 @@ pub use libp2p::{
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 
 mod prelude;
-mod util;
-mod setup;
-mod core;
+pub mod util;
+pub mod setup;
+pub mod core;
