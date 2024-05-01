@@ -471,7 +471,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 
 		// Spin up task to handle async operations and data on the network.
 		#[cfg(feature = "async-std-runtime")]
-		async_std::task::spawn(network_core.handle_async_operations(
+		async_std::task::spawn(network_core::handle_async_operations(
 			swarm,
 			network_info,
 			network_sender,
