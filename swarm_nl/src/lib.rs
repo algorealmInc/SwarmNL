@@ -18,4 +18,3 @@ mod prelude;
 mod util;
 mod setup;
 mod core;
-mod fetch;
