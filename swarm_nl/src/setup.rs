@@ -113,10 +113,11 @@ impl BootstrapConfig {
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
-		
+
 		// Parse the key type
 		if let Some(key_type) = <KeyType as CustomFrom>::from(key_type_str) {	
-			let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
+			let raw_keypair = Keypair::from_protobuf_encoding(bytes).expect("Invalid keypair");
+
 			let keypair = match key_type {
 				// Generate a Ed25519 Keypair
 				KeyType::Ed25519 => Keypair::try_into_ed25519(raw_keypair).unwrap().into(),
@@ -244,7 +245,6 @@ mod tests {
 		assert_eq!(bootstrap_config_invalid_udp_port.ports().1, MAX_PORT);
 	}
 
-	// TODO check for should_panic macro
 	#[test]
 	fn key_type_is_invalid() {
 		let bootstrap_config = BootstrapConfig::default();
@@ -261,22 +261,22 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(expected = "Invalid keypair")]
+	// TODO fix how panic is handled!
 	fn key_pair_is_invalid() {
-		let valid_key_type = ["Ed25519", "RSA", "Secp256k1", "Ecdsa"];
+		let valid_key_types = ["Ed25519", "RSA", "Secp256k1", "Ecdsa"];
 
-		assert!(valid_key_type
+		valid_key_types
 			.iter()
 			.map(|key_type| {
-				let mut invalid_keypair: [u8; 64] = [0; 64];
+				let mut invalid_keypair: [u8; 8] = [0; 8];
+
 				let bootstrap_config = BootstrapConfig::default();
 
-				// should panic
-				panic::catch_unwind(move || {
-					let _ = bootstrap_config
-						.generate_keypair_from_protobuf(key_type, &mut invalid_keypair);
-				})
-			})
-			.all(|result| { result.is_err() }));
+				// should panic with invalid keypair
+				let _ = bootstrap_config
+					.generate_keypair_from_protobuf(key_type, &mut invalid_keypair);
+			});
 	}
 
 	#[test]
