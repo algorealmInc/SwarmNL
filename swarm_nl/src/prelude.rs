@@ -39,6 +39,9 @@ pub type MultiaddrString = String;
 pub const MIN_PORT: u16 = 49152;
 pub const MAX_PORT: u16 = 65535;
 
+/// Default network ID
+pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
+
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
 pub trait CustomFrom {

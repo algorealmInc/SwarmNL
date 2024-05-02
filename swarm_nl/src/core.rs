@@ -92,7 +92,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 	/// A type that implements [`EventHandler`] is passed to handle and react to network events.
 	pub fn with_config(config: BootstrapConfig, handler: T) -> Self {
 		// The default network id
-		let network_id = "/swarmnl/1.0";
+		let network_id = DEFAULT_NETWORK_ID;
 
 		// TCP/IP and QUIC are supported by default
 		let default_transport = TransportOpts::TcpQuic {
@@ -1171,4 +1171,11 @@ mod ping_config {
 		pub policy: PingErrorPolicy,
 		pub manager: PingManager,
 	}
+}
+
+mod tests {
+
+	#[cfg(test)]
+	fn test() {}
+
 }
