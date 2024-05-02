@@ -491,6 +491,11 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 
 		Ok(network_core)
 	}
+
+	/// Return the network ID.
+	fn network_id(&self) -> String {
+		self.network_id.to_string()
+	}
 }
 
 /// The core interface for the application layer to interface with the networking layer
@@ -1171,9 +1176,51 @@ mod ping_config {
 	}
 }
 
+#[cfg(test)]
 mod tests {
 
-	#[cfg(test)]
-	fn test() {}
+
+	use super::*;
+
+	// set up a default node helper
+	pub fn setup_core_builder() -> CoreBuilder<DefaultHandler> {
+		let config = BootstrapConfig::default();
+		let handler = DefaultHandler;
+		
+		// return default network core builder
+		CoreBuilder::with_config(config, handler)
+	}
+
+
+	#[test]
+	fn network_id_default_behavior_works() {
+
+		// build a node with the default network id
+		let default_node = setup_core_builder();
+
+		// assert that the default network id is '/swarmnl/1.0'
+		assert_eq!(default_node.network_id(), DEFAULT_NETWORK_ID.to_string());
+
+	}
+
+	#[test]
+	fn network_id_custom_behavior_works() {
+
+		// build a node with the default network id
+		let mut custom_node = setup_core_builder();
+
+		// // pass in a custom network id and assert it works as expected
+		// let custom_protocol: &str = "/custom_protocol";
+		// custom_node.with_network_id(custom_protocol.to_string());
+
+		// assert_eq!(custom_node.network_id(), custom_protocol.to_string());
+
+		// TODO: fix the network_id handler so it panics if the network_id string is not correctly formatted
+
+	}
+
+
+	// -- CoreBuilder tests --
+
 
 }
