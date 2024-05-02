@@ -1204,18 +1204,42 @@ mod tests {
 	}
 
 	#[test]
-	fn network_id_custom_behavior_works() {
+	fn network_id_custom_behavior_works_as_expected() {
 		// build a node with the default network id
-		let mut custom_node = setup_core_builder();
+		let mut custom_builder = setup_core_builder();
 
-		// // pass in a custom network id and assert it works as expected
-		// let custom_protocol: &str = "/custom_protocol";
-		// custom_node.with_network_id(custom_protocol.to_string());
+		// pass in a custom network id and assert it works as expected
+		let custom_protocol: &str = "/custom-protocol/1.0";
+		
+		let custom_builder = custom_builder.with_network_id(custom_protocol.to_string());
 
-		// assert_eq!(custom_node.network_id(), custom_protocol.to_string());
+		// cannot be less than MIN_NETWORK_ID_LENGTH
+		assert_eq!(custom_builder.network_id().len() >= MIN_NETWORK_ID_LENGTH.into(), true);
 
-		// TODO: fix the network_id handler so it panics if the network_id string is not correctly
-		// formatted
+		// must start with a forward slash
+		assert!(custom_builder.network_id().starts_with("/"));
+
+		// assert that the custom network id is '/custom/protocol/1.0'
+		assert_eq!(custom_builder.network_id(), custom_protocol.to_string());
+	}
+
+	#[test]
+	#[should_panic]
+	fn network_id_custom_behavior_fails() {
+		// build a node with the default network id
+		let mut custom_builder = setup_core_builder();
+
+		// pass in an invalid network ID
+		// illegal: network ID length is less than MIN_NETWORK_ID_LENGTH
+		let invalid_protocol_1 = "/1.0".to_string();
+
+		let custom_builder = custom_builder.with_network_id(invalid_protocol_1);
+
+		// pass in an invalid network ID
+		// illegal: network ID must start with a forward slash
+		let invalid_protocol_2 = "1.0".to_string();
+
+		custom_builder.with_network_id(invalid_protocol_2);
 	}
 
 	// -- CoreBuilder tests --
