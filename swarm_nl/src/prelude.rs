@@ -1,4 +1,4 @@
-use libp2p_identity::KeyType;
+use libp2p_identity::{KeyType, PeerId};
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
@@ -130,7 +130,7 @@ pub enum AppData {
 	/// Return important information about the local routing table
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network
-	FetchData { keys: Vec<Vec<u8>>, peer: PeerIdString },
+	FetchData { keys: Vec<String>, peer: PeerId },
 }
 
 /// Data sent from the networking layer to the application layer or to itself

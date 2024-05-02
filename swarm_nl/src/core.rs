@@ -615,11 +615,7 @@ impl Core {
 								// Fetch data quickly from a peer over the network
 								AppData::FetchData { keys, peer } => {
 									// inform the swarm to make the request
-									if let Ok(peer_id) = PeerId::from_bytes(peer.as_bytes()) {
-										// let _ = swarm.behaviour_mut().fetch.request_data(key, peer_id);
-									} else {
-
-									}
+									
 								}
 							}
 						}
@@ -884,6 +880,7 @@ impl Core {
 							num_established,
 							concurrent_dial_errors,
 							established_in,
+							sender.clone()
 						);
 					}
 					SwarmEvent::ConnectionClosed {
@@ -994,6 +991,7 @@ pub trait EventHandler {
 		_num_established: NonZeroU32,
 		_concurrent_dial_errors: Option<Vec<(Multiaddr, TransportError<Error>)>>,
 		_established_in: Duration,
+		application_sender: Sender<StreamData>
 	) {
 		// Default implementation
 	}
