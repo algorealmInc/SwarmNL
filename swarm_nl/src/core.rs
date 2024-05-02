@@ -137,16 +137,20 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 	}
 
 	/// Explicitly configure the network (protocol) id e.g /swarmnl/1.0.
-	/// Note that it must be of the format "/protocol-name/version" else it will default to
-	/// "/swarmnl/1.0"
+	/// Note that it must be of the format "/protocol-name/version".
+	/// # Panics
+	///
+	/// This function will panic if the specified protocol id could not be parsed.
 	pub fn with_network_id(self, protocol: String) -> Self {
-		if protocol.len() > 2 && protocol.starts_with("/") {
+		if protocol.len() > MIN_NETWORK_ID_LENGTH.into() && protocol.starts_with("/") { 
 			CoreBuilder {
-				network_id: StreamProtocol::try_from_owned(protocol).unwrap(),
+				network_id: StreamProtocol::try_from_owned(protocol.clone())
+					.map_err(|_| SwarmNlError::NetworkIdParseError(protocol))
+					.unwrap(),
 				..self
 			}
 		} else {
-			self
+			panic!("could not parse provided network id");
 		}
 	}
 
@@ -492,7 +496,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		Ok(network_core)
 	}
 
-	/// Return the network ID.
+	/// Return the id of the network
 	fn network_id(&self) -> String {
 		self.network_id.to_string()
 	}
@@ -620,7 +624,7 @@ impl Core {
 								// Fetch data quickly from a peer over the network
 								AppData::FetchData { keys, peer } => {
 									// inform the swarm to make the request
-									
+
 								}
 							}
 						}
@@ -996,7 +1000,7 @@ pub trait EventHandler {
 		_num_established: NonZeroU32,
 		_concurrent_dial_errors: Option<Vec<(Multiaddr, TransportError<Error>)>>,
 		_established_in: Duration,
-		application_sender: Sender<StreamData>
+		application_sender: Sender<StreamData>,
 	) {
 		// Default implementation
 	}
@@ -1179,33 +1183,28 @@ mod ping_config {
 #[cfg(test)]
 mod tests {
 
-
 	use super::*;
 
 	// set up a default node helper
 	pub fn setup_core_builder() -> CoreBuilder<DefaultHandler> {
 		let config = BootstrapConfig::default();
 		let handler = DefaultHandler;
-		
+
 		// return default network core builder
 		CoreBuilder::with_config(config, handler)
 	}
 
-
 	#[test]
 	fn network_id_default_behavior_works() {
-
 		// build a node with the default network id
 		let default_node = setup_core_builder();
 
 		// assert that the default network id is '/swarmnl/1.0'
 		assert_eq!(default_node.network_id(), DEFAULT_NETWORK_ID.to_string());
-
 	}
 
 	#[test]
 	fn network_id_custom_behavior_works() {
-
 		// build a node with the default network id
 		let mut custom_node = setup_core_builder();
 
@@ -1215,12 +1214,9 @@ mod tests {
 
 		// assert_eq!(custom_node.network_id(), custom_protocol.to_string());
 
-		// TODO: fix the network_id handler so it panics if the network_id string is not correctly formatted
-
+		// TODO: fix the network_id handler so it panics if the network_id string is not correctly
+		// formatted
 	}
 
-
 	// -- CoreBuilder tests --
-
-
 }

@@ -22,6 +22,8 @@ pub enum SwarmNlError {
 	MultiaddressListenError(String),
 	#[error("could not dial remote peer")]
 	RemotePeerDialError(String),
+	#[error("could not parse provided network id")]
+	NetworkIdParseError(String),
 }
 
 /// Generic SwarmNl result type
@@ -39,8 +41,12 @@ pub type MultiaddrString = String;
 pub const MIN_PORT: u16 = 49152;
 pub const MAX_PORT: u16 = 65535;
 
-/// Default network ID
+/// Default network id
 pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
+/// Minimum network (protocol) id. This helps ensure that the protocol id is well formed and
+/// contains a reasonable value because it is what identifies a network, makes it unique and
+/// separates it from others.
+pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
 /// Default keep-alive network duration
 pub static DEFAULT_KEEP_ALIVE_DURATION: u64 = 60;
