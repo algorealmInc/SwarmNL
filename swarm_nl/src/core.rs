@@ -1224,7 +1224,7 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic]
+	#[should_panic(expected="could not parse provided network id")]
 	fn network_id_custom_behavior_fails() {
 		// build a node with the default network id
 		let mut custom_builder = setup_core_builder();
