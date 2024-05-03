@@ -68,7 +68,7 @@ mod age_of_empires {
 	struct Empire {
 		soldiers: u32,
 		farmers: u32,
-		black_smith: u32,
+		blacksmith: u32,
 		land_mass: u32,
         gold_reserve: u32
 	}
@@ -85,7 +85,7 @@ mod age_of_empires {
             _established_in: Duration,
             mut application_sender: Sender<StreamData>
         ) {
-            // We want to only merge with empired that are richer than us.
+            // We want to only ally with empires that are richer than us.
             // We we connect, we ask for their reserve and make sure they are richer,
             // Then we collect a fee of 200 gold coins
 
@@ -97,7 +97,7 @@ mod age_of_empires {
             
 
             // if total_coins_from_peer > self.gold_reserve {
-            //     // ask for merging fee  ReqRes::AskForMergingFee
+            //     // ask for alignment fee  ReqRes::AskForMergingFee
             //     let m_fee = 100;
                 
             //     // add to our gold reserve
@@ -105,9 +105,10 @@ mod age_of_empires {
 
             //     // deal complete
             // } else {
-            //     // we dont merge with broke empires
+            //     // we dont ally with broke empires
             //     // disconnect (This is a network operation)
             // }
+
         }
     }
 
@@ -122,7 +123,7 @@ mod age_of_empires {
         let spartan_empire = Empire {
             soldiers: 1000,
             farmers: 1000,
-            black_smith: 1000,
+            blacksmith: 1000,
             land_mass: 1000,
             gold_reserve: 1000,
         };
@@ -134,6 +135,25 @@ mod age_of_empires {
 			.unwrap();
 
         network.application_sender.try_send(StreamData::ReqRes("gettotalcoins".as_bytes().to_vec())).await;
+
+        let data = network.send_to_network_layer(get_coins(89)).await; //-> 3 seconds
+
+        // Do many task
+
+        let coin = network.recv_from_network_layer(stream_id).await;    // no waiting
+
+        // use coin
+
+
+        let data = fetch_form_network_layer(Coins).await;
+
+        let coin = fetch_from_network_layer = {
+            let data = network.send_to_network_layer(get_coins(89)).await; // -> 3 seconds
+            let coin = network.recv_from_network_layer(stream_id).await; // -> 45 seconds
+            
+            coin
+        };
+
 	}
 }
 

@@ -1,10 +1,11 @@
-//! Core data structures and protocol implementations for building a swarm.
-
+/// Copyright (c) 2024 Algorealm
+/// Core data structures and protocol implementations for building a swarm.
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	io::Error,
 	net::{IpAddr, Ipv4Addr},
 	num::NonZeroU32,
+	sync::Arc,
 	time::Duration,
 };
 
@@ -12,9 +13,12 @@ use futures::{
 	channel::mpsc::{self, Receiver, Sender},
 	select, SinkExt, StreamExt,
 };
+use futures_time::prelude::*;
+use futures_time::time::Duration as AsyncDuration;
 use libp2p::{
 	identify::{self, Info},
 	kad::{self, store::MemoryStore, Record},
+    request_response,
 	multiaddr::{self, Protocol},
 	noise,
 	ping::{self, Failure},
@@ -26,6 +30,15 @@ use super::*;
 use crate::setup::BootstrapConfig;
 use ping_config::*;
 
+#[cfg(feature = "async-std-runtime")]
+use async_std::sync::Mutex;
+
+#[cfg(feature = "tokio-runtime")]
+use tokio::sync::Mutex;
+
+mod prelude;
+use prelude::*;
+
 /// The Core Behaviour implemented which highlights the various protocols
 /// we'll be adding support for
 #[derive(NetworkBehaviour)]
@@ -34,6 +47,7 @@ struct CoreBehaviour {
 	ping: ping::Behaviour,
 	kademlia: kad::Behaviour<MemoryStore>,
 	identify: identify::Behaviour,
+    request_response: request_response::cbor::Behaviour<Rpc, Rpc>,
 }
 
 /// Network events generated as a result of supported and configured `NetworkBehaviour`'s
@@ -42,6 +56,7 @@ enum CoreEvent {
 	Ping(ping::Event),
 	Kademlia(kad::Event),
 	Identify(identify::Event),
+    RequestResponse(request_response::Event<Rpc, Rpc>),
 }
 
 /// Implement ping events for [`CoreEvent`]
@@ -65,6 +80,13 @@ impl From<identify::Event> for CoreEvent {
 	}
 }
 
+/// Implement request_response events for [`CoreEvent`]
+impl From<request_response::Event<Rpc, Rpc>> for CoreEvent {
+	fn from(event: request_response::Event<Rpc, Rpc>) -> Self {
+		CoreEvent::RequestResponse(event)
+	}
+}
+
 /// Structure containing necessary data to build [`Core`]
 pub struct CoreBuilder<T: EventHandler + Send + Sync + 'static> {
 	network_id: StreamProtocol,
@@ -73,6 +95,11 @@ pub struct CoreBuilder<T: EventHandler + Send + Sync + 'static> {
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
 	/// the network event handler
 	handler: T,
+	/// Prevents blocking forever due to absence of expected data from the network layer
+	network_read_delay: AsyncDuration,
+	/// The size of the stream buffers to use to track application requests to the network layer
+	/// internally.
+	stream_size: usize,
 	ip_address: IpAddr,
 	/// Connection keep-alive duration while idle
 	keep_alive_duration: Seconds,
@@ -121,6 +148,9 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			tcp_udp_port: config.ports(),
 			boot_nodes: config.bootnodes(),
 			handler,
+			// Timeout defaults to 60 seconds
+			network_read_delay: AsyncDuration::from_secs(NETWORK_READ_TIMEOUT),
+			stream_size: usize::MAX,
 			// Default is to listen on all interfaces (ipv4)
 			ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
 			// Default to 60 seconds
@@ -155,10 +185,31 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { ip_address, ..self }
 	}
 
+	/// Configure the timeout for requests to read from the network layer.
+	/// Reading from the network layer could potentially block if the data corresponding to the
+	/// [`StreamId`] specified could not be found (or has been read already). This prevents the
+	/// future from `await`ing forever. Defaults to 60 seconds
+	pub fn with_network_read_delay(self, network_read_delay: AsyncDuration) -> Self {
+		CoreBuilder {
+			network_read_delay,
+			..self
+		}
+	}
+
 	/// Configure how long to keep a connection alive (in seconds) once it is idling.
 	pub fn with_idle_connection_timeout(self, keep_alive_duration: Seconds) -> Self {
 		CoreBuilder {
 			keep_alive_duration,
+			..self
+		}
+	}
+
+	/// Configure the size of the stream buffers to use to track application requests to the network
+	/// layer internally. This should be as large an possible to prevent dropping of requests to the
+	/// network layer. Defaults to [`usize::MAX`]
+	pub fn with_stream_size(self, size: usize) -> Self {
+		CoreBuilder {
+			stream_size: size,
 			..self
 		}
 	}
@@ -424,7 +475,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		// application and the application will comsume it (single consumer) The second stream
 		// will have SwarmNl (being the consumer) recieve data and commands from multiple areas
 		// in the application;
-		let (mut network_sender, application_receiver) = mpsc::channel::<StreamData>(3);
+		let (_, application_receiver) = mpsc::channel::<StreamData>(3);
 		let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
 
 		// Set up the ping network info.
@@ -464,19 +515,27 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			keypair: self.keypair,
 			application_sender,
 			application_receiver,
+			stream_request_buffer: Arc::new(Mutex::new(StreamRequestBuffer {
+				size: self.stream_size,
+				buffer: Default::default(),
+			})),
+			stream_response_buffer: Arc::new(Mutex::new(StreamResponseBuffer {
+				size: self.stream_size,
+				buffer: Default::default(),
+			})),
+			network_read_delay: self.network_read_delay,
+			current_stream_id: StreamId::new(),
 		};
-
-		// Send message to application to indicate readiness
-		let _ = network_sender.send(StreamData::Ready).await;
 
 		// Spin up task to handle async operations and data on the network.
 		#[cfg(feature = "async-std-runtime")]
 		async_std::task::spawn(Core::handle_async_operations(
 			swarm,
 			network_info,
-			network_sender,
 			self.handler,
 			network_receiver,
+			network_core.stream_request_buffer.clone(),
+			network_core.stream_response_buffer.clone(),
 		));
 
 		// Spin up task to handle async operations and data on the network.
@@ -484,9 +543,10 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		tokio::task::spawn(Core::handle_async_operations(
 			swarm,
 			network_info,
-			network_sender,
 			self.handler,
 			network_receiver,
+			network_core.stream_request_buffer.clone(),
+			network_core.stream_response_buffer.clone(),
 		));
 
 		Ok(network_core)
@@ -498,9 +558,20 @@ pub struct Core {
 	keypair: Keypair,
 	/// The producing end of the stream that sends data to the network layer from the
 	/// application
-	pub application_sender: Sender<StreamData>,
+	application_sender: Sender<StreamData>,
 	/// The consuming end of the stream that recieves data from the network layer
-	pub application_receiver: Receiver<StreamData>,
+	application_receiver: Receiver<StreamData>,
+	/// This serves as a buffer for the results of the requests to the network layer.
+	/// With this, applications can make async requests and fetch their results at a later time
+	/// without waiting. This is made possible by storing a [`StreamId`] for a particular stream
+	/// request.
+	stream_response_buffer: Arc<Mutex<StreamResponseBuffer>>,
+	/// Store a [`StreamId`] representing a network request
+	stream_request_buffer: Arc<Mutex<StreamRequestBuffer>>,
+	/// The network read timeout
+	network_read_delay: AsyncDuration,
+	/// Current stream id. Useful for opening new streams, we just have to bump the number by 1
+	current_stream_id: StreamId,
 }
 
 impl Core {
@@ -529,20 +600,105 @@ impl Core {
 		false
 	}
 
+	/// Send data to the network layer and recieve a unique `StreamId` to track the request
+	/// If the internal stream buffer is full, `None` will be returned.
+	pub async fn send_to_network(&mut self, request: AppData) -> Option<StreamId> {
+		// Generate stream id
+		let stream_id = StreamId::next(self.current_stream_id);
+		let request = StreamData::Application(stream_id, request);
+
+		// Add to request buffer
+		if !self.stream_request_buffer.lock().await.insert(stream_id) {
+			// Buffer appears to be full
+			return None;
+		}
+
+		// Send request
+		self.application_sender.send(request).await;
+
+		// Store latest stream id
+		self.current_stream_id = stream_id;
+
+		Some(stream_id)
+	}
+
+	/// This is for intra-network communication
+	async fn notify_network(&mut self, request: NetworkData) -> Option<StreamId> {
+		// Generate stream id
+		let stream_id = StreamId::next(self.current_stream_id);
+		let request = StreamData::Network(stream_id, request);
+
+		// Add to request buffer
+		if !self.stream_request_buffer.lock().await.insert(stream_id) {
+			// Buffer appears to be full
+			return None;
+		}
+
+		// Send request
+		self.application_sender.send(request).await;
+
+		// Store latest stream id
+		self.current_stream_id = stream_id;
+
+		Some(stream_id)
+	}
+
+	/// Explicitly rectrieve the reponse to a request sent to the network layer.
+	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
+	/// and read immediately as the response to the request should already be in the stream response
+	/// buffer.
+	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
+		let network_data_future = async {
+			loop {
+				// tight loop
+				if let Some(response_value) = self.stream_response_buffer.lock().await.remove(&stream_id) {
+					return response_value;
+				}
+			}
+		};
+
+		Ok(network_data_future
+			.timeout(self.network_read_delay)
+			.await
+			.map_err(|_| NetworkError::NetworkReadTimeout)?)
+	}
+
+	/// Perform an atomic `send` and `recieve` from the network layer. This function is atomic and
+	/// blocks until the result of the request is returned from the network layer. This function
+	/// should mostly be used when the result of the request is needed immediately and delay can be
+	/// condoned. It will still timeout if the delay exceeds the configured period.
+	/// If the internal buffer is full, it will return an error.
+	pub async fn fetch_from_network(&mut self, request: AppData) -> NetworkResult {
+		// send request
+		if let Some(stream_id) = self.send_to_network(request).await {
+			// wait to recieve response from the network
+			self.recv_from_network(stream_id).await
+		} else {
+			Err(NetworkError::StreamBufferOverflow)
+		}
+	}
+
+	/// This is for intra-network atomic communication
+	async fn trigger_network_op(&mut self, request: NetworkData) -> NetworkResult {
+		// send request
+		if let Some(stream_id) = self.notify_network(request).await {
+			// wait to recieve response from the network
+			self.recv_from_network(stream_id).await
+		} else {
+			Err(NetworkError::StreamBufferOverflow)
+		}
+	}
+
 	/// Return the node's `PeerId`
 	pub fn peer_id(&self) -> String {
 		self.keypair.public().to_peer_id().to_string()
 	}
 
 	/// Explicitly dial a peer at runtime.
-	/// We will trigger the dial by sending a message into the stream. This is an intra-network
-	/// layer communication, multiplexed over the undelying open stream.
-	pub async fn dial_peer(&mut self, multiaddr: String) {
+	pub async fn dial_peer(&mut self, multiaddr: String) -> NetworkResult {
 		// send message into stream
-		let _ = self
-			.application_sender // `application_sender` is being used here to speak to the network layer (itself)
-			.send(StreamData::Network(NetworkData::DailPeer(multiaddr)))
-			.await;
+		self.trigger_network_op(NetworkData::DailPeer(multiaddr))
+			.await
 	}
 
 	/// Handle async operations, which basically involved handling two major data sources:
@@ -552,24 +708,26 @@ impl Core {
 	async fn handle_async_operations<T: EventHandler + Send + Sync + 'static>(
 		mut swarm: Swarm<CoreBehaviour>,
 		mut network_info: NetworkInfo,
-		mut sender: Sender<StreamData>,
 		mut handler: T,
 		mut receiver: Receiver<StreamData>,
+		mut stream_request_buffer: Arc<Mutex<StreamRequestBuffer>>,
+		mut stream_response_buffer: Arc<Mutex<StreamResponseBuffer>>,
 	) {
 		// Loop to handle incoming application streams indefinitely.
 		loop {
 			select! {
 				// handle incoming stream data
 				stream_data = receiver.select_next_some() => match stream_data {
-						// Not handled
-						StreamData::Ready => {}
-						// Put back into the stream what we read from it
-						StreamData::Echo(message) => {
-							// Echo message back into stream
-							let _ = sender.send(StreamData::Echo(message)).await;
-						}
-						StreamData::Application(app_data) => {
+						StreamData::Application(stream_id, app_data) => {
 							match app_data {
+								// Put back into the stream what we read from it
+								AppData::Echo(message) => {
+									// Remove the request from the request buffer
+									stream_request_buffer.lock().await.remove(&stream_id);
+
+									// Insert into the response buffer for it to be picked up
+									stream_response_buffer.lock().await.insert(stream_id, Box::new(message));
+								},
 								// Store a value in the DHT and (optionally) on explicit specific peers
 								AppData::KademliaStoreRecord { key,value,expiration_time, explicit_peers } => {
 									// create a kad record
@@ -588,7 +746,7 @@ impl Core {
 											PeerId::from_bytes(peer_id_string.as_bytes())
 										}).filter_map(Result::ok).collect::<Vec<_>>();
 
-										let _ = swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
+										swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
 									}
 								},
 								// Perform a lookup in the DHT
@@ -609,25 +767,30 @@ impl Core {
 								}
 								// Return important routing table info
 								AppData::KademliaGetRoutingTableInfo => {
-									// send information
-									let _ = sender.send(StreamData::Network(NetworkData::KademliaDhtInfo { protocol_id: network_info.id.to_string() })).await;
+									// Remove the request from the request buffer
+									stream_request_buffer.lock().await.remove(&stream_id);
+
+									// Insert into the response buffer for it to be picked up
+									stream_response_buffer.lock().await.insert(stream_id, Box::new(Kademlia::Info { protocol_id: network_info.id.to_string() }));
 								},
 								// Fetch data quickly from a peer over the network
 								AppData::FetchData { keys, peer } => {
 									// inform the swarm to make the request
-									
+
 								}
 							}
 						}
-						StreamData::Network(network_data) => {
+						StreamData::Network(stream_id, network_data) => {
 							match network_data {
 								// Dail peer
 								NetworkData::DailPeer(multiaddr) => {
+									// Remove the request from the request buffer
+									stream_request_buffer.lock().await.remove(&stream_id);
+
 									if let Ok(multiaddr) = multiaddr::from_url(&multiaddr) {
-										let _ = swarm.dial(multiaddr);
+										swarm.dial(multiaddr);
 									}
 								}
-								// Ignore the remaining network messages, they'll never come
 								_ => {}
 							}
 						}
@@ -991,7 +1154,7 @@ pub trait EventHandler {
 		_num_established: NonZeroU32,
 		_concurrent_dial_errors: Option<Vec<(Multiaddr, TransportError<Error>)>>,
 		_established_in: Duration,
-		application_sender: Sender<StreamData>
+		application_sender: Sender<StreamData>,
 	) {
 		// Default implementation
 	}
@@ -1169,11 +1332,4 @@ mod ping_config {
 		pub policy: PingErrorPolicy,
 		pub manager: PingManager,
 	}
-}
-
-mod tests {
-
-	#[cfg(test)]
-	fn test() {}
-
 }

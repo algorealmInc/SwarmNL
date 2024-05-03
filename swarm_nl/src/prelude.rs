@@ -1,9 +1,9 @@
-use libp2p_identity::{KeyType, PeerId};
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
-use std::time::Instant;
 use thiserror::Error;
+use libp2p_identity::KeyType;
+
 
 /// Library error type containing all custom errors that could be encountered
 #[derive(Error, Debug)]
@@ -92,70 +92,3 @@ pub struct NotInitialiazed;
 
 /// A unique type that indicates that a struct has been default configured
 pub struct Initialized;
-
-/// Data exchanged over a stream between the application and network layer
-#[derive(Debug)]
-pub enum StreamData {
-	/// This is the first message sent through the stream from the networking layer to the
-	/// application. It indicates a successful setup and readiness to begin operations.
-	Ready,
-	/// A simple echo message
-	Echo(String),
-	/// Application data sent over the stream
-	Application(AppData),
-	/// Network data sent over the stream
-	Network(NetworkData),
-}
-
-/// Data sent from the application layer to the networking layer
-#[derive(Debug)]
-pub enum AppData {
-	/// Store a value associated with a given key in the Kademlia DHT
-	KademliaStoreRecord {
-		key: Vec<u8>,
-		value: Vec<u8>,
-		// expiration time for local records
-		expiration_time: Option<Instant>,
-		// store on explicit peers
-		explicit_peers: Option<Vec<PeerIdString>>,
-	},
-	/// Perform a lookup of a value associated with a given key in the Kademlia DHT
-	KademliaLookupRecord { key: Vec<u8> },
-	/// Perform a lookup of peers that store a record
-	KademliaGetProviders { key: Vec<u8> },
-	/// Stop providing a record on the network
-	KademliaStopProviding { key: Vec<u8> },
-	/// Remove record from local store
-	KademliaDeleteRecord { key: Vec<u8> },
-	/// Return important information about the local routing table
-	KademliaGetRoutingTableInfo,
-	/// Fetch data(s) quickly from a peer over the network
-	FetchData { keys: Vec<String>, peer: PeerId },
-}
-
-/// Data sent from the networking layer to the application layer or to itself
-#[derive(Debug)]
-pub(crate) enum NetworkData {
-	/// Return the result of a DHT lookup
-	Kademlia(DhtOps),
-	/// Return important information about the DHT, this will be increased shortly
-	KademliaDhtInfo { protocol_id: String },
-	/// Dail peer
-	DailPeer(MultiaddrString),
-}
-
-/// Operations performed on the Kademlia DHT
-#[derive(Debug)]
-pub(crate) enum DhtOps {
-	/// Value found in the DHT
-	RecordFound { key: Vec<u8>, value: Vec<u8> },
-	/// No value found
-	RecordNotFound,
-	/// Nodes found that provide value for key
-	ProvidersFound {
-		key: Vec<u8>,
-		providers: Vec<PeerIdString>,
-	},
-	/// No providers returned (This is most likely due to an error)
-	NoProvidersFound,
-}
