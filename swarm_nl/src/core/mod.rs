@@ -18,10 +18,10 @@ use futures_time::time::Duration as AsyncDuration;
 use libp2p::{
 	identify::{self, Info},
 	kad::{self, store::MemoryStore, Record},
-    request_response,
 	multiaddr::{self, Protocol},
 	noise,
 	ping::{self, Failure},
+	request_response::{self, cbor::Behaviour, ProtocolSupport},
 	swarm::{ConnectionError, NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder, TransportError,
 };
@@ -47,7 +47,7 @@ struct CoreBehaviour {
 	ping: ping::Behaviour,
 	kademlia: kad::Behaviour<MemoryStore>,
 	identify: identify::Behaviour,
-    request_response: request_response::cbor::Behaviour<Rpc, Rpc>,
+	request_response: request_response::cbor::Behaviour<Rpc, Rpc>,
 }
 
 /// Network events generated as a result of supported and configured `NetworkBehaviour`'s
@@ -56,7 +56,7 @@ enum CoreEvent {
 	Ping(ping::Event),
 	Kademlia(kad::Event),
 	Identify(identify::Event),
-    RequestResponse(request_response::Event<Rpc, Rpc>),
+	RequestResponse(request_response::Event<Rpc, Rpc>),
 }
 
 /// Implement ping events for [`CoreEvent`]
@@ -111,6 +111,9 @@ pub struct CoreBuilder<T: EventHandler + Send + Sync + 'static> {
 	kademlia: kad::Behaviour<kad::store::MemoryStore>,
 	/// The `Behaviour` of the `Identify` protocol
 	identify: identify::Behaviour,
+	/// The `Behaviour` of the `Request-Response` protocol.
+	/// The second field value is the function to handle an incoming request from a peer
+	request_response: Behaviour<Rpc, Rpc>,
 }
 
 impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
@@ -136,10 +139,16 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		let store = kad::store::MemoryStore::new(peer_id);
 		let kademlia = kad::Behaviour::with_config(peer_id, store, cfg);
 
-		// Set up default config config for Kademlia
+		// Set up default config for Kademlia
 		let cfg = identify::Config::new(network_id.to_owned(), config.keypair().public())
 			.with_push_listen_addr_updates(true);
 		let identify = identify::Behaviour::new(cfg);
+
+		// Set up default config for Request-Response
+		let request_response = Behaviour::new(
+			[(StreamProtocol::new(network_id), ProtocolSupport::Full)],
+			request_response::Config::default(),
+		);
 
 		// Initialize struct with information from `BootstrapConfig`
 		CoreBuilder {
@@ -163,6 +172,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			),
 			kademlia,
 			identify,
+			request_response: request_response,
 		}
 	}
 
@@ -225,6 +235,23 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 						.with_timeout(config.timeout),
 				),
 				config.err_policy,
+			),
+			..self
+		}
+	}
+
+	/// Configure the RPC protocol for the network.
+	pub fn with_rpc<F>(self, config: RpcConfig) -> Self
+	where
+		F: Fn(Vec<String>) -> Vec<String>,
+	{
+		// Set the request-response protocol
+		CoreBuilder {
+			request_response: Behaviour::new(
+				[(self.network_id, ProtocolSupport::Full)],
+				request_response::Config::default()
+					.with_request_timeout(config.timeout)
+					.with_max_concurrent_streams(config.max_concurrent_streams),
 			),
 			..self
 		}
@@ -330,7 +357,8 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
                         CoreBehaviour {
                             ping: self.ping.0,
                             kademlia: self.kademlia,
-                            identify: self.identify
+                            identify: self.identify,
+							response_response: self.request_response
                         })
 				.map_err(|_| SwarmNlError::ProtocolConfigError)?
 				.with_swarm_config(|cfg| {
@@ -401,7 +429,8 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
                         CoreBehaviour {
                             ping: self.ping.0,
                             kademlia: self.kademlia,
-                            identify: self.identify
+                            identify: self.identify,
+							request_response: self.request_response
                         })
 				.map_err(|_| SwarmNlError::ProtocolConfigError)?
 				.with_swarm_config(|cfg| {
@@ -475,7 +504,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		// application and the application will comsume it (single consumer) The second stream
 		// will have SwarmNl (being the consumer) recieve data and commands from multiple areas
 		// in the application;
-		let (_, application_receiver) = mpsc::channel::<StreamData>(3);
+		let (application_sender, application_receiver) = mpsc::channel::<StreamData>(3);
 		let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
 
 		// Set up the ping network info.
@@ -503,7 +532,6 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			policy: self.ping.1,
 			manager,
 		};
-
 		// Aggregate the useful network information
 		let network_info = NetworkInfo {
 			id: self.network_id,
@@ -534,6 +562,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			network_info,
 			self.handler,
 			network_receiver,
+			application_sender,
 			network_core.stream_request_buffer.clone(),
 			network_core.stream_response_buffer.clone(),
 		));
@@ -545,6 +574,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			network_info,
 			self.handler,
 			network_receiver,
+			application_sender,
 			network_core.stream_request_buffer.clone(),
 			network_core.stream_response_buffer.clone(),
 		));
@@ -651,7 +681,9 @@ impl Core {
 		let network_data_future = async {
 			loop {
 				// tight loop
-				if let Some(response_value) = self.stream_response_buffer.lock().await.remove(&stream_id) {
+				if let Some(response_value) =
+					self.stream_response_buffer.lock().await.remove(&stream_id)
+				{
 					return response_value;
 				}
 			}
@@ -710,6 +742,7 @@ impl Core {
 		mut network_info: NetworkInfo,
 		mut handler: T,
 		mut receiver: Receiver<StreamData>,
+		mut sender: Sender<StreamData>,
 		mut stream_request_buffer: Arc<Mutex<StreamRequestBuffer>>,
 		mut stream_response_buffer: Arc<Mutex<StreamResponseBuffer>>,
 	) {
@@ -775,8 +808,14 @@ impl Core {
 								},
 								// Fetch data quickly from a peer over the network
 								AppData::FetchData { keys, peer } => {
-									// inform the swarm to make the request
+									// Construct the RPC object
+									let rpc = Rpc::ReqResponse { data: keys.into_iter().map(|s| s.into_bytes()).collect() };
 
+									// Inform the swarm to make the request
+									swarm
+										.behaviour_mut()
+										.request_response
+										.send_request(&peer, rpc);
 								}
 							}
 						}
@@ -841,7 +880,7 @@ impl Core {
 									}
 
 									// Call custom handler
-									handler.inbound_ping_success(peer, duration);
+									handler.inbound_ping_success(peer, duration, sender.clone());
 								}
 								// Outbound ping failure
 								Err(err_type) => {
@@ -910,7 +949,7 @@ impl Core {
 									}
 
 									// Call custom handler
-									handler.outbound_ping_error(peer, err_type);
+									handler.outbound_ping_error(peer, err_type, sender.clone());
 								}
 							}
 						}
@@ -1012,7 +1051,7 @@ impl Core {
 						CoreEvent::Identify(event) => match event {
 							identify::Event::Received { peer_id, info } => {
 								// We just recieved an `Identify` info from a peer.s
-								handler.identify_info_recieved(peer_id, info.clone());
+								handler.identify_info_recieved(peer_id, info.clone(), sender.clone());
 
 								// disconnect from peer of the network id is different
 								if info.protocol_version != network_info.id.as_ref() {
@@ -1026,6 +1065,43 @@ impl Core {
 							// Remaining `Identify` events are not actively handled
 							_ => {}
 						},
+						// Request-response
+						CoreEvent::RequestResponse(event) => match event {
+							request_response::Event::Message { peer, message } => match message {
+									// A request just came in
+									request_response::Message::Request { request_id, request, channel } => {
+										// Parse request
+										match request {
+											Rpc::ReqResponse { data } => {
+												// Pass request data to configured request handler
+												let response_data = handler.handle_incoming_message(data);
+
+												// construct an RPC
+												let response_rpc = Rpc::ReqResponse { data: response_data };
+
+												// Send the response
+												swarm.behaviour_mut().request_response.send_response(channel, response_rpc);
+											}
+										}
+									},
+									// We have a response message
+									request_response::Message::Response { request_id, response } => {
+										// Remove the request from the request buffer
+										stream_request_buffer.lock().await.remove(&stream_id);
+
+										// Insert into the response buffer for it to be picked up
+										stream_response_buffer.lock().await.insert(stream_id, Box::new(message));
+
+									},
+							},
+							request_response::Event::OutboundFailure { peer, request_id, error } => {
+
+							},
+							request_response::Event::InboundFailure { peer, request_id, error } => {
+
+							},
+							request_response::Event::ResponseSent { peer, request_id } => {},
+						}
 					},
 					SwarmEvent::ConnectionEstablished {
 						peer_id,
@@ -1060,6 +1136,7 @@ impl Core {
 							&endpoint,
 							num_established,
 							cause,
+							sender.clone()
 						);
 					}
 					SwarmEvent::ExpiredListenAddr {
@@ -1067,7 +1144,7 @@ impl Core {
 						address,
 					} => {
 						// call configured handler
-						handler.expired_listen_addr(listener_id, address);
+						handler.expired_listen_addr(listener_id, address, sender.clone());
 					}
 					SwarmEvent::ListenerClosed {
 						listener_id,
@@ -1075,33 +1152,33 @@ impl Core {
 						reason: _,
 					} => {
 						// call configured handler
-						handler.listener_closed(listener_id, addresses);
+						handler.listener_closed(listener_id, addresses, sender.clone());
 					}
 					SwarmEvent::ListenerError {
 						listener_id,
 						error: _,
 					} => {
 						// call configured handler
-						handler.listener_error(listener_id);
+						handler.listener_error(listener_id, sender.clone());
 					}
 					SwarmEvent::Dialing {
 						peer_id,
 						connection_id,
 					} => {
 						// call configured handler
-						handler.dialing(peer_id, connection_id);
+						handler.dialing(peer_id, connection_id, sender.clone());
 					}
 					SwarmEvent::NewExternalAddrCandidate { address } => {
 						// call configured handler
-						handler.new_external_addr_candidate(address);
+						handler.new_external_addr_candidate(address, sender.clone());
 					}
 					SwarmEvent::ExternalAddrConfirmed { address } => {
 						// call configured handler
-						handler.external_addr_confirmed(address);
+						handler.external_addr_confirmed(address, sender.clone());
 					}
 					SwarmEvent::ExternalAddrExpired { address } => {
 						// call configured handler
-						handler.external_addr_expired(address);
+						handler.external_addr_expired(address, sender.clone());
 					}
 					SwarmEvent::IncomingConnection {
 						connection_id,
@@ -1109,7 +1186,7 @@ impl Core {
 						send_back_addr,
 					} => {
 						// call configured handler
-						handler.incoming_connection(connection_id, local_addr, send_back_addr);
+						handler.incoming_connection(connection_id, local_addr, send_back_addr, sender.clone());
 					}
 					SwarmEvent::IncomingConnectionError {
 						connection_id,
@@ -1122,6 +1199,7 @@ impl Core {
 							connection_id,
 							local_addr,
 							send_back_addr,
+							sender.clone()
 						);
 					}
 					SwarmEvent::OutgoingConnectionError {
@@ -1130,7 +1208,7 @@ impl Core {
 						error: _,
 					} => {
 						// call configured handler
-						handler.outgoing_connection_error(connection_id, peer_id);
+						handler.outgoing_connection_error(connection_id, peer_id, sender.clone());
 					}
 					_ => todo!(),
 				}
@@ -1154,7 +1232,7 @@ pub trait EventHandler {
 		_num_established: NonZeroU32,
 		_concurrent_dial_errors: Option<Vec<(Multiaddr, TransportError<Error>)>>,
 		_established_in: Duration,
-		application_sender: Sender<StreamData>,
+		_application_sender: Sender<StreamData>,
 	) {
 		// Default implementation
 	}
@@ -1167,42 +1245,43 @@ pub trait EventHandler {
 		_endpoint: &ConnectedPoint,
 		_num_established: u32,
 		_cause: Option<ConnectionError>,
+		_application_sender: Sender<StreamData>,
 	) {
 		// Default implementation
 	}
 
 	/// Event that announces expired listen address.
-	fn expired_listen_addr(&mut self, _listener_id: ListenerId, _address: Multiaddr) {
+	fn expired_listen_addr(&mut self, _listener_id: ListenerId, _address: Multiaddr, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces a closed listener.
-	fn listener_closed(&mut self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>) {
+	fn listener_closed(&mut self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces a listener error.
-	fn listener_error(&mut self, _listener_id: ListenerId) {
+	fn listener_error(&mut self, _listener_id: ListenerId, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces a dialing attempt.
-	fn dialing(&mut self, _peer_id: Option<PeerId>, _connection_id: ConnectionId) {
+	fn dialing(&mut self, _peer_id: Option<PeerId>, _connection_id: ConnectionId, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces a new external address candidate.
-	fn new_external_addr_candidate(&mut self, _address: Multiaddr) {
+	fn new_external_addr_candidate(&mut self, _address: Multiaddr, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces a confirmed external address.
-	fn external_addr_confirmed(&mut self, _address: Multiaddr) {
+	fn external_addr_confirmed(&mut self, _address: Multiaddr, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces an expired external address.
-	fn external_addr_expired(&mut self, _address: Multiaddr) {
+	fn external_addr_expired(&mut self, _address: Multiaddr, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
@@ -1213,6 +1292,7 @@ pub trait EventHandler {
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
+		_application_sender: Sender<StreamData>
 	) {
 		// Default implementation
 	}
@@ -1224,6 +1304,7 @@ pub trait EventHandler {
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
+		_application_sender: Sender<StreamData>
 	) {
 		// Default implementation
 	}
@@ -1234,28 +1315,29 @@ pub trait EventHandler {
 		&mut self,
 		_connection_id: ConnectionId,
 		_peer_id: Option<PeerId>,
+		_application_sender: Sender<StreamData>
 	) {
 		// Default implementation
 	}
 
 	/// Event that announces the arrival of a ping message from a peer.
 	/// The duration it took for a round trip is also returned
-	fn inbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
+	fn inbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces a `Ping` error
-	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure) {
+	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-	fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info) {
+	fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces the successful write of a record to the DHT
-	fn kademlia_put_record_success(&mut self, _key: Vec<u8>) {
+	fn kademlia_put_record_success(&mut self, _key: Vec<u8>, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
@@ -1265,21 +1347,29 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a node as a provider of a record in the DHT
-	fn kademlia_start_providing_success(&mut self, _key: Vec<u8>) {
+	fn kademlia_start_providing_success(&mut self, _key: Vec<u8>, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
 
 	/// Event that announces the failure of a node to become a provider of a record in the DHT
-	fn kademlia_start_providing_error(&mut self) {
+	fn kademlia_start_providing_error(&mut self, _application_sender: Sender<StreamData>) {
 		// Default implementation
 	}
+
+	/// Event that announces the arrival of an RPC message
+	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
 }
 
 /// Default network event handler
 pub struct DefaultHandler;
 
 /// Implement [`EventHandler`] for [`DefaultHandler`]
-impl EventHandler for DefaultHandler {}
+impl EventHandler for DefaultHandler {
+	/// Echo the message back to the sender
+	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+		data
+	}
+}
 
 /// Important information to obtain from the [`CoreBuilder`], to properly handle network
 /// operations

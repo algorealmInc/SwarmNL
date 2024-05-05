@@ -1,4 +1,5 @@
 use rand::random;
+use serde::{Deserialize, Serialize};
 /// Copyright (c) 2024 Algorealm
 use std::time::Instant;
 use thiserror::Error;
@@ -198,4 +199,19 @@ impl StreamResponseBuffer {
 	pub fn contains(&mut self, id: &StreamId) -> bool {
 		self.buffer.contains_key(id)
 	}
+}
+
+/// Type representing the RPC data structure sent between nodes in the network
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(super) enum Rpc {
+	/// Using request-response
+	ReqResponse { data: Vec<Vec<u8>> },
+}
+
+/// The configuration for the RPC protocol
+pub struct RpcConfig {
+	/// Timeout for inbound and outbound requests
+	pub timeout: Duration,
+	/// Maximum number of concurrent inbound + outbound streams
+	pub max_concurrent_streams: usize,
 }
