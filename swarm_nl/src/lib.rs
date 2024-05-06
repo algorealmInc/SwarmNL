@@ -15,7 +15,7 @@ pub use libp2p::{
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 pub use async_trait::async_trait;
 
-mod prelude;
-pub mod util;
-pub mod setup;
 pub mod core;
+mod prelude;
+pub mod setup;
+pub mod util;

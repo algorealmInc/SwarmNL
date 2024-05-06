@@ -1,8 +1,9 @@
+use libp2p_identity::{KeyType, PeerId};
+use std::net::Ipv4Addr;
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
 use thiserror::Error;
-use std::net::Ipv4Addr;
 
 /// Default IP address when no address is specified.
 pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
