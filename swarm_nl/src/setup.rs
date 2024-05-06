@@ -175,6 +175,36 @@ mod tests {
 	use super::*;
 	use std::fs;
 	use std::panic;
+	use std::process::Command;
+
+	// helper to generate RSA keypair files
+	// commands taken from https://docs.rs/libp2p-identity/0.2.8/libp2p_identity/struct.Keypair.html#example-generating-rsa-keys-with-openssl
+	fn generate_rsa_keypair_files() {
+		   // Generate RSA private key
+		   let genrsa_output = Command::new("openssl")
+		   .args(&["genrsa", "-out", "private.pem", "2048"])
+		   .output()
+		   .expect("Failed to execute openssl genrsa command");
+   
+	   // Convert private key to PKCS8 format
+	   let pkcs8_output = Command::new("openssl")
+		   .args(&["pkcs8", "-in", "private.pem", "-inform", "PEM", "-topk8", "-out", "private.pk8", "-outform", "DER", "-nocrypt"])
+		   .output()
+		   .expect("Failed to execute openssl pkcs8 command");
+   
+	   // Check command outputs for success or failure
+	   if genrsa_output.status.success() {
+		   println!("RSA private key generated successfully");
+	   } else {
+		   eprintln!("Failed to generate RSA private key:\n{}", String::from_utf8_lossy(&genrsa_output.stderr));
+	   }
+   
+	   if pkcs8_output.status.success() {
+		   println!("RSA private key converted to PKCS8 format successfully");
+	   } else {
+		   eprintln!("Failed to convert RSA private key to PKCS8 format:\n{}", String::from_utf8_lossy(&pkcs8_output.stderr));
+	   }
+   }
 	
 	#[test]
 	fn file_read_should_panic() {
@@ -305,15 +335,19 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic]
-	fn rsa_with_invalid_contents() {
+	fn rsa_with_invalid_contents_should_panic() {
 		// create an RSA file with invalid contents
 		let file_path = "invalid_rsa_keypair_temp_file.pk8";
 		let invalid_keypair: [u8; 64] = [0; 64];
 		std::fs::write(file_path, invalid_keypair).unwrap();
 
-		// should panic when parsing invalid RSA file
-		let _ = BootstrapConfig::default().generate_keypair(KeyType::RSA, Some(file_path));
+		let result = panic::catch_unwind(|| {
+			// should panic when parsing invalid RSA file
+			let _ = BootstrapConfig::default().generate_keypair(KeyType::RSA, Some(file_path));
+		});
+		
+		// this will return an error
+		assert!(result.is_err());
 
 		// clean-up invalid_rsa_keypair_temp_file.pk8
 		fs::remove_file(file_path).unwrap_or_default();
@@ -321,11 +355,16 @@ mod tests {
 
 	#[test]
 	fn rsa_from_valid_file_works() {
-		// use a valid RSA file
-		let file_path = "../private.pk8";
+		// create a valid private.pk8 file
+		generate_rsa_keypair_files();
 
-		let bootstrap_config = BootstrapConfig::default();
-		let _ = bootstrap_config.generate_keypair(KeyType::RSA, Some(file_path));
+		let mut bootstrap_config = BootstrapConfig::new().generate_keypair(KeyType::RSA, Some("private.pk8"));
+		
+		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::RSA);
+
+		// clean-up RSA files
+		fs::remove_file("private.pk8").unwrap_or_default();
+		fs::remove_file("private.pem").unwrap_or_default();
 	}
 
 
