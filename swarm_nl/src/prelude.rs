@@ -2,8 +2,13 @@
 ///  
 /// This file is part of the SwarmNL library.
 use thiserror::Error;
-use libp2p_identity::KeyType;
+use std::net::Ipv4Addr;
 
+/// Default IP address when no address is specified.
+pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
+
+/// Default amount of time to keep a connection alive.
+pub static DEFAULT_KEEP_ALIVE_DURATION: u64 = 60;
 
 /// Library error type containing all custom errors that could be encountered
 #[derive(Error, Debug)]
