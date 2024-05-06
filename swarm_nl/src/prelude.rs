@@ -69,7 +69,7 @@ impl CustomFrom for KeyType {
 }
 
 /// Supported transport protocols
-#[derive(Hash, Eq, PartialEq, Debug)]
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum TransportOpts {
 	/// QUIC transport protocol enabled with TCP/IP as fallback.
 	/// DNS lookup is also configured by default
