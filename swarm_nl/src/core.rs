@@ -124,10 +124,9 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			boot_nodes: config.bootnodes(),
 			handler,
 			// Default is to listen on all interfaces (ipv4)
-			// TODO add default to prelude
-			ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-			// Default to 60 seconds - TODO: add default to prelude
-			keep_alive_duration: 60,
+			ip_address: DEFAULT_IP_ADDRESS.into(),
+			// Default is 60 seconds
+			keep_alive_duration: DEFAULT_KEEP_ALIVE_DURATION.into(),
 			transport: default_transport,
 			// The peer will be disconnected after 20 successive timeout errors are recorded
 			ping: (
@@ -1250,10 +1249,10 @@ mod tests {
 		// default keep alive duration is 60 seconds
 		assert_eq!(default_node.keep_alive_duration, 60);
 
-		// default listen on is 127:0:0:1
+		// default listen on is 0:0:0:0
 		assert_eq!(
 			default_node.ip_address,
-			IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+			IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))
 		);
 
 		// default tcp/udp port is MIN_PORT and MAX_PORT
