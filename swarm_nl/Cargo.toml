@@ -27,4 +27,4 @@ optional = true
 
 [features]
 tokio-runtime = ["tokio"]
-async-std-runtime = ["async-std"]
+async-std-runtime = []
