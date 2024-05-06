@@ -116,7 +116,7 @@ impl BootstrapConfig {
 
 		// Parse the key type
 		if let Some(key_type) = <KeyType as CustomFrom>::from(key_type_str) {	
-			let raw_keypair = Keypair::from_protobuf_encoding(bytes).expect("Invalid keypair");
+			let raw_keypair = Keypair::from_protobuf_encoding(bytes).expect("Invalid keypair: protobuf bytes not parsable into keypair");
 
 			let keypair = match key_type {
 				// Generate a Ed25519 Keypair
@@ -261,22 +261,17 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "Invalid keypair")]
+	#[should_panic(expected = "Invalid keypair: protobuf bytes not parsable into keypair")]
 	// TODO fix how panic is handled!
 	fn key_pair_is_invalid() {
 		let valid_key_types = ["Ed25519", "RSA", "Secp256k1", "Ecdsa"];
+		let mut invalid_keypair: [u8; 2] = [0; 2];
 
-		valid_key_types
-			.iter()
-			.map(|key_type| {
-				let mut invalid_keypair: [u8; 8] = [0; 8];
-
-				let bootstrap_config = BootstrapConfig::default();
-
-				// should panic with invalid keypair
-				let _ = bootstrap_config
-					.generate_keypair_from_protobuf(key_type, &mut invalid_keypair);
-			});
+		// keypair is invalid for each valid key type
+		let _ = BootstrapConfig::default().generate_keypair_from_protobuf(valid_key_types[0], &mut invalid_keypair);
+		let _ = BootstrapConfig::default().generate_keypair_from_protobuf(valid_key_types[1], &mut invalid_keypair);
+		let _ = BootstrapConfig::default().generate_keypair_from_protobuf(valid_key_types[2], &mut invalid_keypair);
+		let _ = BootstrapConfig::default().generate_keypair_from_protobuf(valid_key_types[3], &mut invalid_keypair);
 	}
 
 	#[test]
