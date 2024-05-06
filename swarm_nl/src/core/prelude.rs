@@ -1,7 +1,8 @@
+use libp2p::{kad::QueryId, request_response::OutboundRequestId};
 use rand::random;
 use serde::{Deserialize, Serialize};
 /// Copyright (c) 2024 Algorealm
-use std::time::Instant;
+use std::{any::Any, time::Instant};
 use thiserror::Error;
 
 use super::*;
@@ -71,6 +72,10 @@ pub enum NetworkError {
 	NetworkReadTimeout,
 	#[error("internal request stream buffer is full")]
 	StreamBufferOverflow,
+	#[error("failed to store record in DHT")]
+	KadStoreRecordError(Vec<u8>),
+	#[error("failed to fetch data from peer")]
+	RpcDataFetchError
 }
 
 /// Operations performed on the Kademlia DHT
@@ -106,18 +111,29 @@ impl StreamId {
 	}
 }
 
+/// Enum that represents various ids that can be tracked on the [`StreamResponseBuffer`]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum TrackableStreamId {
+	/// Our custom stream id
+	Id(StreamId),
+	/// RPC request id
+	Outbound(OutboundRequestId),
+	/// Kademlia query id
+	Kad(QueryId),
+}
+
 /// Type that specifies the result of querying the network layer
 pub type NetworkResult = Result<Box<dyn StreamResponseType>, NetworkError>;
 
 /// Marker trait that indicates a stream reponse data object
 pub trait StreamResponseType
 where
-	Self: Send + Sync + 'static,
+	Self: Send + Sync + Any + 'static,
 {
 }
 
 /// Macro that implements [`StreamResponseType`] for various types to occupy the
-/// [`StreamResponseBuffer`]
+/// [`StreamResponseBuffer`] [`StreamResponseBuffer`]
 macro_rules! impl_stream_response_for_types { ( $( $t:ident )* ) => {
 	$(
 		impl StreamResponseType for $t {}
@@ -125,7 +141,7 @@ macro_rules! impl_stream_response_for_types { ( $( $t:ident )* ) => {
 }
 
 impl_stream_response_for_types!(u8 i8 u16 i16 u32 i32 u64 i64 u128 i128
-	usize isize f32 f64 String bool Kademlia);
+	usize isize f32 f64 String bool Kademlia StreamId SwarmNlError NetworkError DhtOps);
 
 /// Type that keeps track of the requests from the application layer.
 /// This type has a maximum buffer size and will drop subsequent requests when full.
@@ -168,7 +184,7 @@ impl StreamRequestBuffer {
 pub(super) struct StreamResponseBuffer {
 	/// Max responses we can keep track of
 	size: usize,
-	buffer: HashMap<StreamId, Box<dyn StreamResponseType>>,
+	buffer: HashMap<TrackableStreamId, Box<dyn StreamResponseType>>,
 }
 
 impl StreamResponseBuffer {
@@ -180,9 +196,9 @@ impl StreamResponseBuffer {
 		}
 	}
 
-	/// Push [`StreamId`]s into buffer.
+	/// Push a [`TrackableStreamId`] into buffer.
 	/// Returns `false` if the buffer is full and request cannot be stored
-	pub fn insert(&mut self, id: StreamId, response: Box<dyn StreamResponseType>) -> bool {
+	pub fn insert(&mut self, id: TrackableStreamId, response: Box<dyn StreamResponseType>) -> bool {
 		if self.buffer.len() < self.size {
 			self.buffer.insert(id, response);
 			return true;
@@ -190,13 +206,13 @@ impl StreamResponseBuffer {
 		false
 	}
 
-	/// Remove a [`StreamId`] from the buffer
-	pub fn remove(&mut self, id: &StreamId) -> Option<Box<dyn StreamResponseType>> {
+	/// Remove a [`TrackableStreamId`] from the buffer
+	pub fn remove(&mut self, id: &TrackableStreamId) -> Option<Box<dyn StreamResponseType>> {
 		self.buffer.remove(&id)
 	}
 
 	/// Check if buffer contains a value
-	pub fn contains(&mut self, id: &StreamId) -> bool {
+	pub fn contains(&mut self, id: &TrackableStreamId) -> bool {
 		self.buffer.contains_key(id)
 	}
 }

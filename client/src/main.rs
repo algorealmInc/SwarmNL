@@ -154,6 +154,9 @@ mod age_of_empires {
             coin
         };
 
+
+        // TODO! SPECICIFY APPDATA TYPE AND ITS RESPONSE!
+
 	}
 }
 

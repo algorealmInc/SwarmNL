@@ -1,6 +1,7 @@
 /// Copyright (c) 2024 Algorealm
 /// Core data structures and protocol implementations for building a swarm.
 use std::{
+	any::Any,
 	collections::{HashMap, HashSet},
 	io::Error,
 	net::{IpAddr, Ipv4Addr},
@@ -673,6 +674,7 @@ impl Core {
 		Some(stream_id)
 	}
 
+	/// TODO! Buffer clearnup algorithm
 	/// Explicitly rectrieve the reponse to a request sent to the network layer.
 	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
 	/// and read immediately as the response to the request should already be in the stream response
@@ -681,10 +683,20 @@ impl Core {
 		let network_data_future = async {
 			loop {
 				// tight loop
-				if let Some(response_value) =
-					self.stream_response_buffer.lock().await.remove(&stream_id)
+				if let Some(response_value) = self
+					.stream_response_buffer
+					.lock()
+					.await
+					.remove(&TrackableStreamId::Id(stream_id))
 				{
-					return response_value;
+					// Make sure the value is not `StreamId`. If it is, then the request is being
+					// processed and the final value we want has not arrived.
+
+					// Get inner boxed value
+					let inner_value = &response_value as &dyn Any;
+					if let None = inner_value.downcast_ref::<StreamId>() {
+						return response_value;
+					}
 				}
 			}
 		};
@@ -752,6 +764,8 @@ impl Core {
 				// handle incoming stream data
 				stream_data = receiver.select_next_some() => match stream_data {
 						StreamData::Application(stream_id, app_data) => {
+							// Trackable stream id
+							let trackable_stream_id = TrackableStreamId::Id(stream_id);
 							match app_data {
 								// Put back into the stream what we read from it
 								AppData::Echo(message) => {
@@ -759,10 +773,10 @@ impl Core {
 									stream_request_buffer.lock().await.remove(&stream_id);
 
 									// Insert into the response buffer for it to be picked up
-									stream_response_buffer.lock().await.insert(stream_id, Box::new(message));
+									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
 								},
 								// Store a value in the DHT and (optionally) on explicit specific peers
-								AppData::KademliaStoreRecord { key,value,expiration_time, explicit_peers } => {
+								AppData::KademliaStoreRecord { key, value, expiration_time, explicit_peers } => {
 									// create a kad record
 									let mut record = Record::new(key, value);
 
@@ -770,33 +784,57 @@ impl Core {
 									record.expires = expiration_time;
 
 									// Insert into DHT
-									let _ = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One);
+									if let Ok(query_id) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
+										// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+										// where we can get the response and then replace the buffer with the actual response data
+										stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(query_id), Box::new(stream_id));
 
-									// Cache record on peers explicitly (if specified)
-									if let Some(explicit_peers) = explicit_peers {
-										// Extract PeerIds
-										let peers = explicit_peers.iter().map(|peer_id_string| {
-											PeerId::from_bytes(peer_id_string.as_bytes())
-										}).filter_map(Result::ok).collect::<Vec<_>>();
+										// Cache record on peers explicitly (if specified)
+										if let Some(explicit_peers) = explicit_peers {
+											// Extract PeerIds
+											let peers = explicit_peers.iter().map(|peer_id_string| {
+												PeerId::from_bytes(peer_id_string.as_bytes())
+											}).filter_map(Result::ok).collect::<Vec<_>>();
 
-										swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
+											swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
+										}
+									} else {
+										// Delete the request from the stream and then return a write error
+										stream_request_buffer.lock().await.remove(&stream_id);
+
+										// Return error
+										stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
 									}
 								},
 								// Perform a lookup in the DHT
 								AppData::KademliaLookupRecord { key } => {
-									swarm.behaviour_mut().kademlia.get_record(key.into());
+									let query_id = swarm.behaviour_mut().kademlia.get_record(key.into());
+
+									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+									// where we can get the response and then replace the buffer with the actual response data
+									stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(query_id), Box::new(stream_id));
 								},
 								// Perform a lookup of peers that store a record
 								AppData::KademliaGetProviders { key } => {
-									swarm.behaviour_mut().kademlia.get_providers(key.into());
+									let query_id = swarm.behaviour_mut().kademlia.get_providers(key.into());
+
+									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+									// where we can get the response and then replace the buffer with the actual response data
+									stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(query_id), Box::new(stream_id));
 								}
 								// Stop providing a record on the network
 								AppData::KademliaStopProviding { key } => {
 									swarm.behaviour_mut().kademlia.stop_providing(&key.into());
+
+									// Respond with a success
+									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
 								}
 								// Remove record from local store
 								AppData::KademliaDeleteRecord { key } => {
 									swarm.behaviour_mut().kademlia.remove_record(&key.into());
+
+									// Respond with a success
+									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
 								}
 								// Return important routing table info
 								AppData::KademliaGetRoutingTableInfo => {
@@ -804,7 +842,7 @@ impl Core {
 									stream_request_buffer.lock().await.remove(&stream_id);
 
 									// Insert into the response buffer for it to be picked up
-									stream_response_buffer.lock().await.insert(stream_id, Box::new(Kademlia::Info { protocol_id: network_info.id.to_string() }));
+									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: network_info.id.to_string() }));
 								},
 								// Fetch data quickly from a peer over the network
 								AppData::FetchData { keys, peer } => {
@@ -812,14 +850,20 @@ impl Core {
 									let rpc = Rpc::ReqResponse { data: keys.into_iter().map(|s| s.into_bytes()).collect() };
 
 									// Inform the swarm to make the request
-									swarm
+									let outbound_id = swarm
 										.behaviour_mut()
 										.request_response
 										.send_request(&peer, rpc);
+
+									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+									// where we can get the response and then replace the buffer with the actual response data
+									stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
 								}
 							}
 						}
 						StreamData::Network(stream_id, network_data) => {
+							// Trackable stream id
+							let trackable_stream_id = TrackableStreamId::Id(stream_id);
 							match network_data {
 								// Dail peer
 								NetworkData::DailPeer(multiaddr) => {
@@ -827,7 +871,12 @@ impl Core {
 									stream_request_buffer.lock().await.remove(&stream_id);
 
 									if let Ok(multiaddr) = multiaddr::from_url(&multiaddr) {
-										swarm.dial(multiaddr);
+										if let Ok(_) = swarm.dial(multiaddr) {
+											// Put result into response buffer
+											stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
+										} else {
+											stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
+										}
 									}
 								}
 								_ => {}
@@ -989,10 +1038,26 @@ impl Core {
 								kad::QueryResult::GetRecord(Err(_)) => {
 									// No record found
 									let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::RecordNotFound))).await;
+
+									// Delete the temporary data and then return error
+
+									// Get `StreamId`
+									if let Some(opaque_data) = stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+										// Make sure this is temporary data (i.e `StreamId`)
+										let opaque_data = &opaque_data as &dyn Any;
+
+										if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+											// Remove the request from the request buffer
+											stream_request_buffer.lock().await.remove(&stream_id);
+
+											// Return error
+											stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
+										}
+									}
 								}
 								kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
 									// Call handler
-									handler.kademlia_put_record_success(key.to_vec());
+									handler.kademlia_put_record_success(key.to_vec(), sender.clone());
 								}
 								kad::QueryResult::PutRecord(Err(_)) => {
 									// Call handler
@@ -1002,11 +1067,11 @@ impl Core {
 									key,
 								})) => {
 									// Call handler
-									handler.kademlia_start_providing_success(key.to_vec());
+									handler.kademlia_start_providing_success(key.to_vec(), sender.clone());
 								}
 								kad::QueryResult::StartProviding(Err(_)) => {
 									// Call handler
-									handler.kademlia_start_providing_error();
+									handler.kademlia_start_providing_error(sender.clone());
 								}
 								_ => {}
 							},
@@ -1086,21 +1151,41 @@ impl Core {
 									},
 									// We have a response message
 									request_response::Message::Response { request_id, response } => {
-										// Remove the request from the request buffer
-										stream_request_buffer.lock().await.remove(&stream_id);
+										// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
 
-										// Insert into the response buffer for it to be picked up
-										stream_response_buffer.lock().await.insert(stream_id, Box::new(message));
+										// Get `StreamId`
+										if let Some(opaque_data) = stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+											// Make sure this is temporary data (i.e `StreamId`)
+											let opaque_data = &opaque_data as &dyn Any;
 
+											if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+												// Remove the request from the request buffer
+												stream_request_buffer.lock().await.remove(&stream_id);
+
+												// Insert response message the response buffer for it to be picked up
+												stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(message.into()));
+											}
+										}
 									},
 							},
 							request_response::Event::OutboundFailure { peer, request_id, error } => {
+								// Delete the temporary data and then return error
 
-							},
-							request_response::Event::InboundFailure { peer, request_id, error } => {
+								// Get `StreamId`
+								if let Some(opaque_data) = stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+									// Make sure this is temporary data (i.e `StreamId`)
+									let opaque_data = &opaque_data as &dyn Any;
 
+									if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+										// Remove the request from the request buffer
+										stream_request_buffer.lock().await.remove(&stream_id);
+
+										// Return error
+										stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
+									}
+								}
 							},
-							request_response::Event::ResponseSent { peer, request_id } => {},
+							_ => {}
 						}
 					},
 					SwarmEvent::ConnectionEstablished {
@@ -1251,37 +1336,68 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces expired listen address.
-	fn expired_listen_addr(&mut self, _listener_id: ListenerId, _address: Multiaddr, _application_sender: Sender<StreamData>) {
+	fn expired_listen_addr(
+		&mut self,
+		_listener_id: ListenerId,
+		_address: Multiaddr,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces a closed listener.
-	fn listener_closed(&mut self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>, _application_sender: Sender<StreamData>) {
+	fn listener_closed(
+		&mut self,
+		_listener_id: ListenerId,
+		_addresses: Vec<Multiaddr>,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces a listener error.
-	fn listener_error(&mut self, _listener_id: ListenerId, _application_sender: Sender<StreamData>) {
+	fn listener_error(
+		&mut self,
+		_listener_id: ListenerId,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces a dialing attempt.
-	fn dialing(&mut self, _peer_id: Option<PeerId>, _connection_id: ConnectionId, _application_sender: Sender<StreamData>) {
+	fn dialing(
+		&mut self,
+		_peer_id: Option<PeerId>,
+		_connection_id: ConnectionId,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces a new external address candidate.
-	fn new_external_addr_candidate(&mut self, _address: Multiaddr, _application_sender: Sender<StreamData>) {
+	fn new_external_addr_candidate(
+		&mut self,
+		_address: Multiaddr,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces a confirmed external address.
-	fn external_addr_confirmed(&mut self, _address: Multiaddr, _application_sender: Sender<StreamData>) {
+	fn external_addr_confirmed(
+		&mut self,
+		_address: Multiaddr,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces an expired external address.
-	fn external_addr_expired(&mut self, _address: Multiaddr, _application_sender: Sender<StreamData>) {
+	fn external_addr_expired(
+		&mut self,
+		_address: Multiaddr,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
@@ -1292,7 +1408,7 @@ pub trait EventHandler {
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
-		_application_sender: Sender<StreamData>
+		_application_sender: Sender<StreamData>,
 	) {
 		// Default implementation
 	}
@@ -1304,7 +1420,7 @@ pub trait EventHandler {
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
-		_application_sender: Sender<StreamData>
+		_application_sender: Sender<StreamData>,
 	) {
 		// Default implementation
 	}
@@ -1315,29 +1431,48 @@ pub trait EventHandler {
 		&mut self,
 		_connection_id: ConnectionId,
 		_peer_id: Option<PeerId>,
-		_application_sender: Sender<StreamData>
+		_application_sender: Sender<StreamData>,
 	) {
 		// Default implementation
 	}
 
 	/// Event that announces the arrival of a ping message from a peer.
 	/// The duration it took for a round trip is also returned
-	fn inbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration, _application_sender: Sender<StreamData>) {
+	fn inbound_ping_success(
+		&mut self,
+		_peer_id: PeerId,
+		_duration: Duration,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces a `Ping` error
-	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure, _application_sender: Sender<StreamData>) {
+	fn outbound_ping_error(
+		&mut self,
+		_peer_id: PeerId,
+		_err_type: Failure,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-	fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info, _application_sender: Sender<StreamData>) {
+	fn identify_info_recieved(
+		&mut self,
+		_peer_id: PeerId,
+		_info: Info,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces the successful write of a record to the DHT
-	fn kademlia_put_record_success(&mut self, _key: Vec<u8>, _application_sender: Sender<StreamData>) {
+	fn kademlia_put_record_success(
+		&mut self,
+		_key: Vec<u8>,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
@@ -1347,7 +1482,11 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a node as a provider of a record in the DHT
-	fn kademlia_start_providing_success(&mut self, _key: Vec<u8>, _application_sender: Sender<StreamData>) {
+	fn kademlia_start_providing_success(
+		&mut self,
+		_key: Vec<u8>,
+		_application_sender: Sender<StreamData>,
+	) {
 		// Default implementation
 	}
 
