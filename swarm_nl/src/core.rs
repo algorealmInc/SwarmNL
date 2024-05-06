@@ -22,6 +22,8 @@ use libp2p::{
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder, TransportError,
 };
 
+use std::fs;
+
 use super::*;
 use crate::setup::BootstrapConfig;
 use ping_config::*;
@@ -122,8 +124,9 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			boot_nodes: config.bootnodes(),
 			handler,
 			// Default is to listen on all interfaces (ipv4)
+			// TODO add default to prelude
 			ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-			// Default to 60 seconds
+			// Default to 60 seconds - TODO: add default to prelude
 			keep_alive_duration: 60,
 			transport: default_transport,
 			// The peer will be disconnected after 20 successive timeout errors are recorded
@@ -142,7 +145,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 	///
 	/// This function will panic if the specified protocol id could not be parsed.
 	pub fn with_network_id(self, protocol: String) -> Self {
-		if protocol.len() > MIN_NETWORK_ID_LENGTH.into() && protocol.starts_with("/") { 
+		if protocol.len() > MIN_NETWORK_ID_LENGTH.into() && protocol.starts_with("/") {
 			CoreBuilder {
 				network_id: StreamProtocol::try_from_owned(protocol.clone())
 					.map_err(|_| SwarmNlError::NetworkIdParseError(protocol))
@@ -150,7 +153,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 				..self
 			}
 		} else {
-			panic!("could not parse provided network id");
+			panic!("could not parse provided network id: it must be of the format '/protocol-name/version'");
 		}
 	}
 
@@ -513,10 +516,18 @@ pub struct Core {
 }
 
 impl Core {
-	/// Serialize keypair to protobuf format and write to config file on disk.
-	/// It returns a boolean to indicate success of operation.
-	/// Only key types other than RSA can be serialized to protobuf format.
+	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful for saving a keypair when going offline for future use.
+	/// 
+	/// It returns a boolean to indicate success of operation. Only key types other than RSA can be serialized to protobuf format.
+	/// Only a single keypair can be saved at a time and the config_file_path must be an .ini file.
 	pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
+		
+		// check the file exists, and create one if not
+		if let Ok(metadata) = fs::metadata(config_file_path) {
+		} else {
+			fs::File::create(config_file_path).expect("could not create config file");
+		}
+
 		// Check if key type is something other than RSA
 		if KeyType::RSA != self.keypair.key_type() {
 			if let Ok(protobuf_keypair) = self.keypair.to_protobuf_encoding() {
@@ -1184,6 +1195,11 @@ mod ping_config {
 mod tests {
 
 	use super::*;
+	use futures::TryFutureExt;
+	use ini::Ini;
+	use std::fs::File;
+	use std::net::Ipv6Addr;
+	use async_std::task;
 
 	// set up a default node helper
 	pub fn setup_core_builder() -> CoreBuilder<DefaultHandler> {
@@ -1194,27 +1210,114 @@ mod tests {
 		CoreBuilder::with_config(config, handler)
 	}
 
+	// define custom ports for testing
+	const CUSTOM_TCP_PORT: Port = 49666;
+	const CUSTOM_UDP_PORT: Port = 49852;
+
+	// used to test saving keypair to file
+	fn create_test_ini_file(file_path: &str) {
+		let mut config = Ini::new();
+		config
+			.with_section(Some("ports"))
+			.set("tcp", CUSTOM_TCP_PORT.to_string())
+			.set("udp", CUSTOM_UDP_PORT.to_string());
+
+		config.with_section(Some("bootstrap")).set(
+			"boot_nodes",
+			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
+		);
+		// write config to a new INI file
+		config.write_to_file(file_path).unwrap_or_default();
+	}
+
+
 	#[test]
-	fn network_id_default_behavior_works() {
+	fn default_behavior_works() {
 		// build a node with the default network id
 		let default_node = setup_core_builder();
 
 		// assert that the default network id is '/swarmnl/1.0'
 		assert_eq!(default_node.network_id(), DEFAULT_NETWORK_ID.to_string());
+
+		// default transport is TCP/QUIC
+		assert_eq!(
+			default_node.transport,
+			TransportOpts::TcpQuic {
+				tcp_config: TcpConfig::Default
+			}
+		);
+
+		// default keep alive duration is 60 seconds
+		assert_eq!(default_node.keep_alive_duration, 60);
+
+		// default listen on is 127:0:0:1
+		assert_eq!(
+			default_node.ip_address,
+			IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+		);
+
+		// default tcp/udp port is MIN_PORT and MAX_PORT
+		assert_eq!(default_node.tcp_udp_port, (MIN_PORT, MAX_PORT));
+	}
+
+	#[test]
+	fn custom_node_setup_works() {
+		// build a node with the default network id
+		let default_node = setup_core_builder();
+
+		// custom node configuration
+		let mut custom_network_id = "/custom-protocol/1.0".to_string();
+		let mut custom_transport = TransportOpts::TcpQuic {
+			tcp_config: TcpConfig::Custom {
+				ttl: 10,
+				nodelay: true,
+				backlog: 10,
+			},
+		};
+		let mut custom_keep_alive_duration = 20;
+		let mut custom_ip_address = IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+
+		// pass in the custom node configuration and assert it works as expected
+		let custom_node = default_node
+			.with_network_id(custom_network_id.clone())
+			.with_transports(custom_transport.clone())
+			.with_idle_connection_timeout(custom_keep_alive_duration.clone())
+			.listen_on(custom_ip_address.clone());
+
+		// TODO: with_ping
+		// e.g. if the node is unreachable after a specific amount of time, it should be disconnected
+		// if 10th inteval is configured, if failed 9th time, test decay as each ping comes in
+
+		// TODO: with_kademlia
+		// e.g. if a record is not found, it should return a specific message
+
+		// TODO: configure_network_events
+		// test recorded logs. Create a custom handler and test if the logs are recorded.
+
+		// assert that the custom network id is '/custom/protocol/1.0'
+		assert_eq!(custom_node.network_id(), custom_network_id);
+
+		// assert that the custom transport is 'TcpQuic'
+		assert_eq!(custom_node.transport, custom_transport);
+
+		// assert that the custom keep alive duration is 20
+		assert_eq!(custom_node.keep_alive_duration, custom_keep_alive_duration);
 	}
 
 	#[test]
 	fn network_id_custom_behavior_works_as_expected() {
-		// build a node with the default network id
+		// setup a node with the default config builder
 		let mut custom_builder = setup_core_builder();
 
-		// pass in a custom network id and assert it works as expected
+		// configure builder with custom protocol and assert it works as expected
 		let custom_protocol: &str = "/custom-protocol/1.0";
-		
 		let custom_builder = custom_builder.with_network_id(custom_protocol.to_string());
 
 		// cannot be less than MIN_NETWORK_ID_LENGTH
-		assert_eq!(custom_builder.network_id().len() >= MIN_NETWORK_ID_LENGTH.into(), true);
+		assert_eq!(
+			custom_builder.network_id().len() >= MIN_NETWORK_ID_LENGTH.into(),
+			true
+		);
 
 		// must start with a forward slash
 		assert!(custom_builder.network_id().starts_with("/"));
@@ -1224,7 +1327,7 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected="could not parse provided network id")]
+	#[should_panic(expected = "could not parse provided network id")]
 	fn network_id_custom_behavior_fails() {
 		// build a node with the default network id
 		let mut custom_builder = setup_core_builder();
@@ -1236,11 +1339,76 @@ mod tests {
 		let custom_builder = custom_builder.with_network_id(invalid_protocol_1);
 
 		// pass in an invalid network ID
-		// illegal: network ID must start with a forward slash
+		// network ID must start with a forward slash
 		let invalid_protocol_2 = "1.0".to_string();
 
 		custom_builder.with_network_id(invalid_protocol_2);
 	}
 
-	// -- CoreBuilder tests --
+	#[cfg(feature = "tokio-runtime")]
+	#[test]
+	fn save_keypair_offline_works_tokio() {
+		// build a node with the default network id
+		let default_node = setup_core_builder();
+
+		// use tokio runtime to test async function
+		let result = tokio::runtime::Runtime::new().unwrap().block_on(
+			default_node
+				.build()
+				.unwrap_or_else(|_| panic!("Could not build node")),
+		);
+
+		// make a saved_keys.ini file
+		let file_path_1 = "saved_keys.ini";
+		create_test_ini_file(file_path_1);
+
+		// save the keypair to existing file
+		let saved_1 = result.save_keypair_offline(&file_path_1);
+
+		// assert that the keypair was saved successfully
+		assert_eq!(saved_1, true);
+
+		// now test if it works for a file name that does not exist
+		let file_path_2 = "test.txt";
+		let saved_2 = result.save_keypair_offline(file_path_2);
+
+		// assert that the keypair was saved successfully
+		assert_eq!(saved_2, true);
+
+		// clean up 
+		fs::remove_file(file_path_1).unwrap_or_default();
+		fs::remove_file(file_path_2).unwrap_or_default();
+	}
+
+	#[cfg(feature = "async-std-runtime")]
+	#[test]
+	fn save_keypair_offline_works_async_std() {
+		// build a node with the default network id
+		let default_node = setup_core_builder();
+
+		// use tokio runtime to test async function
+		let result = task::block_on(default_node.build().unwrap_or_else(|_| panic!("Could not build node")));
+
+		// make a saved_keys.ini file
+		let file_path_1 = "saved_keys.ini";
+		create_test_ini_file(file_path_1);
+
+		// save the keypair to existing file
+		let saved_1 = result.save_keypair_offline(file_path_1);
+
+		// assert that the keypair was saved successfully
+		assert_eq!(saved_1, true);
+
+		// now test if it works for a file name that does not exist
+		let file_path_2 = "test.txt";
+		let saved_2 = result.save_keypair_offline(file_path_2);
+
+		// assert that the keypair was saved successfully
+		assert_eq!(saved_2, true);
+
+		// clean up 
+		fs::remove_file(file_path_1).unwrap_or_default();
+		fs::remove_file(file_path_2).unwrap_or_default();
+	}
+
 }
