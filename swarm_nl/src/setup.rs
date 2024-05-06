@@ -180,32 +180,50 @@ mod tests {
 	// helper to generate RSA keypair files
 	// commands taken from https://docs.rs/libp2p-identity/0.2.8/libp2p_identity/struct.Keypair.html#example-generating-rsa-keys-with-openssl
 	fn generate_rsa_keypair_files() {
-		   // Generate RSA private key
-		   let genrsa_output = Command::new("openssl")
-		   .args(&["genrsa", "-out", "private.pem", "2048"])
-		   .output()
-		   .expect("Failed to execute openssl genrsa command");
-   
-	   // Convert private key to PKCS8 format
-	   let pkcs8_output = Command::new("openssl")
-		   .args(&["pkcs8", "-in", "private.pem", "-inform", "PEM", "-topk8", "-out", "private.pk8", "-outform", "DER", "-nocrypt"])
-		   .output()
-		   .expect("Failed to execute openssl pkcs8 command");
-   
-	   // Check command outputs for success or failure
-	   if genrsa_output.status.success() {
-		   println!("RSA private key generated successfully");
-	   } else {
-		   eprintln!("Failed to generate RSA private key:\n{}", String::from_utf8_lossy(&genrsa_output.stderr));
-	   }
-   
-	   if pkcs8_output.status.success() {
-		   println!("RSA private key converted to PKCS8 format successfully");
-	   } else {
-		   eprintln!("Failed to convert RSA private key to PKCS8 format:\n{}", String::from_utf8_lossy(&pkcs8_output.stderr));
-	   }
-   }
-	
+		// Generate RSA private key
+		let genrsa_output = Command::new("openssl")
+			.args(&["genrsa", "-out", "private.pem", "2048"])
+			.output()
+			.expect("Failed to execute openssl genrsa command");
+
+		// Convert private key to PKCS8 format
+		let pkcs8_output = Command::new("openssl")
+			.args(&[
+				"pkcs8",
+				"-in",
+				"private.pem",
+				"-inform",
+				"PEM",
+				"-topk8",
+				"-out",
+				"private.pk8",
+				"-outform",
+				"DER",
+				"-nocrypt",
+			])
+			.output()
+			.expect("Failed to execute openssl pkcs8 command");
+
+		// Check command outputs for success or failure
+		if genrsa_output.status.success() {
+			println!("RSA private key generated successfully");
+		} else {
+			eprintln!(
+				"Failed to generate RSA private key:\n{}",
+				String::from_utf8_lossy(&genrsa_output.stderr)
+			);
+		}
+
+		if pkcs8_output.status.success() {
+			println!("RSA private key converted to PKCS8 format successfully");
+		} else {
+			eprintln!(
+				"Failed to convert RSA private key to PKCS8 format:\n{}",
+				String::from_utf8_lossy(&pkcs8_output.stderr)
+			);
+		}
+	}
+
 	#[test]
 	fn file_read_should_panic() {
 		let result = panic::catch_unwind(|| {
@@ -290,7 +308,8 @@ mod tests {
 		let invalid_keytype = "SomeMagicCryptoType";
 
 		// valid keypair
-		let mut ed25519_serialized_keypair = Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
+		let mut ed25519_serialized_keypair =
+			Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
 		// should not panic but default to ed25519
 		let result = panic::catch_unwind(move || {
@@ -345,7 +364,7 @@ mod tests {
 			// should panic when parsing invalid RSA file
 			let _ = BootstrapConfig::default().generate_keypair(KeyType::RSA, Some(file_path));
 		});
-		
+
 		// this will return an error
 		assert!(result.is_err());
 
@@ -358,8 +377,9 @@ mod tests {
 		// create a valid private.pk8 file
 		generate_rsa_keypair_files();
 
-		let mut bootstrap_config = BootstrapConfig::new().generate_keypair(KeyType::RSA, Some("private.pk8"));
-		
+		let mut bootstrap_config =
+			BootstrapConfig::new().generate_keypair(KeyType::RSA, Some("private.pk8"));
+
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::RSA);
 
 		// clean-up RSA files
@@ -367,44 +387,46 @@ mod tests {
 		fs::remove_file("private.pem").unwrap_or_default();
 	}
 
-
 	#[test]
 	fn generate_keypair_from_protobuf_ed25519_works() {
-		
 		// generate a valid keypair for ed25519
 		let key_type_str = "Ed25519";
-		let mut ed25519_serialized_keypair = Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
+		let mut ed25519_serialized_keypair =
+			Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
 		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new().generate_keypair_from_protobuf(key_type_str, &mut ed25519_serialized_keypair);
-		
+		let mut bootstrap_config = BootstrapConfig::new()
+			.generate_keypair_from_protobuf(key_type_str, &mut ed25519_serialized_keypair);
+
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ed25519);
 	}
 
 	#[test]
 	fn generate_keypair_from_protobuf_ecdsa_works() {
-
 		// generate a valid keypair for ecdsa
 		let key_type_str = "Ecdsa";
-		let mut ecdsa_serialized_keypair = Keypair::generate_ecdsa().to_protobuf_encoding().unwrap();
+		let mut ecdsa_serialized_keypair =
+			Keypair::generate_ecdsa().to_protobuf_encoding().unwrap();
 
 		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new().generate_keypair_from_protobuf(key_type_str, &mut ecdsa_serialized_keypair);
-		
+		let mut bootstrap_config = BootstrapConfig::new()
+			.generate_keypair_from_protobuf(key_type_str, &mut ecdsa_serialized_keypair);
+
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ecdsa);
 	}
 
 	#[test]
 	fn generate_keypair_from_protobuf_secp256k1_works() {
-		
 		// generate a valid keypair for Secp256k1
 		let key_type_str = "Secp256k1";
-		let mut secp256k1_serialized_keypair = Keypair::generate_secp256k1().to_protobuf_encoding().unwrap();
+		let mut secp256k1_serialized_keypair = Keypair::generate_secp256k1()
+			.to_protobuf_encoding()
+			.unwrap();
 
 		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new().generate_keypair_from_protobuf(key_type_str, &mut secp256k1_serialized_keypair);
-		
+		let mut bootstrap_config = BootstrapConfig::new()
+			.generate_keypair_from_protobuf(key_type_str, &mut secp256k1_serialized_keypair);
+
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Secp256k1);
 	}
-
 }

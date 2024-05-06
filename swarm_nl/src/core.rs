@@ -515,12 +515,13 @@ pub struct Core {
 }
 
 impl Core {
-	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful for saving a keypair when going offline for future use.
-	/// 
-	/// It returns a boolean to indicate success of operation. Only key types other than RSA can be serialized to protobuf format.
-	/// Only a single keypair can be saved at a time and the config_file_path must be an .ini file.
+	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful
+	/// for saving a keypair when going offline for future use.
+	///
+	/// It returns a boolean to indicate success of operation. Only key types other than RSA can be
+	/// serialized to protobuf format. Only a single keypair can be saved at a time and the
+	/// config_file_path must be an .ini file.
 	pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
-		
 		// check the file exists, and create one if not
 		if let Ok(metadata) = fs::metadata(config_file_path) {
 		} else {
@@ -1194,11 +1195,11 @@ mod ping_config {
 mod tests {
 
 	use super::*;
+	use async_std::task;
 	use futures::TryFutureExt;
 	use ini::Ini;
 	use std::fs::File;
 	use std::net::Ipv6Addr;
-	use async_std::task;
 
 	// set up a default node helper
 	pub fn setup_core_builder() -> CoreBuilder<DefaultHandler> {
@@ -1228,7 +1229,6 @@ mod tests {
 		// write config to a new INI file
 		config.write_to_file(file_path).unwrap_or_default();
 	}
-
 
 	#[test]
 	fn default_behavior_works() {
@@ -1284,8 +1284,9 @@ mod tests {
 			.listen_on(custom_ip_address.clone());
 
 		// TODO: with_ping
-		// e.g. if the node is unreachable after a specific amount of time, it should be disconnected
-		// if 10th inteval is configured, if failed 9th time, test decay as each ping comes in
+		// e.g. if the node is unreachable after a specific amount of time, it should be
+		// disconnected if 10th inteval is configured, if failed 9th time, test decay as each ping
+		// comes in
 
 		// TODO: with_kademlia
 		// e.g. if a record is not found, it should return a specific message
@@ -1374,7 +1375,7 @@ mod tests {
 		// assert that the keypair was saved successfully
 		assert_eq!(saved_2, true);
 
-		// clean up 
+		// clean up
 		fs::remove_file(file_path_1).unwrap_or_default();
 		fs::remove_file(file_path_2).unwrap_or_default();
 	}
@@ -1386,7 +1387,11 @@ mod tests {
 		let default_node = setup_core_builder();
 
 		// use tokio runtime to test async function
-		let result = task::block_on(default_node.build().unwrap_or_else(|_| panic!("Could not build node")));
+		let result = task::block_on(
+			default_node
+				.build()
+				.unwrap_or_else(|_| panic!("Could not build node")),
+		);
 
 		// make a saved_keys.ini file
 		let file_path_1 = "saved_keys.ini";
@@ -1405,9 +1410,8 @@ mod tests {
 		// assert that the keypair was saved successfully
 		assert_eq!(saved_2, true);
 
-		// clean up 
+		// clean up
 		fs::remove_file(file_path_1).unwrap_or_default();
 		fs::remove_file(file_path_2).unwrap_or_default();
 	}
-
 }
