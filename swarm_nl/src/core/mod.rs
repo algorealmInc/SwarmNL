@@ -893,7 +893,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 						address,
 					} => {
 						// call configured handler
-						network_core.state.new_listen_addr(network_info.event_comm_channel.clone(), swarm.local_peer_id().to_owned(), listener_id, address);
+						network_core.state.new_listen_addr(network_info.event_comm_channel.clone(), swarm.local_peer_id().to_owned(), listener_id, address).await;
 					}
 					SwarmEvent::Behaviour(event) => match event {
 						// Ping
@@ -933,7 +933,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									}
 
 									// Call custom handler
-									network_core.state.inbound_ping_success(network_info.event_comm_channel.clone(), peer, duration);
+									network_core.state.inbound_ping_success(network_info.event_comm_channel.clone(), peer, duration).await;
 								}
 								// Outbound ping failure
 								Err(err_type) => {
@@ -1002,7 +1002,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									}
 
 									// Call custom handler
-									network_core.state.outbound_ping_error(network_info.event_comm_channel.clone(), peer, err_type);
+									network_core.state.outbound_ping_error(network_info.event_comm_channel.clone(), peer, err_type).await;
 								}
 							}
 						}
@@ -1075,21 +1075,21 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 								}
 								kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
 									// Call handler
-									network_core.state.kademlia_put_record_success(network_info.event_comm_channel.clone(), key.to_vec());
+									network_core.state.kademlia_put_record_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
 								}
 								kad::QueryResult::PutRecord(Err(_)) => {
 									// Call handler
-									network_core.state.kademlia_put_record_error(network_info.event_comm_channel.clone());
+									network_core.state.kademlia_put_record_error(network_info.event_comm_channel.clone()).await;
 								}
 								kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
 									key,
 								})) => {
 									// Call handler
-									network_core.state.kademlia_start_providing_success(network_info.event_comm_channel.clone(), key.to_vec());
+									network_core.state.kademlia_start_providing_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
 								}
 								kad::QueryResult::StartProviding(Err(_)) => {
 									// Call handler
-									network_core.state.kademlia_start_providing_error(network_info.event_comm_channel.clone());
+									network_core.state.kademlia_start_providing_error(network_info.event_comm_channel.clone()).await;
 								}
 								_ => {}
 							},
@@ -1100,7 +1100,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 						CoreEvent::Identify(event) => match event {
 							identify::Event::Received { peer_id, info } => {
 								// We just recieved an `Identify` info from a peer.s
-								network_core.state.identify_info_recieved(network_info.event_comm_channel.clone(), peer_id, info.clone());
+								network_core.state.identify_info_recieved(network_info.event_comm_channel.clone(), peer_id, info.clone()).await;
 
 								// disconnect from peer of the network id is different
 								if info.protocol_version != network_info.id.as_ref() {
@@ -1192,7 +1192,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 							&endpoint,
 							num_established,
 							established_in,
-						);
+						).await;
 					}
 					SwarmEvent::ConnectionClosed {
 						peer_id,
@@ -1209,14 +1209,14 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 							&endpoint,
 							num_established,
 							cause,
-						);
+						).await;
 					}
 					SwarmEvent::ExpiredListenAddr {
 						listener_id,
 						address,
 					} => {
 						// call configured handler
-						network_core.state.expired_listen_addr(network_info.event_comm_channel.clone(), listener_id, address);
+						network_core.state.expired_listen_addr(network_info.event_comm_channel.clone(), listener_id, address).await;
 					}
 					SwarmEvent::ListenerClosed {
 						listener_id,
@@ -1224,33 +1224,33 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 						reason: _,
 					} => {
 						// call configured handler
-						network_core.state.listener_closed(network_info.event_comm_channel.clone(), listener_id, addresses);
+						network_core.state.listener_closed(network_info.event_comm_channel.clone(), listener_id, addresses).await;
 					}
 					SwarmEvent::ListenerError {
 						listener_id,
 						error: _,
 					} => {
 						// call configured handler
-						network_core.state.listener_error(network_info.event_comm_channel.clone(), listener_id);
+						network_core.state.listener_error(network_info.event_comm_channel.clone(), listener_id).await;
 					}
 					SwarmEvent::Dialing {
 						peer_id,
 						connection_id,
 					} => {
 						// call configured handler
-						network_core.state.dialing(network_info.event_comm_channel.clone(), peer_id, connection_id);
+						network_core.state.dialing(network_info.event_comm_channel.clone(), peer_id, connection_id).await;
 					}
 					SwarmEvent::NewExternalAddrCandidate { address } => {
 						// call configured handler
-						network_core.state.new_external_addr_candidate(network_info.event_comm_channel.clone(), address);
+						network_core.state.new_external_addr_candidate(network_info.event_comm_channel.clone(), address).await;
 					}
 					SwarmEvent::ExternalAddrConfirmed { address } => {
 						// call configured handler
-						network_core.state.external_addr_confirmed(network_info.event_comm_channel.clone(), address);
+						network_core.state.external_addr_confirmed(network_info.event_comm_channel.clone(), address).await;
 					}
 					SwarmEvent::ExternalAddrExpired { address } => {
 						// call configured handler
-						network_core.state.external_addr_expired(network_info.event_comm_channel.clone(), address);
+						network_core.state.external_addr_expired(network_info.event_comm_channel.clone(), address).await;
 					}
 					SwarmEvent::IncomingConnection {
 						connection_id,
@@ -1258,7 +1258,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 						send_back_addr,
 					} => {
 						// call configured handler
-						network_core.state.incoming_connection(network_info.event_comm_channel.clone(), connection_id, local_addr, send_back_addr);
+						network_core.state.incoming_connection(network_info.event_comm_channel.clone(), connection_id, local_addr, send_back_addr).await;
 					}
 					SwarmEvent::IncomingConnectionError {
 						connection_id,
@@ -1272,7 +1272,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 							connection_id,
 							local_addr,
 							send_back_addr,
-						);
+						).await;
 					}
 					SwarmEvent::OutgoingConnectionError {
 						connection_id,
@@ -1280,7 +1280,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 						error: _,
 					} => {
 						// call configured handler
-						network_core.state.outgoing_connection_error(network_info.event_comm_channel.clone(), connection_id,  peer_id);
+						network_core.state.outgoing_connection_error(network_info.event_comm_channel.clone(), connection_id,  peer_id).await;
 					}
 					_ => todo!(),
 				}
