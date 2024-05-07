@@ -1,230 +1,129 @@
 /// Copyright (c) 2024 Algorealm
 
-/// This crate is simply for quick-testing the swarmNL library APIs and assisting in
-/// developement. It is not the default or de-facto test crate/module, as it is only used
-/// in-dev and will be removed subsequently.
-use std::collections::HashMap;
+/// Age of Empires
+/// Objective: Form alliances and conquer as much empires as possible!
+/// It is a multi-player game
+/// Enjoy!
+use std::{num::NonZeroU32, time::Duration};
 use swarm_nl::{
-	core::{DefaultHandler, EventHandler},
-	ListenerId, Multiaddr, MultiaddrString, PeerIdString, StreamData, StreamExt,
+	core::EventHandler,
+	core::{AppData, Core, CoreBuilder, NetworkChannel},
+	setup::BootstrapConfig,
+	ConnectedPoint, ConnectionId, PeerId,
 };
 
 pub static CONFIG_FILE_PATH: &str = "test_config.ini";
 
-/// Complex Event Handler
-struct ComplexHandler;
-
-impl EventHandler for ComplexHandler {
-	fn new_listen_addr(&mut self, _listener_id: ListenerId, addr: Multiaddr) {
-		// Log the address we begin listening on
-		println!("We're now listening on: {}", addr);
-	}
-}
-
 #[tokio::main]
 async fn main() {
-	// handler for events happening in the network layer (majorly for technical use)
-	// use default handler
-	let handler = DefaultHandler;
-	let complex_handler = ComplexHandler;
+	// Start our game! Age of Empires!
+	play_game().await
+}
 
-	// set up node
-	let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
-	bootnodes.insert(
-		"12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string(),
-		"/ip4/127.0.0.1/tcp/63307".to_string(),
-	);
+#[derive(Clone)]
+pub struct Empire {
+	name: String,
+	soldiers: u32,
+	farmers: u32,
+	blacksmith: u32,
+	land_mass: u32,
+	gold_reserve: u32,
+}
 
-	// configure default data
-	let config = swarm_nl::setup::BootstrapConfig::new().with_bootnodes(bootnodes);
+impl Empire {
+	/// Create a new empire and assign the assets to begin with
+	pub fn new(name: String) -> Self {
+		Empire {
+			name,
+			soldiers: 100,
+			farmers: 100,
+			blacksmith: 100,
+			land_mass: 100,
+			gold_reserve: 100,
+		}
+	}
+}
 
-	// set up network core
-	let mut network = swarm_nl::core::CoreBuilder::with_config(config, complex_handler)
+impl EventHandler for Empire {
+	fn new_listen_addr(
+		&mut self,
+		channel: NetworkChannel,
+		local_peer_id: PeerId,
+		_listener_id: swarm_nl::ListenerId,
+		addr: swarm_nl::Multiaddr,
+	) {
+		// announce interfaces we're listening on
+		println!("Peer id: {}", local_peer_id);
+		println!("We're listening on the {}", addr);
+		println!(
+			"There are {} soldiers guarding the {} Empire gate",
+			self.soldiers, self.name
+		);
+	}
+
+	fn connection_established(
+		&mut self,
+		channel: NetworkChannel,
+		peer_id: PeerId,
+		_connection_id: ConnectionId,
+		_endpoint: &ConnectedPoint,
+		_num_established: NonZeroU32,
+		_established_in: Duration,
+	) {
+	}
+
+	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+		println!("Incoming data: {:?}", data);
+		data
+	}
+}
+
+/// Setup game (This is for the persian Empire)
+/// This requires no bootnodes connection
+#[cfg(not(feature = "macedonian"))]
+pub async fn setup_game() -> Core<Empire> {
+	// First, we want to configure our node
+	let config = BootstrapConfig::default();
+
+	// State kept by this node
+	let empire = Empire::new(String::from("Spartan"));
+
+	// Set up network
+	CoreBuilder::with_config(config, empire)
 		.build()
 		.await
-		.unwrap();
-
-	// read first (ready) message
-	if let Some(StreamData::Ready) = network.application_receiver.next().await {
-		println!("Database is online");
-
-		// begin listening
-		loop {
-			if let Some(data) = network.application_receiver.next().await {
-				println!("{:?}", data);
-			}
-		}
-	}
+		.unwrap()
 }
 
-mod age_of_empires {
-    use std::{num::NonZeroU32, time::Duration};
-    use swarm_nl::{core::EventHandler, PeerId, ConnectionId, ConnectedPoint, Multiaddr, StreamData, Sender, AppData};
+/// The Macedonian Empire setup.
+/// These require bootnodes of empires to form alliance.
+/// We will be providing the location (peer id and multiaddress) of the Spartan Empire as boot
+/// parameters
+#[cfg(feature = "macedonian")]
+pub async fn setup_game() -> Core<Empire> {
+	// First, we want to configure our node with the bootstrap config file on disk
+	let config = BootstrapConfig::from_file("bootstrap_config.ini");
 
-    // Rename Sender during re-export to something more custom for its function
-    // pub use Sender as StreamComm
+	// State kept by this node
+	let empire = Empire::new(String::from("Macedonian"));
 
-	/// The state of the game
-	struct Empire {
-		soldiers: u32,
-		farmers: u32,
-		blacksmith: u32,
-		land_mass: u32,
-        gold_reserve: u32
-	}
-
-	/// implement `EventHander` for `Empire` to reponse to network events and make state changes
-    impl EventHandler for Empire {
-        fn connection_established(
-            &mut self,
-            peer_id: PeerId,
-            _connection_id: ConnectionId,
-            _endpoint: &ConnectedPoint,
-            _num_established: NonZeroU32,
-            _concurrent_dial_errors: Option<Vec<(Multiaddr, TransportError<Error>)>>,
-            _established_in: Duration,
-            mut application_sender: Sender<StreamData>
-        ) {
-            // We want to only ally with empires that are richer than us.
-            // We we connect, we ask for their reserve and make sure they are richer,
-            // Then we collect a fee of 200 gold coins
-
-            // construct keys to send
-            let keys = vec!["get_coins".to_string()];
-
-            // Ask the network to get the gold reserve of the empire seeking partnership
-            let total_coins_from_peer = application_sender.try_send(StreamData::Application(AppData::FetchData { keys , peer: peer_id }));
-            
-
-            // if total_coins_from_peer > self.gold_reserve {
-            //     // ask for alignment fee  ReqRes::AskForMergingFee
-            //     let m_fee = 100;
-                
-            //     // add to our gold reserve
-            //     self.gold_reserve += m_fee;
-
-            //     // deal complete
-            // } else {
-            //     // we dont ally with broke empires
-            //     // disconnect (This is a network operation)
-            // }
-
-        }
-    }
-
-	/// Function to run game
-	fn start_game() {}
-
-	/// Setup network
-	async fn setup_network() {
-		// set up a default bootrap config
-		let config = swarm_nl::setup::BootstrapConfig::new();
-
-        let spartan_empire = Empire {
-            soldiers: 1000,
-            farmers: 1000,
-            blacksmith: 1000,
-            land_mass: 1000,
-            gold_reserve: 1000,
-        };
-
-		// set up network core
-		let mut network = swarm_nl::core::CoreBuilder::with_config(config, spartan_empire)
-			.build()
-			.await
-			.unwrap();
-
-        network.application_sender.try_send(StreamData::ReqRes("gettotalcoins".as_bytes().to_vec())).await;
-
-        let data = network.send_to_network_layer(get_coins(89)).await; //-> 3 seconds
-
-        // Do many task
-
-        let coin = network.recv_from_network_layer(stream_id).await;    // no waiting
-
-        // use coin
-
-
-        let data = fetch_form_network_layer(Coins).await;
-
-        let coin = fetch_from_network_layer = {
-            let data = network.send_to_network_layer(get_coins(89)).await; // -> 3 seconds
-            let coin = network.recv_from_network_layer(stream_id).await; // -> 45 seconds
-            
-            coin
-        };
-
-
-        // TODO! SPECICIFY APPDATA TYPE AND ITS RESPONSE!
-
-	}
+	// Set up network
+	CoreBuilder::with_config(config, empire)
+		.build()
+		.await
+		.unwrap()
 }
 
-#[cfg(test)]
-mod tests {
-	use ini::Ini;
-	use std::borrow::Cow;
+/// Play game
+pub async fn play_game() {
+	// Setup network
+	let core = setup_game().await;
 
-	use crate::CONFIG_FILE_PATH;
-
-	/// try to read/write a byte vector to config file
-	#[test]
-	fn write_to_ini_file() {
-		let test_vec = vec![12, 234, 45, 34, 54, 34, 43, 34, 43, 23, 43, 43, 34, 67, 98];
-
-		// try vec to `.ini` file
-		assert!(write_config(
-			"auth",
-			"serialized_keypair",
-			&format!("{:?}", test_vec)
-		));
-		assert_eq!(
-			read_config("auth", "serialized_keypair"),
-			format!("{:?}", test_vec)
-		);
-
-		// test that we can read something after it
-		assert_eq!(read_config("bio", "name"), "@thewoodfish");
-	}
-
-	#[test]
-	fn test_conversion_fn() {
-		let test_vec = vec![12, 234, 45, 34, 54, 34, 43, 34, 43, 23, 43, 43, 34, 67, 98];
-
-		let vec_string = "[12, 234, 45, 34, 54, 34, 43, 34, 43, 23, 43, 43, 34, 67, 98,]";
-		assert_eq!(string_to_vec(vec_string), test_vec);
-	}
-
-	/// read value from config file
-	fn read_config(section: &str, key: &str) -> Cow<'static, str> {
-		if let Ok(conf) = Ini::load_from_file(CONFIG_FILE_PATH) {
-			if let Some(section) = conf.section(Some(section)) {
-				if let Some(value) = section.get(key) {
-					return Cow::Owned(value.to_owned());
-				}
-			}
-		}
-
-		"".into()
-	}
-
-	fn string_to_vec(input: &str) -> Vec<u8> {
-		input
-			.trim_matches(|c| c == '[' || c == ']')
-			.split(',')
-			.filter_map(|s| s.trim().parse().ok())
-			.collect()
-	}
-
-	/// write value into config file
-	fn write_config(section: &str, key: &str, new_value: &str) -> bool {
-		if let Ok(mut conf) = Ini::load_from_file(CONFIG_FILE_PATH) {
-			// Set a value:
-			conf.set_to(Some(section), key.into(), new_value.into());
-			if let Ok(_) = conf.write_to_file(CONFIG_FILE_PATH) {
-				return true;
-			}
-		}
-		false
-	}
+	// Print game state
+	println!("Empire Information:");
+	println!("Name: {}", core.state.soldiers);
+	println!("Farmers: {}", core.state.farmers);
+	println!("Black smiths: {}", core.state.blacksmith);
+	println!("Land mass: {}", core.state.land_mass);
+	println!("Gold reserve: {}", core.state.gold_reserve);
 }

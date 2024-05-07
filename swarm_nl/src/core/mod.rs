@@ -3,7 +3,6 @@
 use std::{
 	any::Any,
 	collections::{HashMap, HashSet},
-	io::Error,
 	net::{IpAddr, Ipv4Addr},
 	num::NonZeroU32,
 	sync::Arc,
@@ -24,12 +23,13 @@ use libp2p::{
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
 	swarm::{ConnectionError, NetworkBehaviour, SwarmEvent},
-	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder, TransportError,
+	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
+
+use self::ping_config::*;
 
 use super::*;
 use crate::setup::BootstrapConfig;
-use ping_config::*;
 
 #[cfg(feature = "async-std-runtime")]
 use async_std::sync::Mutex;
@@ -38,7 +38,7 @@ use async_std::sync::Mutex;
 use tokio::sync::Mutex;
 
 mod prelude;
-use prelude::*;
+pub use prelude::*;
 
 /// The Core Behaviour implemented which highlights the various protocols
 /// we'll be adding support for
@@ -89,7 +89,7 @@ impl From<request_response::Event<Rpc, Rpc>> for CoreEvent {
 }
 
 /// Structure containing necessary data to build [`Core`]
-pub struct CoreBuilder<T: EventHandler + Send + Sync + 'static> {
+pub struct CoreBuilder<T: EventHandler + Clone + Send + Sync + 'static> {
 	network_id: StreamProtocol,
 	keypair: Keypair,
 	tcp_udp_port: (Port, Port),
@@ -117,7 +117,7 @@ pub struct CoreBuilder<T: EventHandler + Send + Sync + 'static> {
 	request_response: Behaviour<Rpc, Rpc>,
 }
 
-impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
+impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	/// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
 	/// Here, it is certain that [`BootstrapConfig`] contains valid data.
 	/// A type that implements [`EventHandler`] is passed to handle and react to network events.
@@ -164,7 +164,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			// Default is to listen on all interfaces (ipv4)
 			ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
 			// Default to 60 seconds
-			keep_alive_duration: 60,
+			keep_alive_duration: DEFAULT_KEEP_ALIVE_DURATION,
 			transport: default_transport,
 			// The peer will be disconnected after 20 successive timeout errors are recorded
 			ping: (
@@ -173,7 +173,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			),
 			kademlia,
 			identify,
-			request_response: request_response,
+			request_response,
 		}
 	}
 
@@ -249,7 +249,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		// Set the request-response protocol
 		CoreBuilder {
 			request_response: Behaviour::new(
-				[(self.network_id, ProtocolSupport::Full)],
+				[(self.network_id.clone(), ProtocolSupport::Full)],
 				request_response::Config::default()
 					.with_request_timeout(config.timeout)
 					.with_max_concurrent_streams(config.max_concurrent_streams),
@@ -274,7 +274,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { transport, ..self }
 	}
 
-	/// Configure network event handler.
+	/// Configure network event handler
 	/// This configures the functions to be called when various network events take place
 	pub fn configure_network_events(self, handler: T) -> Self {
 		CoreBuilder { handler, ..self }
@@ -284,7 +284,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 	///
 	/// Handles the configuration of the libp2p Swarm structure and the selected transport
 	/// protocols, behaviours and node identity.
-	pub async fn build(self) -> SwarmNlResult<Core> {
+	pub async fn build(self) -> SwarmNlResult<Core<T>> {
 		// Build and configure the libp2p Swarm structure. Thereby configuring the selected
 		// transport protocols, behaviours and node identity. The Swarm is wrapped in the Core
 		// construct which serves as the interface to interact with the internal networking
@@ -359,7 +359,7 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
                             ping: self.ping.0,
                             kademlia: self.kademlia,
                             identify: self.identify,
-							response_response: self.request_response
+							request_response: self.request_response
                         })
 				.map_err(|_| SwarmNlError::ProtocolConfigError)?
 				.with_swarm_config(|cfg| {
@@ -501,11 +501,8 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 
 		// There must be a way for the application to communicate with the underlying networking
 		// core. This will involve acceptiing data and pushing data to the application layer.
-		// Two streams will be opened: The first mpsc stream will allow SwarmNL push data to the
-		// application and the application will comsume it (single consumer) The second stream
-		// will have SwarmNl (being the consumer) recieve data and commands from multiple areas
-		// in the application;
-		let (application_sender, application_receiver) = mpsc::channel::<StreamData>(3);
+		// The stream will have SwarmNl (being the consumer) recieve data and commands from multiple
+		// areas in the application;
 		let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
 
 		// Set up the ping network info.
@@ -533,27 +530,39 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 			policy: self.ping.1,
 			manager,
 		};
+
+		// Initials stream id
+		let stream_id = StreamId::new();
+
+		// Setup the application event handler's network communication channel
+		let event_comm_channel = NetworkChannel::new(
+			Arc::new(Mutex::new(StreamRequestBuffer::new(self.stream_size))),
+			Arc::new(Mutex::new(StreamResponseBuffer::new(self.stream_size))),
+			application_sender.clone(),
+			Arc::new(Mutex::new(stream_id)),
+			self.network_read_delay,
+		);
+
 		// Aggregate the useful network information
 		let network_info = NetworkInfo {
 			id: self.network_id,
 			ping: ping_info,
+			event_comm_channel,
 		};
 
 		// Build the network core
 		let network_core = Core {
 			keypair: self.keypair,
 			application_sender,
-			application_receiver,
-			stream_request_buffer: Arc::new(Mutex::new(StreamRequestBuffer {
-				size: self.stream_size,
-				buffer: Default::default(),
-			})),
-			stream_response_buffer: Arc::new(Mutex::new(StreamResponseBuffer {
-				size: self.stream_size,
-				buffer: Default::default(),
-			})),
+			// application_receiver,
+			stream_request_buffer: Arc::new(Mutex::new(StreamRequestBuffer::new(self.stream_size))),
+			stream_response_buffer: Arc::new(Mutex::new(StreamResponseBuffer::new(
+				self.stream_size,
+			))),
 			network_read_delay: self.network_read_delay,
-			current_stream_id: StreamId::new(),
+			current_stream_id: Arc::new(Mutex::new(stream_id)),
+			// Save handler as the state of the application
+			state: self.handler,
 		};
 
 		// Spin up task to handle async operations and data on the network.
@@ -561,11 +570,8 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		async_std::task::spawn(Core::handle_async_operations(
 			swarm,
 			network_info,
-			self.handler,
 			network_receiver,
-			application_sender,
-			network_core.stream_request_buffer.clone(),
-			network_core.stream_response_buffer.clone(),
+			network_core.clone(),
 		));
 
 		// Spin up task to handle async operations and data on the network.
@@ -573,11 +579,8 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 		tokio::task::spawn(Core::handle_async_operations(
 			swarm,
 			network_info,
-			self.handler,
 			network_receiver,
-			application_sender,
-			network_core.stream_request_buffer.clone(),
-			network_core.stream_response_buffer.clone(),
+			network_core.clone(),
 		));
 
 		Ok(network_core)
@@ -585,13 +588,14 @@ impl<T: EventHandler + Send + Sync + 'static> CoreBuilder<T> {
 }
 
 /// The core interface for the application layer to interface with the networking layer
-pub struct Core {
+#[derive(Clone)]
+pub struct Core<T: EventHandler + Clone + Send + Sync + 'static> {
 	keypair: Keypair,
 	/// The producing end of the stream that sends data to the network layer from the
 	/// application
 	application_sender: Sender<StreamData>,
 	/// The consuming end of the stream that recieves data from the network layer
-	application_receiver: Receiver<StreamData>,
+	// application_receiver: Receiver<StreamData>,
 	/// This serves as a buffer for the results of the requests to the network layer.
 	/// With this, applications can make async requests and fetch their results at a later time
 	/// without waiting. This is made possible by storing a [`StreamId`] for a particular stream
@@ -602,10 +606,12 @@ pub struct Core {
 	/// The network read timeout
 	network_read_delay: AsyncDuration,
 	/// Current stream id. Useful for opening new streams, we just have to bump the number by 1
-	current_stream_id: StreamId,
+	current_stream_id: Arc<Mutex<StreamId>>,
+	/// The state of the application
+	pub state: T,
 }
 
-impl Core {
+impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	/// Serialize keypair to protobuf format and write to config file on disk.
 	/// It returns a boolean to indicate success of operation.
 	/// Only key types other than RSA can be serialized to protobuf format.
@@ -635,7 +641,7 @@ impl Core {
 	/// If the internal stream buffer is full, `None` will be returned.
 	pub async fn send_to_network(&mut self, request: AppData) -> Option<StreamId> {
 		// Generate stream id
-		let stream_id = StreamId::next(self.current_stream_id);
+		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
 		let request = StreamData::Application(stream_id, request);
 
 		// Add to request buffer
@@ -645,18 +651,19 @@ impl Core {
 		}
 
 		// Send request
-		self.application_sender.send(request).await;
-
-		// Store latest stream id
-		self.current_stream_id = stream_id;
-
-		Some(stream_id)
+		if let Ok(_) = self.application_sender.send(request).await {
+			// Store latest stream id
+			*self.current_stream_id.lock().await = stream_id;
+			Some(stream_id)
+		} else {
+			return None;
+		}
 	}
 
 	/// This is for intra-network communication
 	async fn notify_network(&mut self, request: NetworkData) -> Option<StreamId> {
 		// Generate stream id
-		let stream_id = StreamId::next(self.current_stream_id);
+		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
 		let request = StreamData::Network(stream_id, request);
 
 		// Add to request buffer
@@ -666,12 +673,13 @@ impl Core {
 		}
 
 		// Send request
-		self.application_sender.send(request).await;
-
-		// Store latest stream id
-		self.current_stream_id = stream_id;
-
-		Some(stream_id)
+		if let Ok(_) = self.application_sender.send(request).await {
+			// Store latest stream id
+			*self.current_stream_id.lock().await = stream_id;
+			Some(stream_id)
+		} else {
+			return None;
+		}
 	}
 
 	/// TODO! Buffer clearnup algorithm
@@ -749,14 +757,11 @@ impl Core {
 	/// - Streams coming from the application layer.
 	/// - Events generated by (libp2p) network activities.
 	/// Important information are sent to the application layer over a (mpsc) stream
-	async fn handle_async_operations<T: EventHandler + Send + Sync + 'static>(
+	async fn handle_async_operations(
 		mut swarm: Swarm<CoreBehaviour>,
 		mut network_info: NetworkInfo,
-		mut handler: T,
 		mut receiver: Receiver<StreamData>,
-		mut sender: Sender<StreamData>,
-		mut stream_request_buffer: Arc<Mutex<StreamRequestBuffer>>,
-		mut stream_response_buffer: Arc<Mutex<StreamResponseBuffer>>,
+		mut network_core: Core<T>,
 	) {
 		// Loop to handle incoming application streams indefinitely.
 		loop {
@@ -770,24 +775,24 @@ impl Core {
 								// Put back into the stream what we read from it
 								AppData::Echo(message) => {
 									// Remove the request from the request buffer
-									stream_request_buffer.lock().await.remove(&stream_id);
+									network_core.stream_request_buffer.lock().await.remove(&stream_id);
 
 									// Insert into the response buffer for it to be picked up
-									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
+									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
 								},
 								// Store a value in the DHT and (optionally) on explicit specific peers
 								AppData::KademliaStoreRecord { key, value, expiration_time, explicit_peers } => {
 									// create a kad record
-									let mut record = Record::new(key, value);
+									let mut record = Record::new(key.clone(), value);
 
 									// Set (optional) expiration time
 									record.expires = expiration_time;
 
 									// Insert into DHT
-									if let Ok(query_id) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
+									if let Ok(_) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
 										// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
 										// where we can get the response and then replace the buffer with the actual response data
-										stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(query_id), Box::new(stream_id));
+										network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
 
 										// Cache record on peers explicitly (if specified)
 										if let Some(explicit_peers) = explicit_peers {
@@ -800,49 +805,49 @@ impl Core {
 										}
 									} else {
 										// Delete the request from the stream and then return a write error
-										stream_request_buffer.lock().await.remove(&stream_id);
+										network_core.stream_request_buffer.lock().await.remove(&stream_id);
 
 										// Return error
-										stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
+										network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
 									}
 								},
 								// Perform a lookup in the DHT
 								AppData::KademliaLookupRecord { key } => {
-									let query_id = swarm.behaviour_mut().kademlia.get_record(key.into());
+									let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
 
 									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
 									// where we can get the response and then replace the buffer with the actual response data
-									stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(query_id), Box::new(stream_id));
+									network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
 								},
 								// Perform a lookup of peers that store a record
 								AppData::KademliaGetProviders { key } => {
-									let query_id = swarm.behaviour_mut().kademlia.get_providers(key.into());
+									let _ = swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
 
 									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
 									// where we can get the response and then replace the buffer with the actual response data
-									stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(query_id), Box::new(stream_id));
+									network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
 								}
 								// Stop providing a record on the network
 								AppData::KademliaStopProviding { key } => {
 									swarm.behaviour_mut().kademlia.stop_providing(&key.into());
 
 									// Respond with a success
-									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
+									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
 								}
 								// Remove record from local store
 								AppData::KademliaDeleteRecord { key } => {
 									swarm.behaviour_mut().kademlia.remove_record(&key.into());
 
 									// Respond with a success
-									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
+									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
 								}
 								// Return important routing table info
 								AppData::KademliaGetRoutingTableInfo => {
 									// Remove the request from the request buffer
-									stream_request_buffer.lock().await.remove(&stream_id);
+									network_core.stream_request_buffer.lock().await.remove(&stream_id);
 
 									// Insert into the response buffer for it to be picked up
-									stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: network_info.id.to_string() }));
+									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: network_info.id.to_string() }));
 								},
 								// Fetch data quickly from a peer over the network
 								AppData::FetchData { keys, peer } => {
@@ -857,7 +862,7 @@ impl Core {
 
 									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
 									// where we can get the response and then replace the buffer with the actual response data
-									stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
+									network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
 								}
 							}
 						}
@@ -868,18 +873,17 @@ impl Core {
 								// Dail peer
 								NetworkData::DailPeer(multiaddr) => {
 									// Remove the request from the request buffer
-									stream_request_buffer.lock().await.remove(&stream_id);
+									network_core.stream_request_buffer.lock().await.remove(&stream_id);
 
 									if let Ok(multiaddr) = multiaddr::from_url(&multiaddr) {
-										if let Ok(_) = swarm.dial(multiaddr) {
+										if let Ok(_) = swarm.dial(multiaddr.clone()) {
 											// Put result into response buffer
-											stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
+											network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
 										} else {
-											stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
+											network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
 										}
 									}
 								}
-								_ => {}
 							}
 						}
 				},
@@ -889,7 +893,7 @@ impl Core {
 						address,
 					} => {
 						// call configured handler
-						handler.new_listen_addr(listener_id, address);
+						network_core.state.new_listen_addr(network_info.event_comm_channel.clone(), swarm.local_peer_id().to_owned(), listener_id, address);
 					}
 					SwarmEvent::Behaviour(event) => match event {
 						// Ping
@@ -929,7 +933,7 @@ impl Core {
 									}
 
 									// Call custom handler
-									handler.inbound_ping_success(peer, duration, sender.clone());
+									network_core.state.inbound_ping_success(network_info.event_comm_channel.clone(), peer, duration);
 								}
 								// Outbound ping failure
 								Err(err_type) => {
@@ -998,7 +1002,7 @@ impl Core {
 									}
 
 									// Call custom handler
-									handler.outbound_ping_error(peer, err_type, sender.clone());
+									network_core.state.outbound_ping_error(network_info.event_comm_channel.clone(), peer, err_type);
 								}
 							}
 						}
@@ -1013,110 +1017,90 @@ impl Core {
 										peer_id.to_base58()
 									}).collect::<Vec<_>>();
 
-									// Inform the application that requested for it
-									let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }) )).await;
-								}
-								kad::QueryResult::GetProviders(Err(_)) => {
-									// No providers for a particular key found
-									let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::NoProvidersFound))).await;
-								}
-								kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
-									kad::PeerRecord {
-										record: kad::Record {key ,value, .. },
-										..
-									},
-								))) => {
-									// Send result of the Kademlia DHT lookup to the application layer
-									let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::RecordFound {
-										key: key.to_vec(), value
-									}))).await;
-								}
-								kad::QueryResult::GetRecord(Ok(_)) => {
-									// No record found
-									let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::RecordNotFound))).await;
-								}
-								kad::QueryResult::GetRecord(Err(_)) => {
-									// No record found
-									let _ = sender.send(StreamData::Network(NetworkData::Kademlia(DhtOps::RecordNotFound))).await;
-
-									// Delete the temporary data and then return error
-
 									// Get `StreamId`
-									if let Some(opaque_data) = stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+									if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
 										// Make sure this is temporary data (i.e `StreamId`)
 										let opaque_data = &opaque_data as &dyn Any;
 
 										if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
 											// Remove the request from the request buffer
-											stream_request_buffer.lock().await.remove(&stream_id);
+											network_core.stream_request_buffer.lock().await.remove(&stream_id);
+
+											// Insert response message the response buffer for it to be picked up
+											network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }));
+										}
+									}
+								}
+								kad::QueryResult::GetProviders(Err(_)) => {},
+								kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
+									kad::PeerRecord { record:kad::Record{ key, value, .. }, .. },
+								))) => {
+									// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
+									// Get `StreamId`
+									if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+										// Make sure this is temporary data (i.e `StreamId`)
+										let opaque_data = &opaque_data as &dyn Any;
+
+										if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+											// Remove the request from the request buffer
+											network_core.stream_request_buffer.lock().await.remove(&stream_id);
+
+											// Insert response message the response buffer for it to be picked up
+											network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::RecordFound { key: key.to_vec(), value: value.to_vec() }));
+										}
+									}
+								}
+								kad::QueryResult::GetRecord(Ok(_)) => {},
+								kad::QueryResult::GetRecord(Err(e)) => {
+									let key = match e {
+										kad::GetRecordError::NotFound { key, .. } => key,
+										kad::GetRecordError::QuorumFailed { key, .. } => key,
+										kad::GetRecordError::Timeout { key } => key,
+									};
+
+									// Delete the temporary data and then return error
+									// Get `StreamId`
+									if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+										// Make sure this is temporary data (i.e `StreamId`)
+										let opaque_data = &opaque_data as &dyn Any;
+
+										if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+											// Remove the request from the request buffer
+											network_core.stream_request_buffer.lock().await.remove(&stream_id);
 
 											// Return error
-											stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
+											network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::KadFetchRecordError(key.to_vec())));
 										}
 									}
 								}
 								kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
 									// Call handler
-									handler.kademlia_put_record_success(key.to_vec(), sender.clone());
+									network_core.state.kademlia_put_record_success(network_info.event_comm_channel.clone(), key.to_vec());
 								}
 								kad::QueryResult::PutRecord(Err(_)) => {
 									// Call handler
-									handler.kademlia_put_record_error();
+									network_core.state.kademlia_put_record_error(network_info.event_comm_channel.clone());
 								}
 								kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
 									key,
 								})) => {
 									// Call handler
-									handler.kademlia_start_providing_success(key.to_vec(), sender.clone());
+									network_core.state.kademlia_start_providing_success(network_info.event_comm_channel.clone(), key.to_vec());
 								}
 								kad::QueryResult::StartProviding(Err(_)) => {
 									// Call handler
-									handler.kademlia_start_providing_error(sender.clone());
+									network_core.state.kademlia_start_providing_error(network_info.event_comm_channel.clone());
 								}
 								_ => {}
 							},
-							kad::Event::InboundRequest { request } => match request {
-								kad::InboundRequest::GetProvider {
-									num_closer_peers,
-									num_provider_peers,
-								} => {
-
-								},
-								kad::InboundRequest::AddProvider { record } => {
-
-								},
-								kad::InboundRequest::GetRecord {
-									num_closer_peers,
-									present_locally,
-								} => {
-
-								},
-								kad::InboundRequest::PutRecord {
-									source,
-									connection,
-									record,
-								} => {
-
-								},
-								_ => {}
-							},
-							kad::Event::RoutingUpdated {
-								peer,
-								is_new_peer,
-								addresses,
-								bucket_range,
-								old_peer,
-							} => todo!(),
-							kad::Event::UnroutablePeer { peer } => todo!(),
-							kad::Event::RoutablePeer { peer, address } => todo!(),
-							kad::Event::PendingRoutablePeer { peer, address } => todo!(),
-							kad::Event::ModeChanged { new_mode } => todo!(),
+							// Other events we don't care about
+							_ => {}
 						},
 						// Identify
 						CoreEvent::Identify(event) => match event {
 							identify::Event::Received { peer_id, info } => {
 								// We just recieved an `Identify` info from a peer.s
-								handler.identify_info_recieved(peer_id, info.clone(), sender.clone());
+								network_core.state.identify_info_recieved(network_info.event_comm_channel.clone(), peer_id, info.clone());
 
 								// disconnect from peer of the network id is different
 								if info.protocol_version != network_info.id.as_ref() {
@@ -1132,20 +1116,20 @@ impl Core {
 						},
 						// Request-response
 						CoreEvent::RequestResponse(event) => match event {
-							request_response::Event::Message { peer, message } => match message {
+							request_response::Event::Message { peer: _, message } => match message {
 									// A request just came in
-									request_response::Message::Request { request_id, request, channel } => {
+									request_response::Message::Request { request_id: _, request, channel } => {
 										// Parse request
 										match request {
 											Rpc::ReqResponse { data } => {
 												// Pass request data to configured request handler
-												let response_data = handler.handle_incoming_message(data);
+												let response_data = network_core.state.handle_incoming_message(data);
 
 												// construct an RPC
 												let response_rpc = Rpc::ReqResponse { data: response_data };
 
 												// Send the response
-												swarm.behaviour_mut().request_response.send_response(channel, response_rpc);
+												let _ = swarm.behaviour_mut().request_response.send_response(channel, response_rpc);
 											}
 										}
 									},
@@ -1154,34 +1138,38 @@ impl Core {
 										// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
 
 										// Get `StreamId`
-										if let Some(opaque_data) = stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+										if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
 											// Make sure this is temporary data (i.e `StreamId`)
 											let opaque_data = &opaque_data as &dyn Any;
 
 											if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
 												// Remove the request from the request buffer
-												stream_request_buffer.lock().await.remove(&stream_id);
+												network_core.stream_request_buffer.lock().await.remove(&stream_id);
 
-												// Insert response message the response buffer for it to be picked up
-												stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(message.into()));
+												match response {
+													Rpc::ReqResponse { data } => {
+														// Insert response message the response buffer for it to be picked up
+														network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(data));
+													},
+												}
 											}
 										}
 									},
 							},
-							request_response::Event::OutboundFailure { peer, request_id, error } => {
+							request_response::Event::OutboundFailure { request_id, .. } => {
 								// Delete the temporary data and then return error
 
 								// Get `StreamId`
-								if let Some(opaque_data) = stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+								if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
 									// Make sure this is temporary data (i.e `StreamId`)
 									let opaque_data = &opaque_data as &dyn Any;
 
 									if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
 										// Remove the request from the request buffer
-										stream_request_buffer.lock().await.remove(&stream_id);
+										network_core.stream_request_buffer.lock().await.remove(&stream_id);
 
 										// Return error
-										stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
+										network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
 									}
 								}
 							},
@@ -1193,18 +1181,17 @@ impl Core {
 						connection_id,
 						endpoint,
 						num_established,
-						concurrent_dial_errors,
+						concurrent_dial_errors: _,
 						established_in,
 					} => {
 						// call configured handler
-						handler.connection_established(
+						network_core.state.connection_established(
+							network_info.event_comm_channel.clone(),
 							peer_id,
 							connection_id,
 							&endpoint,
 							num_established,
-							concurrent_dial_errors,
 							established_in,
-							sender.clone()
 						);
 					}
 					SwarmEvent::ConnectionClosed {
@@ -1215,13 +1202,13 @@ impl Core {
 						cause,
 					} => {
 						// call configured handler
-						handler.connection_closed(
+						network_core.state.connection_closed(
+							network_info.event_comm_channel.clone(),
 							peer_id,
 							connection_id,
 							&endpoint,
 							num_established,
 							cause,
-							sender.clone()
 						);
 					}
 					SwarmEvent::ExpiredListenAddr {
@@ -1229,7 +1216,7 @@ impl Core {
 						address,
 					} => {
 						// call configured handler
-						handler.expired_listen_addr(listener_id, address, sender.clone());
+						network_core.state.expired_listen_addr(network_info.event_comm_channel.clone(), listener_id, address);
 					}
 					SwarmEvent::ListenerClosed {
 						listener_id,
@@ -1237,33 +1224,33 @@ impl Core {
 						reason: _,
 					} => {
 						// call configured handler
-						handler.listener_closed(listener_id, addresses, sender.clone());
+						network_core.state.listener_closed(network_info.event_comm_channel.clone(), listener_id, addresses);
 					}
 					SwarmEvent::ListenerError {
 						listener_id,
 						error: _,
 					} => {
 						// call configured handler
-						handler.listener_error(listener_id, sender.clone());
+						network_core.state.listener_error(network_info.event_comm_channel.clone(), listener_id);
 					}
 					SwarmEvent::Dialing {
 						peer_id,
 						connection_id,
 					} => {
 						// call configured handler
-						handler.dialing(peer_id, connection_id, sender.clone());
+						network_core.state.dialing(network_info.event_comm_channel.clone(), peer_id, connection_id);
 					}
 					SwarmEvent::NewExternalAddrCandidate { address } => {
 						// call configured handler
-						handler.new_external_addr_candidate(address, sender.clone());
+						network_core.state.new_external_addr_candidate(network_info.event_comm_channel.clone(), address);
 					}
 					SwarmEvent::ExternalAddrConfirmed { address } => {
 						// call configured handler
-						handler.external_addr_confirmed(address, sender.clone());
+						network_core.state.external_addr_confirmed(network_info.event_comm_channel.clone(), address);
 					}
 					SwarmEvent::ExternalAddrExpired { address } => {
 						// call configured handler
-						handler.external_addr_expired(address, sender.clone());
+						network_core.state.external_addr_expired(network_info.event_comm_channel.clone(), address);
 					}
 					SwarmEvent::IncomingConnection {
 						connection_id,
@@ -1271,7 +1258,7 @@ impl Core {
 						send_back_addr,
 					} => {
 						// call configured handler
-						handler.incoming_connection(connection_id, local_addr, send_back_addr, sender.clone());
+						network_core.state.incoming_connection(network_info.event_comm_channel.clone(), connection_id, local_addr, send_back_addr);
 					}
 					SwarmEvent::IncomingConnectionError {
 						connection_id,
@@ -1280,11 +1267,11 @@ impl Core {
 						error: _,
 					} => {
 						// call configured handler
-						handler.incoming_connection_error(
+						network_core.state.incoming_connection_error(
+							network_info.event_comm_channel.clone(),
 							connection_id,
 							local_addr,
 							send_back_addr,
-							sender.clone()
 						);
 					}
 					SwarmEvent::OutgoingConnectionError {
@@ -1293,272 +1280,11 @@ impl Core {
 						error: _,
 					} => {
 						// call configured handler
-						handler.outgoing_connection_error(connection_id, peer_id, sender.clone());
+						network_core.state.outgoing_connection_error(network_info.event_comm_channel.clone(), connection_id,  peer_id);
 					}
 					_ => todo!(),
 				}
 			}
 		}
-	}
-}
-
-/// The high level trait that provides default implementations to handle most supported network
-/// swarm events.
-pub trait EventHandler {
-	/// Event that informs the network core that we have started listening on a new multiaddr.
-	fn new_listen_addr(&mut self, _listener_id: ListenerId, _addr: Multiaddr) {}
-
-	/// Event that informs the network core about a newly established connection to a peer.
-	fn connection_established(
-		&mut self,
-		_peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_concurrent_dial_errors: Option<Vec<(Multiaddr, TransportError<Error>)>>,
-		_established_in: Duration,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that informs the network core about a closed connection to a peer.
-	fn connection_closed(
-		&mut self,
-		_peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: u32,
-		_cause: Option<ConnectionError>,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces expired listen address.
-	fn expired_listen_addr(
-		&mut self,
-		_listener_id: ListenerId,
-		_address: Multiaddr,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces a closed listener.
-	fn listener_closed(
-		&mut self,
-		_listener_id: ListenerId,
-		_addresses: Vec<Multiaddr>,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces a listener error.
-	fn listener_error(
-		&mut self,
-		_listener_id: ListenerId,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces a dialing attempt.
-	fn dialing(
-		&mut self,
-		_peer_id: Option<PeerId>,
-		_connection_id: ConnectionId,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces a new external address candidate.
-	fn new_external_addr_candidate(
-		&mut self,
-		_address: Multiaddr,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces a confirmed external address.
-	fn external_addr_confirmed(
-		&mut self,
-		_address: Multiaddr,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces an expired external address.
-	fn external_addr_expired(
-		&mut self,
-		_address: Multiaddr,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces new connection arriving on a listener and in the process of
-	/// protocol negotiation.
-	fn incoming_connection(
-		&mut self,
-		_connection_id: ConnectionId,
-		_local_addr: Multiaddr,
-		_send_back_addr: Multiaddr,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces an error happening on an inbound connection during its initial
-	/// handshake.
-	fn incoming_connection_error(
-		&mut self,
-		_connection_id: ConnectionId,
-		_local_addr: Multiaddr,
-		_send_back_addr: Multiaddr,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces an error happening on an outbound connection during its initial
-	/// handshake.
-	fn outgoing_connection_error(
-		&mut self,
-		_connection_id: ConnectionId,
-		_peer_id: Option<PeerId>,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces the arrival of a ping message from a peer.
-	/// The duration it took for a round trip is also returned
-	fn inbound_ping_success(
-		&mut self,
-		_peer_id: PeerId,
-		_duration: Duration,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces a `Ping` error
-	fn outbound_ping_error(
-		&mut self,
-		_peer_id: PeerId,
-		_err_type: Failure,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-	fn identify_info_recieved(
-		&mut self,
-		_peer_id: PeerId,
-		_info: Info,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces the successful write of a record to the DHT
-	fn kademlia_put_record_success(
-		&mut self,
-		_key: Vec<u8>,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces the failure of a node to save a record
-	fn kademlia_put_record_error(&mut self) {
-		// Default implementation
-	}
-
-	/// Event that announces a node as a provider of a record in the DHT
-	fn kademlia_start_providing_success(
-		&mut self,
-		_key: Vec<u8>,
-		_application_sender: Sender<StreamData>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces the failure of a node to become a provider of a record in the DHT
-	fn kademlia_start_providing_error(&mut self, _application_sender: Sender<StreamData>) {
-		// Default implementation
-	}
-
-	/// Event that announces the arrival of an RPC message
-	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
-}
-
-/// Default network event handler
-pub struct DefaultHandler;
-
-/// Implement [`EventHandler`] for [`DefaultHandler`]
-impl EventHandler for DefaultHandler {
-	/// Echo the message back to the sender
-	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-		data
-	}
-}
-
-/// Important information to obtain from the [`CoreBuilder`], to properly handle network
-/// operations
-struct NetworkInfo {
-	/// The name/id of the network
-	id: StreamProtocol,
-	/// Important information to manage `Ping` operations
-	ping: PingInfo,
-}
-
-/// Module that contains important data structures to manage `Ping` operations on the network
-mod ping_config {
-	use libp2p_identity::PeerId;
-	use std::{collections::HashMap, time::Duration};
-
-	/// Policies to handle a `Ping` error
-	/// - All connections to peers are closed during a disconnect operation.
-	pub enum PingErrorPolicy {
-		/// Do not disconnect under any circumstances
-		NoDisconnect,
-		/// Disconnect after a number of outbound errors
-		DisconnectAfterMaxErrors(u16),
-		/// Disconnect after a certain number of concurrent timeouts
-		DisconnectAfterMaxTimeouts(u16),
-	}
-
-	/// Struct that stores critical information for the execution of the [`PingErrorPolicy`]
-	#[derive(Debug)]
-	pub struct PingManager {
-		/// The number of timeout errors encountered from a peer
-		pub timeouts: HashMap<PeerId, u16>,
-		/// The number of outbound errors encountered from a peer
-		pub outbound_errors: HashMap<PeerId, u16>,
-	}
-
-	/// The configuration for the `Ping` protocol
-	pub struct PingConfig {
-		/// The interval between successive pings.
-		/// Default is 15 seconds
-		pub interval: Duration,
-		/// The duration before which the request is considered failure.
-		/// Default is 20 seconds
-		pub timeout: Duration,
-		/// Error policy
-		pub err_policy: PingErrorPolicy,
-	}
-
-	/// Critical information to manage `Ping` operations
-	pub struct PingInfo {
-		pub policy: PingErrorPolicy,
-		pub manager: PingManager,
 	}
 }

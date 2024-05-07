@@ -42,6 +42,9 @@ pub const MAX_PORT: u16 = 65535;
 /// Default network ID
 pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
 
+/// Default keep-alive network duration
+pub static DEFAULT_KEEP_ALIVE_DURATION: u64 = 60;
+
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
 pub trait CustomFrom {
