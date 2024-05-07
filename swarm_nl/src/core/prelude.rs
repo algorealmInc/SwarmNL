@@ -1,4 +1,7 @@
+use async_trait::async_trait;
 /// Copyright (c) 2024 Algorealm
+
+
 use libp2p::request_response::OutboundRequestId;
 use rand::random;
 use serde::{Deserialize, Serialize};
@@ -47,7 +50,7 @@ pub enum AppData {
 	/// Return important information about the local routing table
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network
-	FetchData { keys: Vec<String>, peer: PeerId },
+	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
 	// Get network information
 	// Gossip related requests
 }
@@ -234,19 +237,21 @@ pub struct RpcConfig {
 
 /// The high level trait that provides default implementations to handle most supported network
 /// swarm events.
+#[async_trait]
 pub trait EventHandler {
 	/// Event that informs the network core that we have started listening on a new multiaddr.
-	fn new_listen_addr(
+	async fn new_listen_addr(
 		&mut self,
 		_channel: NetworkChannel,
 		_local_peer_id: PeerId,
 		_listener_id: ListenerId,
 		_addr: Multiaddr,
 	) {
+		// Default implementation
 	}
 
 	/// Event that informs the network core about a newly established connection to a peer.
-	fn connection_established(
+	async fn connection_established(
 		&mut self,
 		_channel: NetworkChannel,
 		_peer_id: PeerId,
@@ -259,7 +264,7 @@ pub trait EventHandler {
 	}
 
 	/// Event that informs the network core about a closed connection to a peer.
-	fn connection_closed(
+	async fn connection_closed(
 		&mut self,
 		_channel: NetworkChannel,
 		_peer_id: PeerId,
@@ -272,7 +277,7 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces expired listen address.
-	fn expired_listen_addr(
+	async fn expired_listen_addr(
 		&mut self,
 		_channel: NetworkChannel,
 		_listener_id: ListenerId,
@@ -282,7 +287,7 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a closed listener.
-	fn listener_closed(
+	async fn listener_closed(
 		&mut self,
 		_channel: NetworkChannel,
 		_listener_id: ListenerId,
@@ -292,12 +297,12 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a listener error.
-	fn listener_error(&mut self, _channel: NetworkChannel, _listener_id: ListenerId) {
+	async fn listener_error(&mut self, _channel: NetworkChannel, _listener_id: ListenerId) {
 		// Default implementation
 	}
 
 	/// Event that announces a dialing attempt.
-	fn dialing(
+	async fn dialing(
 		&mut self,
 		_channel: NetworkChannel,
 		_peer_id: Option<PeerId>,
@@ -307,23 +312,23 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a new external address candidate.
-	fn new_external_addr_candidate(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
+	async fn new_external_addr_candidate(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces a confirmed external address.
-	fn external_addr_confirmed(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
+	async fn external_addr_confirmed(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces an expired external address.
-	fn external_addr_expired(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
+	async fn external_addr_expired(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces new connection arriving on a listener and in the process of
 	/// protocol negotiation.
-	fn incoming_connection(
+	async fn incoming_connection(
 		&mut self,
 		_channel: NetworkChannel,
 		_connection_id: ConnectionId,
@@ -335,7 +340,7 @@ pub trait EventHandler {
 
 	/// Event that announces an error happening on an inbound connection during its initial
 	/// handshake.
-	fn incoming_connection_error(
+	async fn incoming_connection_error(
 		&mut self,
 		_channel: NetworkChannel,
 		_connection_id: ConnectionId,
@@ -347,7 +352,7 @@ pub trait EventHandler {
 
 	/// Event that announces an error happening on an outbound connection during its initial
 	/// handshake.
-	fn outgoing_connection_error(
+	async fn outgoing_connection_error(
 		&mut self,
 		_channel: NetworkChannel,
 		_connection_id: ConnectionId,
@@ -358,7 +363,7 @@ pub trait EventHandler {
 
 	/// Event that announces the arrival of a ping message from a peer.
 	/// The duration it took for a round trip is also returned
-	fn inbound_ping_success(
+	async fn inbound_ping_success(
 		&mut self,
 		_channel: NetworkChannel,
 		_peer_id: PeerId,
@@ -368,7 +373,7 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a `Ping` error
-	fn outbound_ping_error(
+	async fn outbound_ping_error(
 		&mut self,
 		_channel: NetworkChannel,
 		_peer_id: PeerId,
@@ -378,27 +383,32 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-	fn identify_info_recieved(&mut self, _channel: NetworkChannel, _peer_id: PeerId, _info: Info) {
+	async fn identify_info_recieved(
+		&mut self,
+		_channel: NetworkChannel,
+		_peer_id: PeerId,
+		_info: Info,
+	) {
 		// Default implementation
 	}
 
 	/// Event that announces the successful write of a record to the DHT
-	fn kademlia_put_record_success(&mut self, _channel: NetworkChannel, _key: Vec<u8>) {
+	async fn kademlia_put_record_success(&mut self, _channel: NetworkChannel, _key: Vec<u8>) {
 		// Default implementation
 	}
 
 	/// Event that announces the failure of a node to save a record
-	fn kademlia_put_record_error(&mut self, _channel: NetworkChannel) {
+	async fn kademlia_put_record_error(&mut self, _channel: NetworkChannel) {
 		// Default implementation
 	}
 
 	/// Event that announces a node as a provider of a record in the DHT
-	fn kademlia_start_providing_success(&mut self, _channel: NetworkChannel, _key: Vec<u8>) {
+	async fn kademlia_start_providing_success(&mut self, _channel: NetworkChannel, _key: Vec<u8>) {
 		// Default implementation
 	}
 
 	/// Event that announces the failure of a node to become a provider of a record in the DHT
-	fn kademlia_start_providing_error(&mut self, _channel: NetworkChannel) {
+	async fn kademlia_start_providing_error(&mut self, _channel: NetworkChannel) {
 		// Default implementation
 	}
 

@@ -852,7 +852,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 								// Fetch data quickly from a peer over the network
 								AppData::FetchData { keys, peer } => {
 									// Construct the RPC object
-									let rpc = Rpc::ReqResponse { data: keys.into_iter().map(|s| s.into_bytes()).collect() };
+									let rpc = Rpc::ReqResponse { data: keys };
 
 									// Inform the swarm to make the request
 									let outbound_id = swarm
