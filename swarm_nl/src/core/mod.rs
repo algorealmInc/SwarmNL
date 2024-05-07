@@ -9,6 +9,8 @@ use std::{
 	time::Duration,
 };
 
+use base58::FromBase58;
+
 use futures::{
 	channel::mpsc::{self, Receiver, Sender},
 	select, SinkExt, StreamExt,
@@ -478,7 +480,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		// Add bootnodes to local routing table, if any
 		for peer_info in self.boot_nodes {
 			// PeerId
-			if let Ok(peer_id) = PeerId::from_bytes(peer_info.0.as_bytes()) {
+			if let Ok(peer_id) = PeerId::from_bytes(&peer_info.0.from_base58().unwrap_or_default())
+			{
+				println!("{:?}", peer_id);
 				// Multiaddress
 				if let Ok(multiaddr) = multiaddr::from_url(&peer_info.1) {
 					swarm
@@ -798,7 +802,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 										if let Some(explicit_peers) = explicit_peers {
 											// Extract PeerIds
 											let peers = explicit_peers.iter().map(|peer_id_string| {
-												PeerId::from_bytes(peer_id_string.as_bytes())
+												PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
 											}).filter_map(Result::ok).collect::<Vec<_>>();
 
 											swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);

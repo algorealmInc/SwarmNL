@@ -128,26 +128,26 @@ impl EventHandler for Empire {
 
 /// Setup game (This is for the persian Empire)
 /// This requires no bootnodes connection
-#[cfg(not(feature = "macedonian"))]
-pub async fn setup_game() -> Core<Empire> {
-	// First, we want to configure our node
-	let config = BootstrapConfig::default();
+// #[cfg(not(feature = "macedonian"))]
+// pub async fn setup_game() -> Core<Empire> {
+// 	// First, we want to configure our node
+// 	let config = BootstrapConfig::default();
 
-	// State kept by this node
-	let empire = Empire::new(String::from("Spartan"));
+// 	// State kept by this node
+// 	let empire = Empire::new(String::from("Macedonian"));
 
-	// Set up network
-	CoreBuilder::with_config(config, empire)
-		.build()
-		.await
-		.unwrap()
-}
+// 	// Set up network
+// 	CoreBuilder::with_config(config, empire)
+// 		.build()
+// 		.await
+// 		.unwrap()
+// }
 
 /// The Macedonian Empire setup.
 /// These require bootnodes of empires to form alliance.
 /// We will be providing the location (peer id and multiaddress) of the Spartan Empire as boot
 /// parameters
-#[cfg(feature = "macedonian")]
+// #[cfg(feature = "macedonian")]
 pub async fn setup_game() -> Core<Empire> {
 	// First, we want to configure our node with the bootstrap config file on disk
 	let config = BootstrapConfig::from_file("bootstrap_config.ini");
@@ -174,4 +174,7 @@ pub async fn play_game() {
 	println!("Black smiths: {}", core.state.blacksmith);
 	println!("Land mass: {}", core.state.land_mass);
 	println!("Gold reserve: {}", core.state.gold_reserve);
+
+    // Keep looping so we can record network events
+    loop { }
 }

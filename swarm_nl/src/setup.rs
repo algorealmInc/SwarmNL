@@ -113,7 +113,6 @@ impl BootstrapConfig {
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
-		
 		// Parse the key type
 		if let Some(key_type) = <KeyType as CustomFrom>::from(key_type_str) {	
 			let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
