@@ -6,6 +6,8 @@
 /// This file is part of the SwarmNl library.
 use std::collections::HashMap;
 
+use libp2p_identity::rsa;
+
 /// Import the contents of the exported modules into this module
 use super::*;
 
@@ -87,6 +89,10 @@ impl BootstrapConfig {
 	/// 1. The RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
 	/// 2. If the file contains invalid data and an RSA keypair cannot be generated from it.
 	pub fn generate_keypair(self, key_type: KeyType, rsa_pk8_filepath: Option<&str>) -> Self {
+		if rsa_pk8_filepath.is_none() && key_type == KeyType::RSA {
+			panic!("RSA keypair specified without a .pk8 file");
+		}
+
 		let keypair = match key_type {
 			// Generate a Ed25519 Keypair
 			KeyType::Ed25519 => Keypair::generate_ed25519(),
@@ -113,10 +119,11 @@ impl BootstrapConfig {
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
-		
 		// Parse the key type
-		if let Some(key_type) = <KeyType as CustomFrom>::from(key_type_str) {	
-			let raw_keypair = Keypair::from_protobuf_encoding(bytes).unwrap();
+		if let Some(key_type) = <KeyType as CustomFrom>::from(key_type_str) {
+			let raw_keypair = Keypair::from_protobuf_encoding(bytes)
+				.expect("Invalid keypair: protobuf bytes not parsable into keypair");
+
 			let keypair = match key_type {
 				// Generate a Ed25519 Keypair
 				KeyType::Ed25519 => Keypair::try_into_ed25519(raw_keypair).unwrap().into(),
@@ -129,10 +136,12 @@ impl BootstrapConfig {
 			};
 
 			BootstrapConfig { keypair, ..self }
-
 		} else {
 			// generate a default Ed25519 keypair
-			BootstrapConfig { keypair : Keypair::generate_ed25519(), ..self }
+			BootstrapConfig {
+				keypair: Keypair::generate_ed25519(),
+				..self
+			}
 		}
 	}
 
@@ -164,7 +173,56 @@ mod tests {
 	use libp2p_identity::ed25519;
 
 	use super::*;
+	use std::fs;
 	use std::panic;
+	use std::process::Command;
+
+	// helper to generate RSA keypair files
+	// commands taken from https://docs.rs/libp2p-identity/0.2.8/libp2p_identity/struct.Keypair.html#example-generating-rsa-keys-with-openssl
+	fn generate_rsa_keypair_files() {
+		// Generate RSA private key
+		let genrsa_output = Command::new("openssl")
+			.args(&["genrsa", "-out", "private.pem", "2048"])
+			.output()
+			.expect("Failed to execute openssl genrsa command");
+
+		// Convert private key to PKCS8 format
+		let pkcs8_output = Command::new("openssl")
+			.args(&[
+				"pkcs8",
+				"-in",
+				"private.pem",
+				"-inform",
+				"PEM",
+				"-topk8",
+				"-out",
+				"private.pk8",
+				"-outform",
+				"DER",
+				"-nocrypt",
+			])
+			.output()
+			.expect("Failed to execute openssl pkcs8 command");
+
+		// Check command outputs for success or failure
+		if genrsa_output.status.success() {
+			println!("RSA private key generated successfully");
+		} else {
+			eprintln!(
+				"Failed to generate RSA private key:\n{}",
+				String::from_utf8_lossy(&genrsa_output.stderr)
+			);
+		}
+
+		if pkcs8_output.status.success() {
+			println!("RSA private key converted to PKCS8 format successfully");
+		} else {
+			eprintln!(
+				"Failed to convert RSA private key to PKCS8 format:\n{}",
+				String::from_utf8_lossy(&pkcs8_output.stderr)
+			);
+		}
+	}
 
 	#[test]
 	fn file_read_should_panic() {
@@ -244,78 +302,131 @@ mod tests {
 		assert_eq!(bootstrap_config_invalid_udp_port.ports().1, MAX_PORT);
 	}
 
-	// TODO check for should_panic macro
 	#[test]
 	fn key_type_is_invalid() {
-		let bootstrap_config = BootstrapConfig::default();
+		// invalid keytype
+		let invalid_keytype = "SomeMagicCryptoType";
+
 		// valid keypair
-		let mut ed25519_serialized_keypair = Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
+		let mut ed25519_serialized_keypair =
+			Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
 		// should not panic but default to ed25519
 		let result = panic::catch_unwind(move || {
-			let _ = bootstrap_config
-				.generate_keypair_from_protobuf("DejisMagicCryptoType", &mut ed25519_serialized_keypair);
+			let bootstrap_config = BootstrapConfig::default()
+				.generate_keypair_from_protobuf(invalid_keytype, &mut ed25519_serialized_keypair);
+
+			assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ed25519);
 		});
 
 		assert!(result.is_ok());
 	}
 
 	#[test]
+	#[should_panic(expected = "Invalid keypair: protobuf bytes not parsable into keypair")]
 	fn key_pair_is_invalid() {
-		let valid_key_type = ["Ed25519", "RSA", "Secp256k1", "Ecdsa"];
+		let valid_key_types = ["Ed25519", "RSA", "Secp256k1", "Ecdsa"];
+		let mut invalid_keypair: [u8; 2] = [0; 2];
 
-		assert!(valid_key_type
-			.iter()
-			.map(|key_type| {
-				let mut invalid_keypair: [u8; 64] = [0; 64];
-				let bootstrap_config = BootstrapConfig::default();
-
-				// should panic
-				panic::catch_unwind(move || {
-					let _ = bootstrap_config
-						.generate_keypair_from_protobuf(key_type, &mut invalid_keypair);
-				})
-			})
-			.all(|result| { result.is_err() }));
+		// keypair is invalid for each valid key type
+		let _ = BootstrapConfig::default()
+			.generate_keypair_from_protobuf(valid_key_types[0], &mut invalid_keypair);
+		let _ = BootstrapConfig::default()
+			.generate_keypair_from_protobuf(valid_key_types[1], &mut invalid_keypair);
+		let _ = BootstrapConfig::default()
+			.generate_keypair_from_protobuf(valid_key_types[2], &mut invalid_keypair);
+		let _ = BootstrapConfig::default()
+			.generate_keypair_from_protobuf(valid_key_types[3], &mut invalid_keypair);
 	}
 
 	#[test]
-	fn rsa_should_panic() {
-
-		// TODO
-		// rsa_pk8_filepath is set to None
-		// - read from the file
-		// - filepath is set to None
-
-		// invalid RSA cryptographic file
-		// - read from the file
-		// -RSA keypair cannot be generated from it
+	#[should_panic(expected = "RSA keypair specified without a .pk8 file")]
+	fn rsa_specified_without_filepath_panics() {
+		let bootstrap_config = BootstrapConfig::default();
+		let _ = bootstrap_config.generate_keypair(KeyType::RSA, None);
 	}
 
-	// #[test]
-	// fn test_generate_keypair_from_protobuf_should_fail() {
-	// 	// Initialize your test data
-	// 	let key_type_str = "Ed25519"; // TODO make this an array with different keytypes to test all
-	// 	let mut bytes: [u8; 64] = [0; 64]; // example protobuf bytes
+	#[test]
+	#[should_panic]
+	fn rsa_specified_with_nonexistant_file() {
+		let bootstrap_config = BootstrapConfig::default();
+		let _ = bootstrap_config.generate_keypair(KeyType::RSA, Some("invalid_rsa_file.pk8"));
+	}
 
-	// 	// create default bootstrap config to test against
-	// 	// we know that the default is Ed25519
-	// 	let bootstrap_config = BootstrapConfig::new();
+	#[test]
+	fn rsa_with_invalid_contents_should_panic() {
+		// create an RSA file with invalid contents
+		let file_path = "invalid_rsa_keypair_temp_file.pk8";
+		let invalid_keypair: [u8; 64] = [0; 64];
+		std::fs::write(file_path, invalid_keypair).unwrap();
 
-	// 	let bootstrap_with_generated_ed25519 =
-	// 		bootstrap_config.generate_keypair_from_protobuf(key_type_str, &bytes);
+		let result = panic::catch_unwind(|| {
+			// should panic when parsing invalid RSA file
+			let _ = BootstrapConfig::default().generate_keypair(KeyType::RSA, Some(file_path));
+		});
 
-	// 	assert_eq!(generate_ed25519.keypair().key_type(), KeyType::Ed25519);
-	// }
+		// this will return an error
+		assert!(result.is_err());
 
-	// #[test]
-	// #[should_panic(expected = "specified key type")]
-	// fn test_generate_keypair_from_protobuf_panic() {
-	// 	let key_type_str = "InvalidKeyType";
-	// 	let mut bytes: [u8; 64] = [0; 64];
-	// 	let bootstrap_config = BootstrapConfig::new();
+		// clean-up invalid_rsa_keypair_temp_file.pk8
+		fs::remove_file(file_path).unwrap_or_default();
+	}
 
-	// 	// this should panic
-	// 	bootstrap_config.generate_keypair_from_protobuf(key_type_str, &mut bytes);
-	// }
+	#[test]
+	fn rsa_from_valid_file_works() {
+		// create a valid private.pk8 file
+		generate_rsa_keypair_files();
+
+		let mut bootstrap_config =
+			BootstrapConfig::new().generate_keypair(KeyType::RSA, Some("private.pk8"));
+
+		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::RSA);
+
+		// clean-up RSA files
+		fs::remove_file("private.pk8").unwrap_or_default();
+		fs::remove_file("private.pem").unwrap_or_default();
+	}
+
+	#[test]
+	fn generate_keypair_from_protobuf_ed25519_works() {
+		// generate a valid keypair for ed25519
+		let key_type_str = "Ed25519";
+		let mut ed25519_serialized_keypair =
+			Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
+
+		// add to bootstrap config from protobuf
+		let mut bootstrap_config = BootstrapConfig::new()
+			.generate_keypair_from_protobuf(key_type_str, &mut ed25519_serialized_keypair);
+
+		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ed25519);
+	}
+
+	#[test]
+	fn generate_keypair_from_protobuf_ecdsa_works() {
+		// generate a valid keypair for ecdsa
+		let key_type_str = "Ecdsa";
+		let mut ecdsa_serialized_keypair =
+			Keypair::generate_ecdsa().to_protobuf_encoding().unwrap();
+
+		// add to bootstrap config from protobuf
+		let mut bootstrap_config = BootstrapConfig::new()
+			.generate_keypair_from_protobuf(key_type_str, &mut ecdsa_serialized_keypair);
+
+		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ecdsa);
+	}
+
+	#[test]
+	fn generate_keypair_from_protobuf_secp256k1_works() {
+		// generate a valid keypair for Secp256k1
+		let key_type_str = "Secp256k1";
+		let mut secp256k1_serialized_keypair = Keypair::generate_secp256k1()
+			.to_protobuf_encoding()
+			.unwrap();
+
+		// add to bootstrap config from protobuf
+		let mut bootstrap_config = BootstrapConfig::new()
+			.generate_keypair_from_protobuf(key_type_str, &mut secp256k1_serialized_keypair);
+
+		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Secp256k1);
+	}
 }

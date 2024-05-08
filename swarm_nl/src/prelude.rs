@@ -1,9 +1,16 @@
-use libp2p_identity::KeyType;
+use libp2p_identity::{KeyType, PeerId};
+use std::net::Ipv4Addr;
 /// Copyright (c) 2024 Algorealm
 ///  
 /// This file is part of the SwarmNL library.
 use std::time::Instant;
 use thiserror::Error;
+
+/// Default IP address when no address is specified.
+pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
+
+/// Default amount of time to keep a connection alive.
+pub static DEFAULT_KEEP_ALIVE_DURATION: u64 = 60;
 
 /// Library error type containing all custom errors that could be encountered
 #[derive(Error, Debug)]
@@ -22,6 +29,8 @@ pub enum SwarmNlError {
 	MultiaddressListenError(String),
 	#[error("could not dial remote peer")]
 	RemotePeerDialError(String),
+	#[error("could not parse provided network id")]
+	NetworkIdParseError(String),
 }
 
 /// Generic SwarmNl result type
@@ -38,6 +47,13 @@ pub type MultiaddrString = String;
 /// Port ranges
 pub const MIN_PORT: u16 = 49152;
 pub const MAX_PORT: u16 = 65535;
+
+/// Default network id
+pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
+/// Minimum network (protocol) id. This helps ensure that the protocol id is well formed and
+/// contains a reasonable value because it is what identifies a network, makes it unique and
+/// separates it from others.
+pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
@@ -60,7 +76,7 @@ impl CustomFrom for KeyType {
 }
 
 /// Supported transport protocols
-#[derive(Hash, Eq, PartialEq, Debug)]
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum TransportOpts {
 	/// QUIC transport protocol enabled with TCP/IP as fallback.
 	/// DNS lookup is also configured by default
@@ -127,7 +143,7 @@ pub enum AppData {
 	/// Return important information about the local routing table
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network
-	FetchData { keys: Vec<Vec<u8>>, peer: PeerIdString },
+	FetchData { keys: Vec<String>, peer: PeerId },
 }
 
 /// Data sent from the networking layer to the application layer or to itself
