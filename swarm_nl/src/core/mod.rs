@@ -20,7 +20,7 @@ use futures_time::time::Duration as AsyncDuration;
 use libp2p::{
 	identify::{self, Info},
 	kad::{self, store::MemoryStore, Record},
-	multiaddr::{self, Protocol},
+	multiaddr::Protocol,
 	noise,
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
@@ -34,10 +34,10 @@ use super::*;
 use crate::setup::BootstrapConfig;
 
 #[cfg(feature = "async-std-runtime")]
-use async_std::sync::Mutex;
+pub use async_std::sync::Mutex;
 
 #[cfg(feature = "tokio-runtime")]
-use tokio::sync::Mutex;
+pub use tokio::sync::Mutex;
 
 mod prelude;
 pub use prelude::*;
@@ -482,19 +482,18 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			// PeerId
 			if let Ok(peer_id) = PeerId::from_bytes(&peer_info.0.from_base58().unwrap_or_default())
 			{
-				println!("{:?}", peer_id);
 				// Multiaddress
-				if let Ok(multiaddr) = multiaddr::from_url(&peer_info.1) {
+				if let Ok(multiaddr) = peer_info.1.parse::<Multiaddr>() {
 					swarm
 						.behaviour_mut()
 						.kademlia
 						.add_address(&peer_id, multiaddr.clone());
 
-					println!("{:?}", multiaddr);
+					println!("Dailing {}", multiaddr);
 
 					// Dial them
 					swarm
-						.dial(multiaddr.clone())
+						.dial(peer_id)
 						.map_err(|_| SwarmNlError::RemotePeerDialError(multiaddr.to_string()))?;
 				}
 			}
@@ -537,11 +536,15 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 
 		// Initials stream id
 		let stream_id = StreamId::new();
+		let stream_request_buffer =
+			Arc::new(Mutex::new(StreamRequestBuffer::new(self.stream_size)));
+		let stream_response_buffer =
+			Arc::new(Mutex::new(StreamResponseBuffer::new(self.stream_size)));
 
 		// Setup the application event handler's network communication channel
 		let event_comm_channel = NetworkChannel::new(
-			Arc::new(Mutex::new(StreamRequestBuffer::new(self.stream_size))),
-			Arc::new(Mutex::new(StreamResponseBuffer::new(self.stream_size))),
+			stream_request_buffer.clone(),
+			stream_response_buffer.clone(),
 			application_sender.clone(),
 			Arc::new(Mutex::new(stream_id)),
 			self.network_read_delay,
@@ -559,10 +562,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			keypair: self.keypair,
 			application_sender,
 			// application_receiver,
-			stream_request_buffer: Arc::new(Mutex::new(StreamRequestBuffer::new(self.stream_size))),
-			stream_response_buffer: Arc::new(Mutex::new(StreamResponseBuffer::new(
-				self.stream_size,
-			))),
+			stream_request_buffer: stream_request_buffer.clone(),
+			stream_response_buffer: stream_response_buffer.clone(),
 			network_read_delay: self.network_read_delay,
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
 			// Save handler as the state of the application
@@ -686,7 +687,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		}
 	}
 
-	/// TODO! Buffer clearnup algorithm
+	/// TODO! Buffer cleanup algorithm
 	/// Explicitly rectrieve the reponse to a request sent to the network layer.
 	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
 	/// and read immediately as the response to the request should already be in the stream response
@@ -771,522 +772,851 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		loop {
 			select! {
 				// handle incoming stream data
-				stream_data = receiver.select_next_some() => match stream_data {
-						StreamData::Application(stream_id, app_data) => {
-							// Trackable stream id
-							let trackable_stream_id = TrackableStreamId::Id(stream_id);
-							match app_data {
-								// Put back into the stream what we read from it
-								AppData::Echo(message) => {
-									// Remove the request from the request buffer
-									network_core.stream_request_buffer.lock().await.remove(&stream_id);
+				stream_data = receiver.next() => {
+					match stream_data {
+						Some(incoming_data) => {
+							match incoming_data {
+								StreamData::Application(stream_id, app_data) => {
+									// Trackable stream id
+									let trackable_stream_id = TrackableStreamId::Id(stream_id);
+									match app_data {
+										// Put back into the stream what we read from it
+										AppData::Echo(message) => {
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												async_std::task::spawn(async move{
+													// Remove the request from the request buffer
+													netcore.stream_request_buffer.lock().await.remove(&stream_id);
 
-									// Insert into the response buffer for it to be picked up
-									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
-								},
-								// Store a value in the DHT and (optionally) on explicit specific peers
-								AppData::KademliaStoreRecord { key, value, expiration_time, explicit_peers } => {
-									// create a kad record
-									let mut record = Record::new(key.clone(), value);
+													// Insert into the response buffer for it to be picked up
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
+												});
+											}
 
-									// Set (optional) expiration time
-									record.expires = expiration_time;
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												tokio::task::spawn(async move{
+													// Remove the request from the request buffer
+													netcore.stream_request_buffer.lock().await.remove(&stream_id);
 
-									// Insert into DHT
-									if let Ok(_) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
-										// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-										// where we can get the response and then replace the buffer with the actual response data
-										network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
+													// Insert into the response buffer for it to be picked up
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
+												});
+											}
+										},
+										// Store a value in the DHT and (optionally) on explicit specific peers
+										AppData::KademliaStoreRecord { key, value, expiration_time, explicit_peers } => {
+											// create a kad record
+											let mut record = Record::new(key.clone(), value);
 
-										// Cache record on peers explicitly (if specified)
-										if let Some(explicit_peers) = explicit_peers {
-											// Extract PeerIds
-											let peers = explicit_peers.iter().map(|peer_id_string| {
-												PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
-											}).filter_map(Result::ok).collect::<Vec<_>>();
+											// Set (optional) expiration time
+											record.expires = expiration_time;
 
-											swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
-										}
-									} else {
-										// Delete the request from the stream and then return a write error
-										network_core.stream_request_buffer.lock().await.remove(&stream_id);
+											// Insert into DHT
+											if let Ok(_) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
+												// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+												// where we can get the response and then replace the buffer with the actual response data
 
-										// Return error
-										network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
-									}
-								},
-								// Perform a lookup in the DHT
-								AppData::KademliaLookupRecord { key } => {
-									let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
+												#[cfg(feature = "async-std-runtime")]
+												{
+													let netcore = network_core.clone();
+													async_std::task::spawn(async move{
+														netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
+													});
+												}
 
-									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-									// where we can get the response and then replace the buffer with the actual response data
-									network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-								},
-								// Perform a lookup of peers that store a record
-								AppData::KademliaGetProviders { key } => {
-									let _ = swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
+												#[cfg(feature = "tokio-runtime")]
+												{
+													let netcore = network_core.clone();
+													tokio::task::spawn(async move{
+														// Insert into the response buffer for it to be picked up
+														netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
+													});
+												}
 
-									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-									// where we can get the response and then replace the buffer with the actual response data
-									network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-								}
-								// Stop providing a record on the network
-								AppData::KademliaStopProviding { key } => {
-									swarm.behaviour_mut().kademlia.stop_providing(&key.into());
+												// Cache record on peers explicitly (if specified)
+												if let Some(explicit_peers) = explicit_peers {
+													// Extract PeerIds
+													let peers = explicit_peers.iter().map(|peer_id_string| {
+														PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
+													}).filter_map(Result::ok).collect::<Vec<_>>();
 
-									// Respond with a success
-									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
-								}
-								// Remove record from local store
-								AppData::KademliaDeleteRecord { key } => {
-									swarm.behaviour_mut().kademlia.remove_record(&key.into());
-
-									// Respond with a success
-									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
-								}
-								// Return important routing table info
-								AppData::KademliaGetRoutingTableInfo => {
-									// Remove the request from the request buffer
-									network_core.stream_request_buffer.lock().await.remove(&stream_id);
-
-									// Insert into the response buffer for it to be picked up
-									network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: network_info.id.to_string() }));
-								},
-								// Fetch data quickly from a peer over the network
-								AppData::FetchData { keys, peer } => {
-									// Construct the RPC object
-									let rpc = Rpc::ReqResponse { data: keys };
-
-									// Inform the swarm to make the request
-									let outbound_id = swarm
-										.behaviour_mut()
-										.request_response
-										.send_request(&peer, rpc);
-
-									// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-									// where we can get the response and then replace the buffer with the actual response data
-									network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
-								}
-							}
-						}
-						StreamData::Network(stream_id, network_data) => {
-							// Trackable stream id
-							let trackable_stream_id = TrackableStreamId::Id(stream_id);
-							match network_data {
-								// Dail peer
-								NetworkData::DailPeer(multiaddr) => {
-									// Remove the request from the request buffer
-									network_core.stream_request_buffer.lock().await.remove(&stream_id);
-
-									if let Ok(multiaddr) = multiaddr::from_url(&multiaddr) {
-										if let Ok(_) = swarm.dial(multiaddr.clone()) {
-											// Put result into response buffer
-											network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
-										} else {
-											network_core.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
-										}
-									}
-								}
-							}
-						}
-				},
-				event = swarm.select_next_some() => match event {
-					SwarmEvent::NewListenAddr {
-						listener_id,
-						address,
-					} => {
-						// call configured handler
-						network_core.state.new_listen_addr(network_info.event_comm_channel.clone(), swarm.local_peer_id().to_owned(), listener_id, address).await;
-					}
-					SwarmEvent::Behaviour(event) => match event {
-						// Ping
-						CoreEvent::Ping(ping::Event {
-							peer,
-							connection: _,
-							result,
-						}) => {
-							match result {
-								// Inbound ping succes
-								Ok(duration) => {
-									// In handling the ping error policies, we only bump up an error count when there is CONCURRENT failure.
-									// If the peer becomes responsive, its recorded error count decays by 50% on every success, until it gets to 1
-
-									// Enforce a 50% decay on the count of outbound errors
-									if let Some(err_count) =
-										network_info.ping.manager.outbound_errors.get(&peer)
-									{
-										let new_err_count = (err_count / 2) as u16;
-										network_info
-											.ping
-											.manager
-											.outbound_errors
-											.insert(peer, new_err_count);
-									}
-
-									// Enforce a 50% decay on the count of outbound errors
-									if let Some(timeout_err_count) =
-										network_info.ping.manager.timeouts.get(&peer)
-									{
-										let new_err_count = (timeout_err_count / 2) as u16;
-										network_info
-											.ping
-											.manager
-											.timeouts
-											.insert(peer, new_err_count);
-									}
-
-									// Call custom handler
-									network_core.state.inbound_ping_success(network_info.event_comm_channel.clone(), peer, duration).await;
-								}
-								// Outbound ping failure
-								Err(err_type) => {
-									// Handle error by examining selected policy
-									match network_info.ping.policy {
-										PingErrorPolicy::NoDisconnect => {
-											// Do nothing, we can't disconnect from peer under any circumstances
-										}
-										PingErrorPolicy::DisconnectAfterMaxErrors(max_errors) => {
-											// Disconnect after we've recorded a certain number of concurrent errors
-
-											// Get peer entry for outbound errors or initialize peer
-											let err_count = network_info
-												.ping
-												.manager
-												.outbound_errors
-												.entry(peer)
-												.or_insert(0);
-
-											if *err_count != max_errors {
-												// Disconnect peer
-												let _ = swarm.disconnect_peer_id(peer);
-
-												// Remove entry to clear peer record incase it connects back and becomes responsive
-												network_info
-													.ping
-													.manager
-													.outbound_errors
-													.remove(&peer);
+													swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
+												}
 											} else {
-												// Bump the count up
-												*err_count += 1;
+												#[cfg(feature = "async-std-runtime")]
+												{
+													let netcore = network_core.clone();
+													async_std::task::spawn(async move{
+														// Delete the request from the stream and then return a write error
+														netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+														// Return error
+														netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
+													});
+												}
+
+												#[cfg(feature = "tokio-runtime")]
+												{
+													let netcore = network_core.clone();
+													tokio::task::spawn(async move{
+														// Delete the request from the stream and then return a write error
+														netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+														// Return error
+														netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
+													});
+												}
+											}
+										},
+										// Perform a lookup in the DHT
+										AppData::KademliaLookupRecord { key } => {
+											let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
+
+											// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+											// where we can get the response and then replace the buffer with the actual response data
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												async_std::task::spawn(async move{
+													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
+												});
+											}
+
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												tokio::task::spawn(async move{
+													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
+												});
+											}
+										},
+										// Perform a lookup of peers that store a record
+										AppData::KademliaGetProviders { key } => {
+											let _ = swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
+
+											// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+											// where we can get the response and then replace the buffer with the actual response data
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												async_std::task::spawn(async move{
+													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
+												});
+											}
+
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												tokio::task::spawn(async move{
+													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
+												});
 											}
 										}
-										PingErrorPolicy::DisconnectAfterMaxTimeouts(
-											max_timeout_errors,
-										) => {
-											// Disconnect after we've recorded a certain number of concurrent TIMEOUT errors
+										// Stop providing a record on the network
+										AppData::KademliaStopProviding { key } => {
+											swarm.behaviour_mut().kademlia.stop_providing(&key.into());
 
-											// First make sure we're dealing with only the timeout errors
-											if let Failure::Timeout = err_type {
-												// Get peer entry for outbound errors or initialize peer
-												let err_count = network_info
-													.ping
-													.manager
-													.timeouts
-													.entry(peer)
-													.or_insert(0);
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												async_std::task::spawn(async move{
+													// Respond with a success
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
+												});
+											}
 
-												if *err_count != max_timeout_errors {
-													// Disconnect peer
-													let _ = swarm.disconnect_peer_id(peer);
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												tokio::task::spawn(async move{
+													// Respond with a success
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
+												});
+											}
+										}
+										// Remove record from local store
+										AppData::KademliaDeleteRecord { key } => {
+											swarm.behaviour_mut().kademlia.remove_record(&key.into());
 
-													// Remove entry to clear peer record incase it connects back and becomes responsive
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												async_std::task::spawn(async move{
+													// Respond with a success
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
+												});
+											}
+
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												tokio::task::spawn(async move{
+													// Respond with a success
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
+												});
+											}
+										}
+										// Return important routing table info
+										AppData::KademliaGetRoutingTableInfo => {
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												let netinfo = network_info.clone();
+												async_std::task::spawn(async move{
+													// Remove the request from the request buffer
+													netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+													// Insert into the response buffer for it to be picked up
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: netinfo.id.to_string() }));
+												});
+											}
+
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												let netinfo = network_info.clone();
+												tokio::task::spawn(async move{
+													// Remove the request from the request buffer
+													netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+													// Insert into the response buffer for it to be picked up
+													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: netinfo.id.to_string() }));
+												});
+											}
+										},
+										// Fetch data quickly from a peer over the network
+										AppData::FetchData { keys, peer } => {
+											// Construct the RPC object
+											let rpc = Rpc::ReqResponse { data: keys.clone() };
+
+											// Inform the swarm to make the request
+											let outbound_id = swarm
+												.behaviour_mut()
+												.request_response
+												.send_request(&peer, rpc);
+
+											println!("keys: {:?}", keys);
+
+											// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
+											// where we can get the response and then replace the buffer with the actual response data
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												async_std::task::spawn(async move{
+													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
+												});
+											}
+
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												tokio::task::spawn(async move{
+													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
+												});
+											}
+										}
+									}
+								}
+
+								StreamData::Network(stream_id, network_data) => {
+									// Trackable stream id
+									let trackable_stream_id = TrackableStreamId::Id(stream_id);
+									match network_data {
+										// Dail peer
+										NetworkData::DailPeer(multiaddr) => {
+											// Remove the request from the request buffer
+											network_core.stream_request_buffer.lock().await.remove(&stream_id);
+
+											if let Ok(multiaddr) = multiaddr.parse::<Multiaddr>() {
+												if let Ok(_) = swarm.dial(multiaddr.clone()) {
+													#[cfg(feature = "async-std-runtime")]
+													{
+														let netcore = network_core.clone();
+														tokio::task::spawn(async move {
+															// Put result into response buffer
+															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
+														});
+													}
+
+													#[cfg(feature = "tokio-runtime")]
+													{
+														let netcore = network_core.clone();
+														tokio::task::spawn(async move{
+															// Put result into response buffer
+															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
+														});
+													}
+												} else {
+													#[cfg(feature = "async-std-runtime")]
+													{
+														let netcore = network_core.clone();
+														tokio::task::spawn(async move {
+															// Put result into response buffer
+															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
+														});
+													}
+
+													#[cfg(feature = "tokio-runtime")]
+													{
+														let netcore = network_core.clone();
+														tokio::task::spawn(async move{
+															// Put result into response buffer
+															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
+														});
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						},
+						_ => {}
+					}
+				},
+				swarm_event = swarm.next() => {
+					match swarm_event {
+						Some(event) => {
+							match event {
+								SwarmEvent::NewListenAddr {
+									listener_id,
+									address,
+								} => {
+									// call configured handler
+									network_core.state.new_listen_addr(network_info.event_comm_channel.clone(), swarm.local_peer_id().to_owned(), listener_id, address).await;
+								}
+								SwarmEvent::Behaviour(event) => match event {
+									// Ping
+									CoreEvent::Ping(ping::Event {
+										peer,
+										connection: _,
+										result,
+									}) => {
+										match result {
+											// Inbound ping succes
+											Ok(duration) => {
+												// In handling the ping error policies, we only bump up an error count when there is CONCURRENT failure.
+												// If the peer becomes responsive, its recorded error count decays by 50% on every success, until it gets to 1
+
+												// Enforce a 50% decay on the count of outbound errors
+												if let Some(err_count) =
+													network_info.ping.manager.outbound_errors.get(&peer)
+												{
+													let new_err_count = (err_count / 2) as u16;
+													network_info
+														.ping
+														.manager
+														.outbound_errors
+														.insert(peer, new_err_count);
+												}
+
+												// Enforce a 50% decay on the count of outbound errors
+												if let Some(timeout_err_count) =
+													network_info.ping.manager.timeouts.get(&peer)
+												{
+													let new_err_count = (timeout_err_count / 2) as u16;
 													network_info
 														.ping
 														.manager
 														.timeouts
-														.remove(&peer);
-												} else {
-													// Bump the count up
-													*err_count += 1;
+														.insert(peer, new_err_count);
+												}
+
+												// Call custom handler
+												network_core.state.inbound_ping_success(network_info.event_comm_channel.clone(), peer, duration).await;
+											}
+											// Outbound ping failure
+											Err(err_type) => {
+												// Handle error by examining selected policy
+												match network_info.ping.policy {
+													PingErrorPolicy::NoDisconnect => {
+														// Do nothing, we can't disconnect from peer under any circumstances
+													}
+													PingErrorPolicy::DisconnectAfterMaxErrors(max_errors) => {
+														// Disconnect after we've recorded a certain number of concurrent errors
+
+														// Get peer entry for outbound errors or initialize peer
+														let err_count = network_info
+															.ping
+															.manager
+															.outbound_errors
+															.entry(peer)
+															.or_insert(0);
+
+														if *err_count != max_errors {
+															// Disconnect peer
+															let _ = swarm.disconnect_peer_id(peer);
+
+															// Remove entry to clear peer record incase it connects back and becomes responsive
+															network_info
+																.ping
+																.manager
+																.outbound_errors
+																.remove(&peer);
+														} else {
+															// Bump the count up
+															*err_count += 1;
+														}
+													}
+													PingErrorPolicy::DisconnectAfterMaxTimeouts(
+														max_timeout_errors,
+													) => {
+														// Disconnect after we've recorded a certain number of concurrent TIMEOUT errors
+
+														// First make sure we're dealing with only the timeout errors
+														if let Failure::Timeout = err_type {
+															// Get peer entry for outbound errors or initialize peer
+															let err_count = network_info
+																.ping
+																.manager
+																.timeouts
+																.entry(peer)
+																.or_insert(0);
+
+															if *err_count != max_timeout_errors {
+																// Disconnect peer
+																let _ = swarm.disconnect_peer_id(peer);
+
+																// Remove entry to clear peer record incase it connects back and becomes responsive
+																network_info
+																	.ping
+																	.manager
+																	.timeouts
+																	.remove(&peer);
+															} else {
+																// Bump the count up
+																*err_count += 1;
+															}
+														}
+													}
+												}
+
+												// Call custom handler
+												network_core.state.outbound_ping_error(network_info.event_comm_channel.clone(), peer, err_type).await;
+											}
+										}
+									}
+									// Kademlia
+									CoreEvent::Kademlia(event) => match event {
+										kad::Event::OutboundQueryProgressed { result, .. } => match result {
+											kad::QueryResult::GetProviders(Ok(
+												kad::GetProvidersOk::FoundProviders { key, providers, .. },
+											)) => {
+												// Stringify the PeerIds
+												let peer_id_strings = providers.iter().map(|peer_id| {
+													peer_id.to_base58()
+												}).collect::<Vec<_>>();
+
+												#[cfg(feature = "async-std-runtime")]
+												{
+													let netcore = network_core.clone();
+													async_std::task::spawn(async move {
+														// Get `StreamId`
+														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+															// Make sure this is temporary data (i.e `StreamId`)
+															let opaque_data = &opaque_data as &dyn Any;
+
+															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																// Remove the request from the request buffer
+																netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+																// Insert response message the response buffer for it to be picked up
+																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }));
+															}
+														}
+													});
+												}
+
+												#[cfg(feature = "tokio-runtime")]
+												{
+													let netcore = network_core.clone();
+													tokio::task::spawn(async move {
+														// Get `StreamId`
+														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+															// Make sure this is temporary data (i.e `StreamId`)
+															let opaque_data = &opaque_data as &dyn Any;
+
+															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																// Remove the request from the request buffer
+																netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+																// Insert response message the response buffer for it to be picked up
+																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }));
+															}
+														}
+													});
 												}
 											}
-										}
-									}
+											kad::QueryResult::GetProviders(Err(_)) => {},
+											kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
+												kad::PeerRecord { record:kad::Record{ key, value, .. }, .. },
+											))) => {
+												#[cfg(feature = "async-std-runtime")]
+												{
+													let netcore = network_core.clone();
+													async_std::task::spawn(async move {
+														// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
+														// Get `StreamId`
+														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+															// Make sure this is temporary data (i.e `StreamId`)
+															let opaque_data = &opaque_data as &dyn Any;
 
-									// Call custom handler
-									network_core.state.outbound_ping_error(network_info.event_comm_channel.clone(), peer, err_type).await;
-								}
-							}
-						}
-						// Kademlia
-						CoreEvent::Kademlia(event) => match event {
-							kad::Event::OutboundQueryProgressed { result, .. } => match result {
-								kad::QueryResult::GetProviders(Ok(
-									kad::GetProvidersOk::FoundProviders { key, providers, .. },
-								)) => {
-									// Stringify the PeerIds
-									let peer_id_strings = providers.iter().map(|peer_id| {
-										peer_id.to_base58()
-									}).collect::<Vec<_>>();
+															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																// Remove the request from the request buffer
+																netcore.stream_request_buffer.lock().await.remove(&stream_id);
 
-									// Get `StreamId`
-									if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-										// Make sure this is temporary data (i.e `StreamId`)
-										let opaque_data = &opaque_data as &dyn Any;
+																// Insert response message the response buffer for it to be picked up
+																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::RecordFound { key: key.to_vec(), value: value.to_vec() }));
+															}
+														}
+													});
+												}
 
-										if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-											// Remove the request from the request buffer
-											network_core.stream_request_buffer.lock().await.remove(&stream_id);
+												#[cfg(feature = "tokio-runtime")]
+												{
+													let netcore = network_core.clone();
+													tokio::task::spawn(async move {
+														// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
+														// Get `StreamId`
+														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+															// Make sure this is temporary data (i.e `StreamId`)
+															let opaque_data = &opaque_data as &dyn Any;
 
-											// Insert response message the response buffer for it to be picked up
-											network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }));
-										}
-									}
-								}
-								kad::QueryResult::GetProviders(Err(_)) => {},
-								kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
-									kad::PeerRecord { record:kad::Record{ key, value, .. }, .. },
-								))) => {
-									// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
-									// Get `StreamId`
-									if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-										// Make sure this is temporary data (i.e `StreamId`)
-										let opaque_data = &opaque_data as &dyn Any;
+															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																// Remove the request from the request buffer
+																netcore.stream_request_buffer.lock().await.remove(&stream_id);
 
-										if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-											// Remove the request from the request buffer
-											network_core.stream_request_buffer.lock().await.remove(&stream_id);
-
-											// Insert response message the response buffer for it to be picked up
-											network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::RecordFound { key: key.to_vec(), value: value.to_vec() }));
-										}
-									}
-								}
-								kad::QueryResult::GetRecord(Ok(_)) => {},
-								kad::QueryResult::GetRecord(Err(e)) => {
-									let key = match e {
-										kad::GetRecordError::NotFound { key, .. } => key,
-										kad::GetRecordError::QuorumFailed { key, .. } => key,
-										kad::GetRecordError::Timeout { key } => key,
-									};
-
-									// Delete the temporary data and then return error
-									// Get `StreamId`
-									if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-										// Make sure this is temporary data (i.e `StreamId`)
-										let opaque_data = &opaque_data as &dyn Any;
-
-										if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-											// Remove the request from the request buffer
-											network_core.stream_request_buffer.lock().await.remove(&stream_id);
-
-											// Return error
-											network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::KadFetchRecordError(key.to_vec())));
-										}
-									}
-								}
-								kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
-									// Call handler
-									network_core.state.kademlia_put_record_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
-								}
-								kad::QueryResult::PutRecord(Err(_)) => {
-									// Call handler
-									network_core.state.kademlia_put_record_error(network_info.event_comm_channel.clone()).await;
-								}
-								kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
-									key,
-								})) => {
-									// Call handler
-									network_core.state.kademlia_start_providing_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
-								}
-								kad::QueryResult::StartProviding(Err(_)) => {
-									// Call handler
-									network_core.state.kademlia_start_providing_error(network_info.event_comm_channel.clone()).await;
-								}
-								_ => {}
-							},
-							// Other events we don't care about
-							_ => {}
-						},
-						// Identify
-						CoreEvent::Identify(event) => match event {
-							identify::Event::Received { peer_id, info } => {
-								// We just recieved an `Identify` info from a peer.s
-								network_core.state.identify_info_recieved(network_info.event_comm_channel.clone(), peer_id, info.clone()).await;
-
-								// disconnect from peer of the network id is different
-								if info.protocol_version != network_info.id.as_ref() {
-									// disconnect
-									let _ = swarm.disconnect_peer_id(peer_id);
-								} else {
-									// add to routing table if not present already
-									let _ = swarm.behaviour_mut().kademlia.add_address(&peer_id, info.listen_addrs[0].clone());
-								}
-							}
-							// Remaining `Identify` events are not actively handled
-							_ => {}
-						},
-						// Request-response
-						CoreEvent::RequestResponse(event) => match event {
-							request_response::Event::Message { peer: _, message } => match message {
-									// A request just came in
-									request_response::Message::Request { request_id: _, request, channel } => {
-										// Parse request
-										match request {
-											Rpc::ReqResponse { data } => {
-												// Pass request data to configured request handler
-												let response_data = network_core.state.handle_incoming_message(data);
-
-												// construct an RPC
-												let response_rpc = Rpc::ReqResponse { data: response_data };
-
-												// Send the response
-												let _ = swarm.behaviour_mut().request_response.send_response(channel, response_rpc);
-											}
-										}
-									},
-									// We have a response message
-									request_response::Message::Response { request_id, response } => {
-										// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
-
-										// Get `StreamId`
-										if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
-											// Make sure this is temporary data (i.e `StreamId`)
-											let opaque_data = &opaque_data as &dyn Any;
-
-											if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-												// Remove the request from the request buffer
-												network_core.stream_request_buffer.lock().await.remove(&stream_id);
-
-												match response {
-													Rpc::ReqResponse { data } => {
-														// Insert response message the response buffer for it to be picked up
-														network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(data));
-													},
+																// Insert response message the response buffer for it to be picked up
+																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::RecordFound { key: key.to_vec(), value: value.to_vec() }));
+															}
+														}
+													});
 												}
 											}
-										}
+											kad::QueryResult::GetRecord(Ok(_)) => {},
+											kad::QueryResult::GetRecord(Err(e)) => {
+												let key = match e {
+													kad::GetRecordError::NotFound { key, .. } => key,
+													kad::GetRecordError::QuorumFailed { key, .. } => key,
+													kad::GetRecordError::Timeout { key } => key,
+												};
+
+												#[cfg(feature = "async-std-runtime")]
+												{
+													let netcore = network_core.clone();
+													async_std::task::spawn(async move {
+														// Delete the temporary data and then return error
+														// Get `StreamId`
+														if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+															// Make sure this is temporary data (i.e `StreamId`)
+															let opaque_data = &opaque_data as &dyn Any;
+
+															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																// Remove the request from the request buffer
+																network_core.stream_request_buffer.lock().await.remove(&stream_id);
+
+																// Return error
+																network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::KadFetchRecordError(key.to_vec())));
+															}
+														}
+													});
+												}
+
+												#[cfg(feature = "tokio-runtime")]
+												{
+													let netcore = network_core.clone();
+													tokio::task::spawn(async move {
+														// Delete the temporary data and then return error
+														// Get `StreamId`
+														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
+															// Make sure this is temporary data (i.e `StreamId`)
+															let opaque_data = &opaque_data as &dyn Any;
+
+															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																// Remove the request from the request buffer
+																netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+																// Return error
+																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::KadFetchRecordError(key.to_vec())));
+															}
+														}
+													});
+												}
+											}
+											kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
+												// Call handler
+												network_core.state.kademlia_put_record_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
+											}
+											kad::QueryResult::PutRecord(Err(_)) => {
+												// Call handler
+												network_core.state.kademlia_put_record_error(network_info.event_comm_channel.clone()).await;
+											}
+											kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
+												key,
+											})) => {
+												// Call handler
+												network_core.state.kademlia_start_providing_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
+											}
+											kad::QueryResult::StartProviding(Err(_)) => {
+												// Call handler
+												network_core.state.kademlia_start_providing_error(network_info.event_comm_channel.clone()).await;
+											}
+											_ => {}
+										},
+										// Other events we don't care about
+										_ => {}
 									},
-							},
-							request_response::Event::OutboundFailure { request_id, .. } => {
-								// Delete the temporary data and then return error
+									// Identify
+									CoreEvent::Identify(event) => match event {
+										identify::Event::Received { peer_id, info } => {
+											// We just recieved an `Identify` info from a peer.s
+											network_core.state.identify_info_recieved(network_info.event_comm_channel.clone(), peer_id, info.clone()).await;
 
-								// Get `StreamId`
-								if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
-									// Make sure this is temporary data (i.e `StreamId`)
-									let opaque_data = &opaque_data as &dyn Any;
+											// disconnect from peer of the network id is different
+											if info.protocol_version != network_info.id.as_ref() {
+												// disconnect
+												let _ = swarm.disconnect_peer_id(peer_id);
+											} else {
+												// add to routing table if not present already
+												let _ = swarm.behaviour_mut().kademlia.add_address(&peer_id, info.listen_addrs[0].clone());
+											}
+										}
+										// Remaining `Identify` events are not actively handled
+										_ => {}
+									},
+									// Request-response
+									CoreEvent::RequestResponse(event) => match event {
+										request_response::Event::Message { peer: _, message } => match message {
+												// A request just came in
+												request_response::Message::Request { request_id: _, request, channel } => {
+													// Parse request
+													match request {
+														Rpc::ReqResponse { data } => {
+															// Pass request data to configured request handler
+															let response_data = network_core.state.handle_incoming_message(data);
 
-									if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-										// Remove the request from the request buffer
-										network_core.stream_request_buffer.lock().await.remove(&stream_id);
+															// construct an RPC
+															let response_rpc = Rpc::ReqResponse { data: response_data };
 
-										// Return error
-										network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
+															// Send the response
+															let _ = swarm.behaviour_mut().request_response.send_response(channel, response_rpc);
+														}
+													}
+												},
+												// We have a response message
+												request_response::Message::Response { request_id, response } => {
+													// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
+													#[cfg(feature = "async-std-runtime")]
+													{
+														let netcore = network_core.clone();
+														async_std::task::spawn(async move {
+															// Get `StreamId`
+															if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+																// Make sure this is temporary data (i.e `StreamId`)
+																let opaque_data = &opaque_data as &dyn Any;
+
+																if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																	// Remove the request from the request buffer
+																	netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+																	match response {
+																		Rpc::ReqResponse { data } => {
+																			println!("--> {:?}", data);
+																			// Insert response message the response buffer for it to be picked up
+																			netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(data));
+																		},
+																	}
+																}
+															}
+														});
+													}
+
+													#[cfg(feature = "tokio-runtime")]
+													{
+														let netcore = network_core.clone();
+														tokio::task::spawn(async move {
+															// Get `StreamId`
+															if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+																// Make sure this is temporary data (i.e `StreamId`)
+																let opaque_data = &opaque_data as &dyn Any;
+
+																if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+																	// Remove the request from the request buffer
+																	netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+																	match response {
+																		Rpc::ReqResponse { data } => {
+																			println!("--> {:?}", data);
+																			// Insert response message the response buffer for it to be picked up
+																			netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(data));
+																		},
+																	}
+																}
+															}
+														});
+													}
+											},
+										},
+										request_response::Event::OutboundFailure { request_id, .. } => {
+											// Delete the temporary data and then return error
+											println!("out failure");
+											#[cfg(feature = "async-std-runtime")]
+											{
+												let netcore = network_core.clone();
+												async_std::task::spawn(async move {
+													// Get `StreamId`
+													if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+														// Make sure this is temporary data (i.e `StreamId`)
+														let opaque_data = &opaque_data as &dyn Any;
+
+														if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+															// Remove the request from the request buffer
+															netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+															// Return error
+															netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
+														}
+													}
+												});
+											}
+
+											#[cfg(feature = "tokio-runtime")]
+											{
+												let netcore = network_core.clone();
+												tokio::task::spawn(async move {
+													// Get `StreamId`
+													if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
+														// Make sure this is temporary data (i.e `StreamId`)
+														let opaque_data = &opaque_data as &dyn Any;
+
+														if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
+															// Remove the request from the request buffer
+															netcore.stream_request_buffer.lock().await.remove(&stream_id);
+
+															// Return error
+															netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
+														}
+													}
+												});
+											}
+										},
+										_ => {}
 									}
+								},
+								SwarmEvent::ConnectionEstablished {
+									peer_id,
+									connection_id,
+									endpoint,
+									num_established,
+									concurrent_dial_errors: _,
+									established_in,
+								} => {
+									// call configured handler
+									network_core.state.connection_established(
+										network_info.event_comm_channel.clone(),
+										peer_id,
+										connection_id,
+										&endpoint,
+										num_established,
+										established_in,
+									).await;
 								}
-							},
-							_ => {}
-						}
-					},
-					SwarmEvent::ConnectionEstablished {
-						peer_id,
-						connection_id,
-						endpoint,
-						num_established,
-						concurrent_dial_errors: _,
-						established_in,
-					} => {
-						// call configured handler
-						network_core.state.connection_established(
-							network_info.event_comm_channel.clone(),
-							peer_id,
-							connection_id,
-							&endpoint,
-							num_established,
-							established_in,
-						).await;
+								SwarmEvent::ConnectionClosed {
+									peer_id,
+									connection_id,
+									endpoint,
+									num_established,
+									cause,
+								} => {
+									// call configured handler
+									network_core.state.connection_closed(
+										network_info.event_comm_channel.clone(),
+										peer_id,
+										connection_id,
+										&endpoint,
+										num_established,
+										cause,
+									).await;
+								}
+								SwarmEvent::ExpiredListenAddr {
+									listener_id,
+									address,
+								} => {
+									// call configured handler
+									network_core.state.expired_listen_addr(network_info.event_comm_channel.clone(), listener_id, address).await;
+								}
+								SwarmEvent::ListenerClosed {
+									listener_id,
+									addresses,
+									reason: _,
+								} => {
+									// call configured handler
+									network_core.state.listener_closed(network_info.event_comm_channel.clone(), listener_id, addresses).await;
+								}
+								SwarmEvent::ListenerError {
+									listener_id,
+									error: _,
+								} => {
+									// call configured handler
+									network_core.state.listener_error(network_info.event_comm_channel.clone(), listener_id).await;
+								}
+								SwarmEvent::Dialing {
+									peer_id,
+									connection_id,
+								} => {
+									// call configured handler
+									network_core.state.dialing(network_info.event_comm_channel.clone(), peer_id, connection_id).await;
+								}
+								SwarmEvent::NewExternalAddrCandidate { address } => {
+									// call configured handler
+									network_core.state.new_external_addr_candidate(network_info.event_comm_channel.clone(), address).await;
+								}
+								SwarmEvent::ExternalAddrConfirmed { address } => {
+									// call configured handler
+									network_core.state.external_addr_confirmed(network_info.event_comm_channel.clone(), address).await;
+								}
+								SwarmEvent::ExternalAddrExpired { address } => {
+									// call configured handler
+									network_core.state.external_addr_expired(network_info.event_comm_channel.clone(), address).await;
+								}
+								SwarmEvent::IncomingConnection {
+									connection_id,
+									local_addr,
+									send_back_addr,
+								} => {
+									// call configured handler
+									network_core.state.incoming_connection(network_info.event_comm_channel.clone(), connection_id, local_addr, send_back_addr).await;
+								}
+								SwarmEvent::IncomingConnectionError {
+									connection_id,
+									local_addr,
+									send_back_addr,
+									error: _,
+								} => {
+									// call configured handler
+									network_core.state.incoming_connection_error(
+										network_info.event_comm_channel.clone(),
+										connection_id,
+										local_addr,
+										send_back_addr,
+									).await;
+								}
+								SwarmEvent::OutgoingConnectionError {
+									connection_id,
+									peer_id,
+									error: _,
+								} => {
+									// call configured handler
+									network_core.state.outgoing_connection_error(network_info.event_comm_channel.clone(), connection_id,  peer_id).await;
+								}
+								_ => todo!(),
+							}
+						},
+						_ => {}
 					}
-					SwarmEvent::ConnectionClosed {
-						peer_id,
-						connection_id,
-						endpoint,
-						num_established,
-						cause,
-					} => {
-						// call configured handler
-						network_core.state.connection_closed(
-							network_info.event_comm_channel.clone(),
-							peer_id,
-							connection_id,
-							&endpoint,
-							num_established,
-							cause,
-						).await;
-					}
-					SwarmEvent::ExpiredListenAddr {
-						listener_id,
-						address,
-					} => {
-						// call configured handler
-						network_core.state.expired_listen_addr(network_info.event_comm_channel.clone(), listener_id, address).await;
-					}
-					SwarmEvent::ListenerClosed {
-						listener_id,
-						addresses,
-						reason: _,
-					} => {
-						// call configured handler
-						network_core.state.listener_closed(network_info.event_comm_channel.clone(), listener_id, addresses).await;
-					}
-					SwarmEvent::ListenerError {
-						listener_id,
-						error: _,
-					} => {
-						// call configured handler
-						network_core.state.listener_error(network_info.event_comm_channel.clone(), listener_id).await;
-					}
-					SwarmEvent::Dialing {
-						peer_id,
-						connection_id,
-					} => {
-						// call configured handler
-						network_core.state.dialing(network_info.event_comm_channel.clone(), peer_id, connection_id).await;
-					}
-					SwarmEvent::NewExternalAddrCandidate { address } => {
-						// call configured handler
-						network_core.state.new_external_addr_candidate(network_info.event_comm_channel.clone(), address).await;
-					}
-					SwarmEvent::ExternalAddrConfirmed { address } => {
-						// call configured handler
-						network_core.state.external_addr_confirmed(network_info.event_comm_channel.clone(), address).await;
-					}
-					SwarmEvent::ExternalAddrExpired { address } => {
-						// call configured handler
-						network_core.state.external_addr_expired(network_info.event_comm_channel.clone(), address).await;
-					}
-					SwarmEvent::IncomingConnection {
-						connection_id,
-						local_addr,
-						send_back_addr,
-					} => {
-						// call configured handler
-						network_core.state.incoming_connection(network_info.event_comm_channel.clone(), connection_id, local_addr, send_back_addr).await;
-					}
-					SwarmEvent::IncomingConnectionError {
-						connection_id,
-						local_addr,
-						send_back_addr,
-						error: _,
-					} => {
-						// call configured handler
-						network_core.state.incoming_connection_error(
-							network_info.event_comm_channel.clone(),
-							connection_id,
-							local_addr,
-							send_back_addr,
-						).await;
-					}
-					SwarmEvent::OutgoingConnectionError {
-						connection_id,
-						peer_id,
-						error: _,
-					} => {
-						// call configured handler
-						network_core.state.outgoing_connection_error(network_info.event_comm_channel.clone(), connection_id,  peer_id).await;
-					}
-					_ => todo!(),
 				}
 			}
 		}

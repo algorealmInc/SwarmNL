@@ -4,16 +4,14 @@
 /// Objective: Form alliances and conquer as much empires as possible!
 /// It is a multi-player game
 /// Enjoy!
-use std::{any::Any, borrow::Cow, num::NonZeroU32, time::Duration};
+use std::{any::Any, borrow::Cow, num::NonZeroU32, sync::Arc, time::Duration};
 use swarm_nl::{
 	async_trait,
 	core::EventHandler,
-	core::{AppData, Core, CoreBuilder, NetworkChannel},
+	core::{AppData, Core, CoreBuilder, Mutex, NetworkChannel, StreamId},
 	setup::BootstrapConfig,
-	ConnectedPoint, ConnectionId, PeerId,
+	ConnectedPoint, ConnectionId, PeerId, Sender, SinkExt,
 };
-
-pub static CONFIG_FILE_PATH: &str = "test_config.ini";
 
 #[tokio::main]
 async fn main() {
@@ -49,7 +47,7 @@ impl Empire {
 impl EventHandler for Empire {
 	async fn new_listen_addr(
 		&mut self,
-		_channel: NetworkChannel,
+		mut channel: NetworkChannel,
 		local_peer_id: PeerId,
 		_listener_id: swarm_nl::ListenerId,
 		addr: swarm_nl::Multiaddr,
@@ -72,6 +70,7 @@ impl EventHandler for Empire {
 		_num_established: NonZeroU32,
 		_established_in: Duration,
 	) {
+		println!("Connection established with peer: {}", peer_id);
 		// When we establish a new connection, the empires send message to the other empire to knoe
 		// their military status
 		let request = vec!["military_status".as_bytes().to_vec()];
@@ -83,27 +82,33 @@ impl EventHandler for Empire {
 		};
 
 		// Send request
-		if let Some(stream_id) = channel.send_to_network(status_request).await {
-			// Get response
-			// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
-			let status_response = channel.recv_from_network(stream_id).await;
+		let stream_id = channel
+			.send_to_network(status_request)
+			.await
+			.unwrap();
 
-			let inner_value = &status_response as &dyn Any;
-			if let Some(status) = inner_value.downcast_ref::<Vec<Vec<u8>>>() {
-				// Get empire name
-				let empire_name = String::from_utf8_lossy(&status[0]);
-				let military_status = status[1][0];
+		// Get response
+		// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
+		let status_response = channel
+			.recv_from_network(stream_id)
+			.await;
 
-				// Print the military status of the empire we just contacted
-				println!("Empire Contacted:");
-				println!("Name: {} Empire", empire_name);
-				println!("Military Capacity: {} Soldiers", military_status);
-			} else {
-				println!("Could not decode response")
-			}
+		let inner_value = &status_response as &dyn Any;
+		if let Some(status) = inner_value.downcast_ref::<Vec<Vec<u8>>>() {
+			// Get empire name
+			let empire_name = String::from_utf8_lossy(&status[0]);
+			let military_status = status[1][0];
+
+			// Print the military status of the empire we just contacted
+			println!("Empire Contacted:");
+			println!("Name: {} Empire", empire_name);
+			println!("Military Capacity: {} Soldiers", military_status);
 		} else {
-			println!("Could not get military status of the empire at {}", peer_id);
+			println!("Could not decode response")
 		}
+		// } else {
+		// 	println!("Could not get military status of the empire at {}", peer_id);
+		// }
 	}
 
 	/// Handle any incoming RPC from any neighbouring empire
@@ -129,9 +134,28 @@ impl EventHandler for Empire {
 /// Setup game (This is for the persian Empire)
 /// This requires no bootnodes connection
 // #[cfg(not(feature = "macedonian"))]
+pub async fn setup_game() -> Core<Empire> {
+	// First, we want to configure our node
+	let config = BootstrapConfig::default();
+
+	// State kept by this node
+	let empire = Empire::new(String::from("Spartan"));
+
+	// Set up network
+	CoreBuilder::with_config(config, empire)
+		.build()
+		.await
+		.unwrap()
+}
+
+/// The Macedonian Empire setup.
+/// These require bootnodes of empires to form alliance.
+/// We will be providing the location (peer id and multiaddress) of the Spartan Empire as boot
+/// parameters
+// #[cfg(feature = "macedonian")]
 // pub async fn setup_game() -> Core<Empire> {
-// 	// First, we want to configure our node
-// 	let config = BootstrapConfig::default();
+// 	// First, we want to configure our node with the bootstrap config file on disk
+// 	let config = BootstrapConfig::from_file("bootstrap_config.ini");
 
 // 	// State kept by this node
 // 	let empire = Empire::new(String::from("Macedonian"));
@@ -143,29 +167,10 @@ impl EventHandler for Empire {
 // 		.unwrap()
 // }
 
-/// The Macedonian Empire setup.
-/// These require bootnodes of empires to form alliance.
-/// We will be providing the location (peer id and multiaddress) of the Spartan Empire as boot
-/// parameters
-// #[cfg(feature = "macedonian")]
-pub async fn setup_game() -> Core<Empire> {
-	// First, we want to configure our node with the bootstrap config file on disk
-	let config = BootstrapConfig::from_file("bootstrap_config.ini");
-
-	// State kept by this node
-	let empire = Empire::new(String::from("Macedonian"));
-
-	// Set up network
-	CoreBuilder::with_config(config, empire)
-		.build()
-		.await
-		.unwrap()
-}
-
 /// Play game
 pub async fn play_game() {
 	// Setup network
-	let core = setup_game().await;
+	let mut core = setup_game().await;
 
 	// Print game state
 	println!("Empire Information:");
@@ -175,6 +180,39 @@ pub async fn play_game() {
 	println!("Land mass: {}", core.state.land_mass);
 	println!("Gold reserve: {}", core.state.gold_reserve);
 
-    // Keep looping so we can record network events
-    loop { }
+	// let request = vec!["military_status".as_bytes().to_vec()];
+	// let peer_id_string = "12D3KooWPcL6iGBjfhDTRYY8YESh94395h79iccCQj7jRQWYzm3w";
+	// let peer_id = PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).unwrap();
+
+	// // Prepare request
+	// let status_request = AppData::FetchData {
+	// 	keys: request,
+	// 	peer: peer_id,
+	// };
+
+	// // Send request
+	// if let Some(stream_id) = core.send_to_network(status_request).await {
+	// 	// Get response
+	// 	// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
+	// 	let status_response = core.recv_from_network(stream_id).await.unwrap();
+
+	// 	let inner_value = &status_response as &dyn Any;
+	// 	if let Some(status) = inner_value.downcast_ref::<Vec<Vec<u8>>>() {
+	// 		// Get empire name
+	// 		let empire_name = String::from_utf8_lossy(&status[0]);
+	// 		let military_status = status[1][0];
+
+	// 		// Print the military status of the empire we just contacted
+	// 		println!("Empire Contacted:");
+	// 		println!("Name: {} Empire", empire_name);
+	// 		println!("Military Capacity: {} Soldiers", military_status);
+	// 	} else {
+	// 		println!("Could not decode response")
+	// 	}
+	// } else {
+	// 	println!("Could not get military status of the empire at {}", peer_id);
+	// }
+
+	// Keep looping so we can record network events
+	loop {}
 }

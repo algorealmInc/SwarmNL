@@ -1,9 +1,6 @@
 use async_trait::async_trait;
 /// Copyright (c) 2024 Algorealm
-
-
 use libp2p::request_response::OutboundRequestId;
-use rand::random;
 use serde::{Deserialize, Serialize};
 use std::{any::Any, time::Instant};
 use thiserror::Error;
@@ -15,6 +12,10 @@ use super::*;
 /// Type to indicate the duration (in seconds) to wait for data from the network layer before timing
 /// out
 pub const NETWORK_READ_TIMEOUT: u64 = 60;
+
+/// The time it takes for the task to sleep before it can recheck if an output has been placed in
+/// the repsonse buffer (7 seconds)
+pub const TASK_SLEEP_DURATION: u64 = 7;
 
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug, Clone)]
@@ -107,7 +108,7 @@ impl StreamId {
 	/// Generate a new random stream id.
 	/// Must only be called once
 	pub fn new() -> Self {
-		StreamId(random())
+		StreamId(0)
 	}
 
 	/// Generate a new random stream id, using the current as guide
@@ -156,7 +157,7 @@ impl<T> StreamResponseType for Vec<T> where T: StreamResponseType {}
 /// It is unlikely to be ever full as the default is usize::MAX except otherwise specified during
 /// configuration. It is always good practice to read responses from the internal stream buffer
 /// using `fetch_from_network()` or explicitly using `recv_from_network`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct StreamRequestBuffer {
 	/// Max requests we can keep track of
 	size: usize,
@@ -429,6 +430,7 @@ impl EventHandler for DefaultHandler {
 
 /// Important information to obtain from the [`CoreBuilder`], to properly handle network
 /// operations
+#[derive(Clone)]
 pub(super) struct NetworkInfo {
 	/// The name/id of the network
 	pub id: StreamProtocol,
@@ -445,6 +447,7 @@ pub mod ping_config {
 
 	/// Policies to handle a `Ping` error
 	/// - All connections to peers are closed during a disconnect operation.
+	#[derive(Debug, Clone)]
 	pub enum PingErrorPolicy {
 		/// Do not disconnect under any circumstances
 		NoDisconnect,
@@ -455,7 +458,7 @@ pub mod ping_config {
 	}
 
 	/// Struct that stores critical information for the execution of the [`PingErrorPolicy`]
-	#[derive(Debug)]
+	#[derive(Debug, Clone)]
 	pub struct PingManager {
 		/// The number of timeout errors encountered from a peer
 		pub timeouts: HashMap<PeerId, u16>,
@@ -476,6 +479,7 @@ pub mod ping_config {
 	}
 
 	/// Critical information to manage `Ping` operations
+	#[derive(Debug, Clone)]
 	pub struct PingInfo {
 		pub policy: PingErrorPolicy,
 		pub manager: PingManager,
@@ -527,11 +531,17 @@ impl NetworkChannel {
 		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
 		let request = StreamData::Application(stream_id, request);
 
+		// Acquire lock on stream_request_buffer
+		let mut stream_request_buffer = self.stream_request_buffer.lock().await;
+
 		// Add to request buffer
-		if !self.stream_request_buffer.lock().await.insert(stream_id) {
+		if !stream_request_buffer.insert(stream_id) {
 			// Buffer appears to be full
 			return None;
 		}
+
+		println!("{:?}", stream_request_buffer);
+		println!("{:?}", request);
 
 		// Send request
 		if let Ok(_) = self.application_sender.send(request).await {
@@ -539,36 +549,109 @@ impl NetworkChannel {
 			*self.current_stream_id.lock().await = stream_id;
 			Some(stream_id)
 		} else {
-			return None;
+			None
 		}
 	}
 
+	/// TODO! Buffer cleanup algorithm
+	/// Explicitly rectrieve the reponse to a request sent to the network layer.
+	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
+	/// and read immediately as the response to the request should already be in the stream response
+	/// buffer.
 	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
-		let network_data_future = async {
-			loop {
-				// tight loop
-				if let Some(response_value) = self
-					.stream_response_buffer
-					.lock()
-					.await
-					.remove(&TrackableStreamId::Id(stream_id))
-				{
-					// Make sure the value is not `StreamId`. If it is, then the request is being
-					// processed and the final value we want has not arrived.
+		#[cfg(feature = "async-std-runtime")]
+		{
+			let channel = self.clone();
+			let recv_task = tokio::task::spawn(async move {
+				let mut loop_count = 0;
+				loop {
+					// Attempt to acquire the lock without blocking
+					let maybe_response_value = channel.stream_response_buffer.try_lock();
 
-					// Get inner boxed value
-					let inner_value = &response_value as &dyn Any;
-					if let None = inner_value.downcast_ref::<StreamId>() {
-						return response_value;
+					// Check if the lock was acquired
+					if let Ok(mut response_buffer) = maybe_response_value {
+						// Check if the value is available in the response buffer
+						if let Some(response_value) =
+							response_buffer.remove(&TrackableStreamId::Id(stream_id))
+						{
+							// Make sure the value is not `StreamId`. If it is, then the request is
+							// being processed and the final value we want has not arrived.
+
+							// Get inner boxed value
+							let inner_value = &response_value as &dyn Any;
+							if inner_value.downcast_ref::<StreamId>().is_none() {
+								return response_value;
+							}
+						}
+					}
+
+					async_std::task::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
+
+					if loop_count < 6 {
+						loop_count += 1;
+					} else {
+						break;
 					}
 				}
-			}
-		};
 
-		Ok(network_data_future
-			.timeout(self.network_read_delay)
-			.await
-			.map_err(|_| NetworkError::NetworkReadTimeout)?)
+				// Error: return the stream id
+				Box::new(stream_id)
+			})
+			.await;
+
+			if let Ok(response_value) = recv_task {
+				Ok(response_value)
+			} else {
+				return Err(NetworkError::NetworkReadTimeout);
+			}
+		}
+
+		#[cfg(feature = "tokio-runtime")]
+		{
+			let channel = self.clone();
+			let recv_task = tokio::task::spawn(async move {
+				let mut loop_count = 0;
+				loop {
+					// Attempt to acquire the lock without blocking
+					let maybe_response_value = channel.stream_response_buffer.try_lock();
+
+					// Check if the lock was acquired
+					if let Ok(mut response_buffer) = maybe_response_value {
+						// Check if the value is available in the response buffer
+						if let Some(response_value) =
+							response_buffer.remove(&TrackableStreamId::Id(stream_id))
+						{
+							// Make sure the value is not `StreamId`. If it is, then the request is
+							// being processed and the final value we want has not arrived.
+
+							// Get inner boxed value
+							let inner_value = &response_value as &dyn Any;
+							if inner_value.downcast_ref::<StreamId>().is_none() {
+								return response_value;
+							}
+						}
+					}
+
+					tokio::time::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
+
+					if loop_count < 6 {
+						loop_count += 1;
+					} else {
+						break;
+					}
+				}
+
+				// Error: return the stream id
+				Box::new(stream_id)
+			})
+			.await;
+
+			if let Ok(response_value) = recv_task {
+				Ok(response_value)
+			} else {
+				return Err(NetworkError::NetworkReadTimeout);
+			}
+		}
 	}
 
 	/// Perform an atomic `send` and `recieve` from the network layer. This function is atomic and
