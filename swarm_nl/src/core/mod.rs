@@ -1,7 +1,6 @@
 /// Copyright (c) 2024 Algorealm
 /// Core data structures and protocol implementations for building a swarm.
 use std::{
-	any::Any,
 	collections::{HashMap, HashSet},
 	net::{IpAddr, Ipv4Addr},
 	num::NonZeroU32,
@@ -15,7 +14,6 @@ use futures::{
 	channel::mpsc::{self, Receiver, Sender},
 	select, SinkExt, StreamExt,
 };
-use futures_time::prelude::*;
 use futures_time::time::Duration as AsyncDuration;
 use libp2p::{
 	identify::{self, Info},
@@ -38,6 +36,7 @@ pub use async_std::sync::Mutex;
 
 #[cfg(feature = "tokio-runtime")]
 pub use tokio::sync::Mutex;
+use tokio::sync::broadcast;
 
 mod prelude;
 pub use prelude::*;
@@ -504,9 +503,12 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 
 		// There must be a way for the application to communicate with the underlying networking
 		// core. This will involve acceptiing data and pushing data to the application layer.
-		// The stream will have SwarmNl (being the consumer) recieve data and commands from multiple
-		// areas in the application;
-		let (application_sender, network_receiver) = mpsc::channel::<StreamData>(3);
+		// Two streams will be opened: The first mpsc stream will allow SwarmNL push data to the
+		// application and the application will comsume it (single consumer) The second stream
+		// will have SwarmNl (being the consumer) recieve data and commands from multiple areas
+		// in the application;
+		let (application_sender, network_receiver) = mpsc::channel::<StreamData>(100);
+		let (network_sender, application_receiver) = mpsc::channel::<StreamData>(100);
 
 		// Set up the ping network info.
 		// `PeerId` does not implement `Default` so we will add the peerId of this node as seed
@@ -561,6 +563,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		let network_core = Core {
 			keypair: self.keypair,
 			application_sender,
+			// network_sender,
 			// application_receiver,
 			stream_request_buffer: stream_request_buffer.clone(),
 			stream_response_buffer: stream_response_buffer.clone(),
@@ -575,6 +578,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		async_std::task::spawn(Core::handle_async_operations(
 			swarm,
 			network_info,
+			network_sender,
 			network_receiver,
 			network_core.clone(),
 		));
@@ -584,7 +588,22 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		tokio::task::spawn(Core::handle_async_operations(
 			swarm,
 			network_info,
+			network_sender,
 			network_receiver,
+			network_core.clone(),
+		));
+
+		// Spin up task to listen for responses from the network layer
+		#[cfg(feature = "async-std-runtime")]
+		async_std::task::spawn(Core::handle_network_response(
+			application_receiver,
+			network_core.clone(),
+		));
+
+		// Spin up task to listen for responses from the network layer
+		#[cfg(feature = "tokio-runtime")]
+		tokio::task::spawn(Core::handle_network_response(
+			application_receiver,
 			network_core.clone(),
 		));
 
@@ -601,6 +620,8 @@ pub struct Core<T: EventHandler + Clone + Send + Sync + 'static> {
 	application_sender: Sender<StreamData>,
 	/// The consuming end of the stream that recieves data from the network layer
 	// application_receiver: Receiver<StreamData>,
+	/// The producing end of the stream that sends data from the network layer to the application
+	// network_sender: Sender<StreamData>,
 	/// This serves as a buffer for the results of the requests to the network layer.
 	/// With this, applications can make async requests and fetch their results at a later time
 	/// without waiting. This is made possible by storing a [`StreamId`] for a particular stream
@@ -642,120 +663,45 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		false
 	}
 
-	/// Send data to the network layer and recieve a unique `StreamId` to track the request
-	/// If the internal stream buffer is full, `None` will be returned.
-	pub async fn send_to_network(&mut self, request: AppData) -> Option<StreamId> {
-		// Generate stream id
-		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
-		let request = StreamData::Application(stream_id, request);
-
-		// Add to request buffer
-		if !self.stream_request_buffer.lock().await.insert(stream_id) {
-			// Buffer appears to be full
-			return None;
-		}
-
-		// Send request
-		if let Ok(_) = self.application_sender.send(request).await {
-			// Store latest stream id
-			*self.current_stream_id.lock().await = stream_id;
-			Some(stream_id)
-		} else {
-			return None;
-		}
-	}
-
-	/// This is for intra-network communication
-	async fn notify_network(&mut self, request: NetworkData) -> Option<StreamId> {
-		// Generate stream id
-		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
-		let request = StreamData::Network(stream_id, request);
-
-		// Add to request buffer
-		if !self.stream_request_buffer.lock().await.insert(stream_id) {
-			// Buffer appears to be full
-			return None;
-		}
-
-		// Send request
-		if let Ok(_) = self.application_sender.send(request).await {
-			// Store latest stream id
-			*self.current_stream_id.lock().await = stream_id;
-			Some(stream_id)
-		} else {
-			return None;
-		}
-	}
-
-	/// TODO! Buffer cleanup algorithm
-	/// Explicitly rectrieve the reponse to a request sent to the network layer.
-	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
-	/// and read immediately as the response to the request should already be in the stream response
-	/// buffer.
-	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
-		let network_data_future = async {
-			loop {
-				// tight loop
-				if let Some(response_value) = self
-					.stream_response_buffer
-					.lock()
-					.await
-					.remove(&TrackableStreamId::Id(stream_id))
-				{
-					// Make sure the value is not `StreamId`. If it is, then the request is being
-					// processed and the final value we want has not arrived.
-
-					// Get inner boxed value
-					let inner_value = &response_value as &dyn Any;
-					if let None = inner_value.downcast_ref::<StreamId>() {
-						return response_value;
-					}
-				}
-			}
-		};
-
-		Ok(network_data_future
-			.timeout(self.network_read_delay)
-			.await
-			.map_err(|_| NetworkError::NetworkReadTimeout)?)
-	}
-
-	/// Perform an atomic `send` and `recieve` from the network layer. This function is atomic and
-	/// blocks until the result of the request is returned from the network layer. This function
-	/// should mostly be used when the result of the request is needed immediately and delay can be
-	/// condoned. It will still timeout if the delay exceeds the configured period.
-	/// If the internal buffer is full, it will return an error.
-	pub async fn fetch_from_network(&mut self, request: AppData) -> NetworkResult {
-		// send request
-		if let Some(stream_id) = self.send_to_network(request).await {
-			// wait to recieve response from the network
-			self.recv_from_network(stream_id).await
-		} else {
-			Err(NetworkError::StreamBufferOverflow)
-		}
-	}
-
-	/// This is for intra-network atomic communication
-	async fn trigger_network_op(&mut self, request: NetworkData) -> NetworkResult {
-		// send request
-		if let Some(stream_id) = self.notify_network(request).await {
-			// wait to recieve response from the network
-			self.recv_from_network(stream_id).await
-		} else {
-			Err(NetworkError::StreamBufferOverflow)
-		}
-	}
-
 	/// Return the node's `PeerId`
 	pub fn peer_id(&self) -> String {
 		self.keypair.public().to_peer_id().to_string()
 	}
 
-	/// Explicitly dial a peer at runtime.
-	pub async fn dial_peer(&mut self, multiaddr: String) -> NetworkResult {
-		// send message into stream
-		self.trigger_network_op(NetworkData::DailPeer(multiaddr))
-			.await
+	/// Handle the responses coming from the network layer. This is usually as a result of a request
+	/// from the application layer
+	async fn handle_network_response(mut receiver: Receiver<StreamData>, network_core: Core<T>) {
+		loop {
+			select! {
+				response = receiver.select_next_some() => {
+					if let Ok(mut buffer_guard) = network_core.stream_response_buffer.try_lock() {
+						match response {
+							// Send response to request operations specified by the application layer
+							StreamData::ToApplication(stream_id, response) => match response {
+								res @ AppResponse::Echo(..) => buffer_guard.insert(stream_id, Ok(res)),
+								res @ AppResponse::DailPeer(..) => buffer_guard.insert(stream_id, Ok(res)),
+								res @ AppResponse::KademliaStoreRecordSuccess => buffer_guard.insert(stream_id, Ok(res)),
+								res @ AppResponse::KademliaLookupRecord(..) => buffer_guard.insert(stream_id, Ok(res)),
+								res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
+								res @ AppResponse::KademliaGetRoutingTableInfo { .. } => buffer_guard.insert(stream_id, Ok(res)),
+								res @ AppResponse::FetchData(..) => buffer_guard.insert(stream_id, Ok(res)),
+								// Error
+								AppResponse::Error(error) => buffer_guard.insert(stream_id, Err(error))
+							},
+							_ => false
+						};
+					} else {
+						// sleep for a few seconds
+						#[cfg(feature = "async-std-runtime")]
+						async_std::task::sleep(Duration::from_secs(1)).await;
+
+						// sleep for a few seconds
+						#[cfg(feature = "tokio-runtime")]
+						tokio::time::sleep(Duration::from_secs(1)).await;
+					}
+				}
+			}
+		}
 	}
 
 	/// Handle async operations, which basically involved handling two major data sources:
@@ -765,45 +711,49 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	async fn handle_async_operations(
 		mut swarm: Swarm<CoreBehaviour>,
 		mut network_info: NetworkInfo,
+		mut network_sender: Sender<StreamData>,
 		mut receiver: Receiver<StreamData>,
 		mut network_core: Core<T>,
 	) {
+		// Create one-way channels that help the application command receiver synchronize with the
+		// libp2p generated events
+		let (sender_channel_1, _) = broadcast::channel::<StreamId>(500); // For AppData::KademliaStoreRecord
+		let (sender_channel_2, _) = broadcast::channel::<StreamId>(100);  // For AppData::KademliaLookupRecord
+		let (sender_channel_3, _) = broadcast::channel::<StreamId>(100);  // For AppData::KademliaGetProviders
+		let (sender_channel_4, _) = broadcast::channel::<StreamId>(100);  // For AppData::FetchData
+
 		// Loop to handle incoming application streams indefinitely.
 		loop {
+			let mut recv_channel_1 = sender_channel_1.subscribe();
+			let mut recv_channel_2 = sender_channel_2.subscribe();
+			let mut recv_channel_3 = sender_channel_3.subscribe();
+			let mut recv_channel_4 = sender_channel_4.subscribe();
+
 			select! {
 				// handle incoming stream data
 				stream_data = receiver.next() => {
 					match stream_data {
 						Some(incoming_data) => {
+							println!("{:?}", incoming_data);
 							match incoming_data {
-								StreamData::Application(stream_id, app_data) => {
+								StreamData::FromApplication(stream_id, app_data) => {
 									// Trackable stream id
-									let trackable_stream_id = TrackableStreamId::Id(stream_id);
+									let stream_id = stream_id;
 									match app_data {
 										// Put back into the stream what we read from it
 										AppData::Echo(message) => {
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												async_std::task::spawn(async move{
-													// Remove the request from the request buffer
-													netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-													// Insert into the response buffer for it to be picked up
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												tokio::task::spawn(async move{
-													// Remove the request from the request buffer
-													netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-													// Insert into the response buffer for it to be picked up
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(message));
-												});
+											// Send the response back to the application layer
+											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Echo(message))).await;
+										},
+										AppData::DailPeer(multiaddr) => {
+											if let Ok(multiaddr) = multiaddr.parse::<Multiaddr>() {
+												if let Ok(_) = swarm.dial(multiaddr.clone()) {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::DailPeer(multiaddr.to_string()))).await;
+												} else {
+													// Return error
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::DailPeerError))).await;
+												}
 											}
 										},
 										// Store a value in the DHT and (optionally) on explicit specific peers
@@ -816,25 +766,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 
 											// Insert into DHT
 											if let Ok(_) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
-												// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-												// where we can get the response and then replace the buffer with the actual response data
-
-												#[cfg(feature = "async-std-runtime")]
-												{
-													let netcore = network_core.clone();
-													async_std::task::spawn(async move{
-														netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-													});
-												}
-
-												#[cfg(feature = "tokio-runtime")]
-												{
-													let netcore = network_core.clone();
-													tokio::task::spawn(async move{
-														// Insert into the response buffer for it to be picked up
-														netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-													});
-												}
+												// Send streamId to libp2p events, to track response
+												let _ = sender_channel_1.clone().send(stream_id);
 
 												// Cache record on peers explicitly (if specified)
 												if let Some(explicit_peers) = explicit_peers {
@@ -846,146 +779,36 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
 												}
 											} else {
-												#[cfg(feature = "async-std-runtime")]
-												{
-													let netcore = network_core.clone();
-													async_std::task::spawn(async move{
-														// Delete the request from the stream and then return a write error
-														netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-														// Return error
-														netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
-													});
-												}
-
-												#[cfg(feature = "tokio-runtime")]
-												{
-													let netcore = network_core.clone();
-													tokio::task::spawn(async move{
-														// Delete the request from the stream and then return a write error
-														netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-														// Return error
-														netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(NetworkError::KadStoreRecordError(key)));
-													});
-												}
+												// Return error
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key)))).await;
 											}
 										},
 										// Perform a lookup in the DHT
 										AppData::KademliaLookupRecord { key } => {
 											let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
 
-											// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-											// where we can get the response and then replace the buffer with the actual response data
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												async_std::task::spawn(async move{
-													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												tokio::task::spawn(async move{
-													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-												});
-											}
+											// Send streamId to libp2p events, to track response
+											let _ = sender_channel_2.clone().send(stream_id);
 										},
 										// Perform a lookup of peers that store a record
 										AppData::KademliaGetProviders { key } => {
 											let _ = swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
 
-											// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-											// where we can get the response and then replace the buffer with the actual response data
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												async_std::task::spawn(async move{
-													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												tokio::task::spawn(async move{
-													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Kad(key), Box::new(stream_id));
-												});
-											}
+											// Send streamId to libp2p events, to track response
+											let _ = sender_channel_3.clone().send(stream_id);
 										}
 										// Stop providing a record on the network
 										AppData::KademliaStopProviding { key } => {
 											swarm.behaviour_mut().kademlia.stop_providing(&key.into());
-
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												async_std::task::spawn(async move{
-													// Respond with a success
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												tokio::task::spawn(async move{
-													// Respond with a success
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
-												});
-											}
 										}
 										// Remove record from local store
 										AppData::KademliaDeleteRecord { key } => {
 											swarm.behaviour_mut().kademlia.remove_record(&key.into());
-
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												async_std::task::spawn(async move{
-													// Respond with a success
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												tokio::task::spawn(async move{
-													// Respond with a success
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(0));
-												});
-											}
 										}
 										// Return important routing table info
 										AppData::KademliaGetRoutingTableInfo => {
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												let netinfo = network_info.clone();
-												async_std::task::spawn(async move{
-													// Remove the request from the request buffer
-													netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-													// Insert into the response buffer for it to be picked up
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: netinfo.id.to_string() }));
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												let netinfo = network_info.clone();
-												tokio::task::spawn(async move{
-													// Remove the request from the request buffer
-													netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-													// Insert into the response buffer for it to be picked up
-													netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(Kademlia::Info { protocol_id: netinfo.id.to_string() }));
-												});
-											}
+											// Send the response back to the application layer
+											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetRoutingTableInfo{protocol_id: network_info.id.to_string()})).await;
 										},
 										// Fetch data quickly from a peer over the network
 										AppData::FetchData { keys, peer } => {
@@ -993,85 +816,19 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											let rpc = Rpc::ReqResponse { data: keys.clone() };
 
 											// Inform the swarm to make the request
-											let outbound_id = swarm
+											let _ = swarm
 												.behaviour_mut()
 												.request_response
 												.send_request(&peer, rpc);
 
 											println!("keys: {:?}", keys);
 
-											// Insert temporarily into the `StreamResponseBuffer`. Here we use the `StreamResponseBuffer` as a temporary bridge to `libp2p` events
-											// where we can get the response and then replace the buffer with the actual response data
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												async_std::task::spawn(async move{
-													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												tokio::task::spawn(async move{
-													netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Outbound(outbound_id), Box::new(stream_id));
-												});
-											}
+											// Send streamId to libp2p events, to track response
+											let _ = sender_channel_4.clone().send(stream_id);
 										}
 									}
 								}
-
-								StreamData::Network(stream_id, network_data) => {
-									// Trackable stream id
-									let trackable_stream_id = TrackableStreamId::Id(stream_id);
-									match network_data {
-										// Dail peer
-										NetworkData::DailPeer(multiaddr) => {
-											// Remove the request from the request buffer
-											network_core.stream_request_buffer.lock().await.remove(&stream_id);
-
-											if let Ok(multiaddr) = multiaddr.parse::<Multiaddr>() {
-												if let Ok(_) = swarm.dial(multiaddr.clone()) {
-													#[cfg(feature = "async-std-runtime")]
-													{
-														let netcore = network_core.clone();
-														tokio::task::spawn(async move {
-															// Put result into response buffer
-															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
-														});
-													}
-
-													#[cfg(feature = "tokio-runtime")]
-													{
-														let netcore = network_core.clone();
-														tokio::task::spawn(async move{
-															// Put result into response buffer
-															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(stream_id));
-														});
-													}
-												} else {
-													#[cfg(feature = "async-std-runtime")]
-													{
-														let netcore = network_core.clone();
-														tokio::task::spawn(async move {
-															// Put result into response buffer
-															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
-														});
-													}
-
-													#[cfg(feature = "tokio-runtime")]
-													{
-														let netcore = network_core.clone();
-														tokio::task::spawn(async move{
-															// Put result into response buffer
-															netcore.stream_response_buffer.lock().await.insert(trackable_stream_id, Box::new(SwarmNlError::RemotePeerDialError(multiaddr.to_string())));
-														});
-													}
-												}
-											}
-										}
-									}
-								}
+								_ => {}
 							}
 						},
 						_ => {}
@@ -1210,93 +967,25 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													peer_id.to_base58()
 												}).collect::<Vec<_>>();
 
-												#[cfg(feature = "async-std-runtime")]
-												{
-													let netcore = network_core.clone();
-													async_std::task::spawn(async move {
-														// Get `StreamId`
-														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-															// Make sure this is temporary data (i.e `StreamId`)
-															let opaque_data = &opaque_data as &dyn Any;
-
-															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																// Remove the request from the request buffer
-																netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-																// Insert response message the response buffer for it to be picked up
-																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }));
-															}
-														}
-													});
-												}
-
-												#[cfg(feature = "tokio-runtime")]
-												{
-													let netcore = network_core.clone();
-													tokio::task::spawn(async move {
-														// Get `StreamId`
-														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-															// Make sure this is temporary data (i.e `StreamId`)
-															let opaque_data = &opaque_data as &dyn Any;
-
-															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																// Remove the request from the request buffer
-																netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-																// Insert response message the response buffer for it to be picked up
-																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::ProvidersFound { key: key.to_vec(), providers: peer_id_strings }));
-															}
-														}
-													});
+												// Receive data from our one-way channel
+												if let Ok(stream_id) = recv_channel_3.recv().await {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
 												}
 											}
 											kad::QueryResult::GetProviders(Err(_)) => {},
 											kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
-												kad::PeerRecord { record:kad::Record{ key, value, .. }, .. },
+												kad::PeerRecord { record:kad::Record{ value, .. }, .. },
 											))) => {
-												#[cfg(feature = "async-std-runtime")]
-												{
-													let netcore = network_core.clone();
-													async_std::task::spawn(async move {
-														// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
-														// Get `StreamId`
-														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-															// Make sure this is temporary data (i.e `StreamId`)
-															let opaque_data = &opaque_data as &dyn Any;
-
-															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																// Remove the request from the request buffer
-																netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-																// Insert response message the response buffer for it to be picked up
-																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::RecordFound { key: key.to_vec(), value: value.to_vec() }));
-															}
-														}
-													});
-												}
-
-												#[cfg(feature = "tokio-runtime")]
-												{
-													let netcore = network_core.clone();
-													tokio::task::spawn(async move {
-														// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
-														// Get `StreamId`
-														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-															// Make sure this is temporary data (i.e `StreamId`)
-															let opaque_data = &opaque_data as &dyn Any;
-
-															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																// Remove the request from the request buffer
-																netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-																// Insert response message the response buffer for it to be picked up
-																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(DhtOps::RecordFound { key: key.to_vec(), value: value.to_vec() }));
-															}
-														}
-													});
+												// Receive data from out one-way channel
+												if let Ok(stream_id) = recv_channel_2.recv().await {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaLookupRecord(value))).await;
 												}
 											}
-											kad::QueryResult::GetRecord(Ok(_)) => {},
+											kad::QueryResult::GetRecord(Ok(_)) => {
+												// TODO!: How do we track this?
+											},
 											kad::QueryResult::GetRecord(Err(e)) => {
 												let key = match e {
 													kad::GetRecordError::NotFound { key, .. } => key,
@@ -1304,53 +993,33 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													kad::GetRecordError::Timeout { key } => key,
 												};
 
-												#[cfg(feature = "async-std-runtime")]
-												{
-													let netcore = network_core.clone();
-													async_std::task::spawn(async move {
-														// Delete the temporary data and then return error
-														// Get `StreamId`
-														if let Some(opaque_data) = network_core.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-															// Make sure this is temporary data (i.e `StreamId`)
-															let opaque_data = &opaque_data as &dyn Any;
-
-															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																// Remove the request from the request buffer
-																network_core.stream_request_buffer.lock().await.remove(&stream_id);
-
-																// Return error
-																network_core.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::KadFetchRecordError(key.to_vec())));
-															}
-														}
-													});
-												}
-
-												#[cfg(feature = "tokio-runtime")]
-												{
-													let netcore = network_core.clone();
-													tokio::task::spawn(async move {
-														// Delete the temporary data and then return error
-														// Get `StreamId`
-														if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Kad(key.to_vec())) {
-															// Make sure this is temporary data (i.e `StreamId`)
-															let opaque_data = &opaque_data as &dyn Any;
-
-															if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																// Remove the request from the request buffer
-																netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-																// Return error
-																netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::KadFetchRecordError(key.to_vec())));
-															}
-														}
-													});
+												// Receive data from out one-way channel
+												if let Ok(stream_id) = recv_channel_2.recv().await {
+													// Send the error back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(key.to_vec())))).await;
 												}
 											}
 											kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
+												// Receive data from our one-way channel
+												if let Ok(stream_id) = recv_channel_1.recv().await {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaStoreRecordSuccess)).await;
+												}
+
 												// Call handler
 												network_core.state.kademlia_put_record_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
 											}
-											kad::QueryResult::PutRecord(Err(_)) => {
+											kad::QueryResult::PutRecord(Err(e)) => {
+												let key = match e {
+													kad::PutRecordError::QuorumFailed { key, .. } => key,
+													kad::PutRecordError::Timeout { key, .. } => key,
+												};
+
+												if let Ok(stream_id) = recv_channel_1.recv().await {
+													// Send the error back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key.to_vec())))).await;
+												}
+
 												// Call handler
 												network_core.state.kademlia_put_record_error(network_info.event_comm_channel.clone()).await;
 											}
@@ -1407,101 +1076,30 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													}
 												},
 												// We have a response message
-												request_response::Message::Response { request_id, response } => {
-													// We want to take out the temporary data in the stream buffer and then replace it with valid data, for it to be picked up
-													#[cfg(feature = "async-std-runtime")]
-													{
-														let netcore = network_core.clone();
-														async_std::task::spawn(async move {
-															// Get `StreamId`
-															if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
-																// Make sure this is temporary data (i.e `StreamId`)
-																let opaque_data = &opaque_data as &dyn Any;
+												request_response::Message::Response { response, .. } => {
+													// Receive data from our one-way channel
+													if let Ok(stream_id) = recv_channel_4.recv().await {
+														match response {
+															Rpc::ReqResponse { data } => {
+																println!("--> {:?}", data);
 
-																if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																	// Remove the request from the request buffer
-																	netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-																	match response {
-																		Rpc::ReqResponse { data } => {
-																			println!("--> {:?}", data);
-																			// Insert response message the response buffer for it to be picked up
-																			netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(data));
-																		},
-																	}
-																}
-															}
-														});
+																// Send the response back to the application layer
+																let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::FetchData(data))).await;
+															},
+														}
 													}
-
-													#[cfg(feature = "tokio-runtime")]
-													{
-														let netcore = network_core.clone();
-														tokio::task::spawn(async move {
-															// Get `StreamId`
-															if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
-																// Make sure this is temporary data (i.e `StreamId`)
-																let opaque_data = &opaque_data as &dyn Any;
-
-																if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-																	// Remove the request from the request buffer
-																	netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-																	match response {
-																		Rpc::ReqResponse { data } => {
-																			println!("--> {:?}", data);
-																			// Insert response message the response buffer for it to be picked up
-																			netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(data));
-																		},
-																	}
-																}
-															}
-														});
-													}
-											},
+												},
 										},
-										request_response::Event::OutboundFailure { request_id, .. } => {
+										request_response::Event::OutboundFailure { .. } => {
 											// Delete the temporary data and then return error
-											println!("out failure");
-											#[cfg(feature = "async-std-runtime")]
-											{
-												let netcore = network_core.clone();
-												async_std::task::spawn(async move {
-													// Get `StreamId`
-													if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
-														// Make sure this is temporary data (i.e `StreamId`)
-														let opaque_data = &opaque_data as &dyn Any;
+											println!("fbujsnfd");
 
-														if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-															// Remove the request from the request buffer
-															netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-															// Return error
-															netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
-														}
-													}
-												});
-											}
-
-											#[cfg(feature = "tokio-runtime")]
-											{
-												let netcore = network_core.clone();
-												tokio::task::spawn(async move {
-													// Get `StreamId`
-													if let Some(opaque_data) = netcore.stream_response_buffer.lock().await.remove(&TrackableStreamId::Outbound(request_id)) {
-														// Make sure this is temporary data (i.e `StreamId`)
-														let opaque_data = &opaque_data as &dyn Any;
-
-														if let Some(stream_id) = opaque_data.downcast_ref::<StreamId>() {
-															// Remove the request from the request buffer
-															netcore.stream_request_buffer.lock().await.remove(&stream_id);
-
-															// Return error
-															netcore.stream_response_buffer.lock().await.insert(TrackableStreamId::Id(*stream_id), Box::new(NetworkError::RpcDataFetchError));
-														}
-													}
-												});
-											}
+											// Receive data from out one-way channel
+											// if let Ok(stream_id) = recv_channel_4.recv().await {
+											// 	println!("----4-42----");
+											// 	// Send the error back to the application layer
+											// 	let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::RpcDataFetchError))).await;
+											// }
 										},
 										_ => {}
 									}

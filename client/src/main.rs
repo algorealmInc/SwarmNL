@@ -4,13 +4,13 @@
 /// Objective: Form alliances and conquer as much empires as possible!
 /// It is a multi-player game
 /// Enjoy!
-use std::{any::Any, borrow::Cow, num::NonZeroU32, sync::Arc, time::Duration};
+use std::{any::Any, borrow::Cow, num::NonZeroU32, time::Duration};
 use swarm_nl::{
 	async_trait,
 	core::EventHandler,
-	core::{AppData, Core, CoreBuilder, Mutex, NetworkChannel, StreamId},
+	core::{AppData, Core, CoreBuilder, NetworkChannel},
 	setup::BootstrapConfig,
-	ConnectedPoint, ConnectionId, PeerId, Sender, SinkExt,
+	ConnectedPoint, ConnectionId, PeerId,
 };
 
 #[tokio::main]
@@ -59,6 +59,23 @@ impl EventHandler for Empire {
 			"There are {} soldiers guarding the {} Empire gate",
 			self.soldiers, self.name
 		);
+
+		let request = vec!["military_status".as_bytes().to_vec()];
+
+		// Prepare request
+		let status_request = AppData::FetchData {
+			keys: request,
+			peer: local_peer_id,
+		};
+
+		// Send request
+		let stream_id = channel.send_to_network(status_request).await.unwrap();
+
+		// Get response
+		// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
+		let status_response = channel.recv_from_network(stream_id).await;
+
+		println!("{:?}", status_response);
 	}
 
 	async fn connection_established(
@@ -73,42 +90,7 @@ impl EventHandler for Empire {
 		println!("Connection established with peer: {}", peer_id);
 		// When we establish a new connection, the empires send message to the other empire to knoe
 		// their military status
-		let request = vec!["military_status".as_bytes().to_vec()];
-
-		// Prepare request
-		let status_request = AppData::FetchData {
-			keys: request,
-			peer: peer_id,
-		};
-
-		// Send request
-		let stream_id = channel
-			.send_to_network(status_request)
-			.await
-			.unwrap();
-
-		// Get response
-		// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
-		let status_response = channel
-			.recv_from_network(stream_id)
-			.await;
-
-		let inner_value = &status_response as &dyn Any;
-		if let Some(status) = inner_value.downcast_ref::<Vec<Vec<u8>>>() {
-			// Get empire name
-			let empire_name = String::from_utf8_lossy(&status[0]);
-			let military_status = status[1][0];
-
-			// Print the military status of the empire we just contacted
-			println!("Empire Contacted:");
-			println!("Name: {} Empire", empire_name);
-			println!("Military Capacity: {} Soldiers", military_status);
-		} else {
-			println!("Could not decode response")
-		}
-		// } else {
-		// 	println!("Could not get military status of the empire at {}", peer_id);
-		// }
+		
 	}
 
 	/// Handle any incoming RPC from any neighbouring empire

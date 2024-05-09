@@ -2,7 +2,7 @@ use async_trait::async_trait;
 /// Copyright (c) 2024 Algorealm
 use libp2p::request_response::OutboundRequestId;
 use serde::{Deserialize, Serialize};
-use std::{any::Any, time::Instant};
+use std::{time::Instant};
 use thiserror::Error;
 
 use self::ping_config::PingInfo;
@@ -15,15 +15,17 @@ pub const NETWORK_READ_TIMEOUT: u64 = 60;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
 /// the repsonse buffer (7 seconds)
-pub const TASK_SLEEP_DURATION: u64 = 7;
+pub const TASK_SLEEP_DURATION: u64 = 3;
+/// Type that represents the response of the network layer to the application layer's event handler
+pub type AppResponseResult = Result<AppResponse, NetworkError>;
 
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug, Clone)]
 pub(super) enum StreamData {
 	/// Application data sent over the stream
-	Application(StreamId, AppData),
-	/// Network data sent over the stream
-	Network(StreamId, NetworkData),
+	FromApplication(StreamId, AppData),
+	/// Network response data sent over the stream to the application layer
+	ToApplication(StreamId, AppResponse),
 }
 
 /// Data sent from the application layer to the networking layer
@@ -31,6 +33,8 @@ pub(super) enum StreamData {
 pub enum AppData {
 	/// A simple echo message
 	Echo(String),
+	/// Dail peer
+	DailPeer(MultiaddrString),
 	/// Store a value associated with a given key in the Kademlia DHT
 	KademliaStoreRecord {
 		key: Vec<u8>,
@@ -56,21 +60,32 @@ pub enum AppData {
 	// Gossip related requests
 }
 
-/// Data sent from the networking to itself
+/// Response to requests sent from the aplication to the network layer
 #[derive(Debug, Clone)]
-pub(super) enum NetworkData {
-	/// Dail peer
-	DailPeer(MultiaddrString),
-}
-
-/// Results from Kademlia DHT operation
-pub enum Kademlia {
-	/// Return important information about the DHT, this will be increased shortly
-	Info { protocol_id: String },
+pub enum AppResponse {
+	/// The value written to the network
+	Echo(String),
+	/// The peer we dailed
+	DailPeer(String),
+	/// Store record success
+	KademliaStoreRecordSuccess,
+	/// DHT lookup result
+	KademliaLookupRecord(Vec<u8>),
+	/// Nodes storing a particular record in the DHT
+	KademliaGetProviders {
+		key: Vec<u8>,
+		providers: Vec<PeerIdString>,
+	},
+	/// Routing table information
+	KademliaGetRoutingTableInfo { protocol_id: String },
+	/// RPC result
+	FetchData(Vec<Vec<u8>>),
+	/// A network error occured while executing the request
+	Error(NetworkError),
 }
 
 /// Network error type containing errors encountered during network operations
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum NetworkError {
 	#[error("timeout occured waiting for data from network layer")]
 	NetworkReadTimeout,
@@ -82,22 +97,10 @@ pub enum NetworkError {
 	RpcDataFetchError,
 	#[error("failed to fetch record from the DHT")]
 	KadFetchRecordError(Vec<u8>),
-}
-
-/// Operations performed on the Kademlia DHT
-#[derive(Debug)]
-pub enum DhtOps {
-	/// Value found in the DHT
-	RecordFound { key: Vec<u8>, value: Vec<u8> },
-	/// No value found
-	RecordNotFound,
-	/// Nodes found that provide value for key
-	ProvidersFound {
-		key: Vec<u8>,
-		providers: Vec<PeerIdString>,
-	},
-	/// No providers returned (This is most likely due to an error)
-	NoProvidersFound,
+	#[error("task carrying app response panicked")]
+	InternalTaskError,
+	#[error("failed to dail peer")]
+	DailPeerError,
 }
 
 /// A simple struct used to track requests sent from the application layer to the network layer
@@ -117,40 +120,8 @@ impl StreamId {
 	}
 }
 
-/// Enum that represents various ids that can be tracked on the [`StreamResponseBuffer`]
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum TrackableStreamId {
-	/// Our custom stream id
-	Id(StreamId),
-	/// RPC request id
-	Outbound(OutboundRequestId),
-	/// Kademlia Key
-	Kad(Vec<u8>),
-}
-
 /// Type that specifies the result of querying the network layer
-pub type NetworkResult = Result<Box<dyn StreamResponseType>, NetworkError>;
-
-/// Marker trait that indicates a stream reponse data object
-pub trait StreamResponseType
-where
-	Self: Send + Sync + Any + 'static,
-{
-}
-
-/// Macro that implements [`StreamResponseType`] for various types to occupy the
-/// [`StreamResponseBuffer`] [`StreamResponseBuffer`]
-macro_rules! impl_stream_response_for_types { ( $( $t:ident )* ) => {
-	$(
-		impl StreamResponseType for $t {}
-	)* };
-}
-
-impl_stream_response_for_types!(u8 i8 u16 i16 u32 i32 u64 i64 u128 i128
-	usize isize f32 f64 String bool Kademlia StreamId SwarmNlError NetworkError DhtOps);
-
-/// Implement [`StreamResponseType`] for `Vec<T>`
-impl<T> StreamResponseType for Vec<T> where T: StreamResponseType {}
+pub type NetworkResult = Result<AppResponse, NetworkError>;
 
 /// Type that keeps track of the requests from the application layer.
 /// This type has a maximum buffer size and will drop subsequent requests when full.
@@ -182,18 +153,13 @@ impl StreamRequestBuffer {
 		}
 		false
 	}
-
-	/// Remove a [`StreamId`] from the buffer
-	pub fn remove(&mut self, id: &StreamId) {
-		self.buffer.remove(&id);
-	}
 }
 
 /// Type that keeps track of the response to the requests from the application layer.
 pub(super) struct StreamResponseBuffer {
 	/// Max responses we can keep track of
 	size: usize,
-	buffer: HashMap<TrackableStreamId, Box<dyn StreamResponseType>>,
+	buffer: HashMap<StreamId, AppResponseResult>,
 }
 
 impl StreamResponseBuffer {
@@ -205,9 +171,9 @@ impl StreamResponseBuffer {
 		}
 	}
 
-	/// Push a [`TrackableStreamId`] into buffer.
+	/// Push a [`StreamId`] into buffer.
 	/// Returns `false` if the buffer is full and request cannot be stored
-	pub fn insert(&mut self, id: TrackableStreamId, response: Box<dyn StreamResponseType>) -> bool {
+	pub fn insert(&mut self, id: StreamId, response: AppResponseResult) -> bool {
 		if self.buffer.len() < self.size {
 			self.buffer.insert(id, response);
 			return true;
@@ -215,8 +181,8 @@ impl StreamResponseBuffer {
 		false
 	}
 
-	/// Remove a [`TrackableStreamId`] from the buffer
-	pub fn remove(&mut self, id: &TrackableStreamId) -> Option<Box<dyn StreamResponseType>> {
+	/// Remove a [`StreamId`] from the buffer
+	pub fn remove(&mut self, id: &StreamId) -> Option<AppResponseResult> {
 		self.buffer.remove(&id)
 	}
 }
@@ -502,8 +468,6 @@ pub struct NetworkChannel {
 	application_sender: Sender<StreamData>,
 	/// Current stream id. Useful for opening new streams, we just have to bump the number by 1
 	current_stream_id: Arc<Mutex<StreamId>>,
-	/// The network read timeout
-	network_read_delay: AsyncDuration,
 }
 
 impl NetworkChannel {
@@ -520,36 +484,44 @@ impl NetworkChannel {
 			stream_response_buffer,
 			application_sender,
 			current_stream_id,
-			network_read_delay,
 		}
 	}
 
 	/// Send data to the network layer and recieve a unique `StreamId` to track the request
 	/// If the internal stream buffer is full, `None` will be returned.
-	pub async fn send_to_network(&mut self, request: AppData) -> Option<StreamId> {
+	pub async fn send_to_network(&mut self, app_request: AppData) -> Option<StreamId> {
 		// Generate stream id
 		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
-		let request = StreamData::Application(stream_id, request);
+		let request = StreamData::FromApplication(stream_id, app_request.clone());
 
-		// Acquire lock on stream_request_buffer
-		let mut stream_request_buffer = self.stream_request_buffer.lock().await;
+		// Only a few requests should be tracked internally
+		match app_request {
+			// Doesn't need any tracking
+			AppData::KademliaDeleteRecord { .. } | AppData::KademliaStopProviding { .. } => {
+				// Send request
+				let _ = self.application_sender.send(request).await;
+				return None;
+			},
+			// Okay with the rest
+			_ => {
+				// Acquire lock on stream_request_buffer
+				let mut stream_request_buffer = self.stream_request_buffer.lock().await;
 
-		// Add to request buffer
-		if !stream_request_buffer.insert(stream_id) {
-			// Buffer appears to be full
-			return None;
-		}
+				// Add to request buffer
+				if !stream_request_buffer.insert(stream_id) {
+					// Buffer appears to be full
+					return None;
+				}
 
-		println!("{:?}", stream_request_buffer);
-		println!("{:?}", request);
-
-		// Send request
-		if let Ok(_) = self.application_sender.send(request).await {
-			// Store latest stream id
-			*self.current_stream_id.lock().await = stream_id;
-			Some(stream_id)
-		} else {
-			None
+				// Send request
+				if let Ok(_) = self.application_sender.send(request).await {
+					// Store latest stream id
+					*self.current_stream_id.lock().await = stream_id;
+					return Some(stream_id);
+				} else {
+					return None;
+				}
+			},
 		}
 	}
 
@@ -562,94 +534,66 @@ impl NetworkChannel {
 		#[cfg(feature = "async-std-runtime")]
 		{
 			let channel = self.clone();
-			let recv_task = tokio::task::spawn(async move {
+			let response_handler = tokio::task::spawn(async move {
 				let mut loop_count = 0;
 				loop {
 					// Attempt to acquire the lock without blocking
-					let maybe_response_value = channel.stream_response_buffer.try_lock();
+					let mut buffer_guard = channel.stream_response_buffer.lock().await;
 
-					// Check if the lock was acquired
-					if let Ok(mut response_buffer) = maybe_response_value {
-						// Check if the value is available in the response buffer
-						if let Some(response_value) =
-							response_buffer.remove(&TrackableStreamId::Id(stream_id))
-						{
-							// Make sure the value is not `StreamId`. If it is, then the request is
-							// being processed and the final value we want has not arrived.
-
-							// Get inner boxed value
-							let inner_value = &response_value as &dyn Any;
-							if inner_value.downcast_ref::<StreamId>().is_none() {
-								return response_value;
-							}
-						}
+					// Check if the value is available in the response buffer
+					if let Some(result) = buffer_guard.remove(&stream_id) {
+						return Ok(result);
 					}
 
-					async_std::task::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
-
-					if loop_count < 6 {
+					// Timeout after 5 trials
+					if loop_count < 5 {
 						loop_count += 1;
 					} else {
-						break;
+						return Err(NetworkError::NetworkReadTimeout);
 					}
+
+					// Failed to acquire the lock, sleep and retry
+					async_std::task::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
 				}
+			});
 
-				// Error: return the stream id
-				Box::new(stream_id)
-			})
-			.await;
-
-			if let Ok(response_value) = recv_task {
-				Ok(response_value)
-			} else {
-				return Err(NetworkError::NetworkReadTimeout);
+			// Wait for the spawned task to complete
+			match response_handler.await {
+				Ok(result) => result?,
+				Err(_) => Err(NetworkError::InternalTaskError),
 			}
 		}
 
 		#[cfg(feature = "tokio-runtime")]
 		{
 			let channel = self.clone();
-			let recv_task = tokio::task::spawn(async move {
+			let response_handler = tokio::task::spawn(async move {
 				let mut loop_count = 0;
 				loop {
 					// Attempt to acquire the lock without blocking
-					let maybe_response_value = channel.stream_response_buffer.try_lock();
+					let mut buffer_guard = channel.stream_response_buffer.lock().await;
 
-					// Check if the lock was acquired
-					if let Ok(mut response_buffer) = maybe_response_value {
-						// Check if the value is available in the response buffer
-						if let Some(response_value) =
-							response_buffer.remove(&TrackableStreamId::Id(stream_id))
-						{
-							// Make sure the value is not `StreamId`. If it is, then the request is
-							// being processed and the final value we want has not arrived.
-
-							// Get inner boxed value
-							let inner_value = &response_value as &dyn Any;
-							if inner_value.downcast_ref::<StreamId>().is_none() {
-								return response_value;
-							}
-						}
+					// Check if the value is available in the response buffer
+					if let Some(result) = buffer_guard.remove(&stream_id) {
+						return Ok(result);
 					}
 
-					tokio::time::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
-
-					if loop_count < 6 {
+					// Timeout after 5 trials
+					if loop_count < 5 {
 						loop_count += 1;
 					} else {
-						break;
+						return Err(NetworkError::NetworkReadTimeout);
 					}
+
+					// Failed to acquire the lock, sleep and retry
+					tokio::time::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
 				}
+			});
 
-				// Error: return the stream id
-				Box::new(stream_id)
-			})
-			.await;
-
-			if let Ok(response_value) = recv_task {
-				Ok(response_value)
-			} else {
-				return Err(NetworkError::NetworkReadTimeout);
+			// Wait for the spawned task to complete
+			match response_handler.await {
+				Ok(result) => result?,
+				Err(_) => Err(NetworkError::InternalTaskError),
 			}
 		}
 	}
@@ -669,3 +613,4 @@ impl NetworkChannel {
 		}
 	}
 }
+
