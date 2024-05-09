@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 /// Copyright (c) 2024 Algorealm
-use libp2p::request_response::OutboundRequestId;
 use serde::{Deserialize, Serialize};
-use std::{time::Instant};
+use std::{time::Instant, collections::VecDeque};
 use thiserror::Error;
 
 use self::ping_config::PingInfo;
@@ -15,7 +14,7 @@ pub const NETWORK_READ_TIMEOUT: u64 = 60;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
 /// the repsonse buffer (7 seconds)
-pub const TASK_SLEEP_DURATION: u64 = 3;
+pub const TASK_SLEEP_DURATION: u64 = 7;
 /// Type that represents the response of the network layer to the application layer's event handler
 pub type AppResponseResult = Result<AppResponse, NetworkError>;
 
@@ -209,7 +208,7 @@ pub trait EventHandler {
 	/// Event that informs the network core that we have started listening on a new multiaddr.
 	async fn new_listen_addr(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_local_peer_id: PeerId,
 		_listener_id: ListenerId,
 		_addr: Multiaddr,
@@ -220,7 +219,7 @@ pub trait EventHandler {
 	/// Event that informs the network core about a newly established connection to a peer.
 	async fn connection_established(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_peer_id: PeerId,
 		_connection_id: ConnectionId,
 		_endpoint: &ConnectedPoint,
@@ -233,7 +232,7 @@ pub trait EventHandler {
 	/// Event that informs the network core about a closed connection to a peer.
 	async fn connection_closed(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_peer_id: PeerId,
 		_connection_id: ConnectionId,
 		_endpoint: &ConnectedPoint,
@@ -246,7 +245,7 @@ pub trait EventHandler {
 	/// Event that announces expired listen address.
 	async fn expired_listen_addr(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_listener_id: ListenerId,
 		_address: Multiaddr,
 	) {
@@ -256,7 +255,7 @@ pub trait EventHandler {
 	/// Event that announces a closed listener.
 	async fn listener_closed(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_listener_id: ListenerId,
 		_addresses: Vec<Multiaddr>,
 	) {
@@ -264,14 +263,14 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a listener error.
-	async fn listener_error(&mut self, _channel: NetworkChannel, _listener_id: ListenerId) {
+	async fn listener_error(&mut self,  _listener_id: ListenerId) {
 		// Default implementation
 	}
 
 	/// Event that announces a dialing attempt.
 	async fn dialing(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_peer_id: Option<PeerId>,
 		_connection_id: ConnectionId,
 	) {
@@ -279,17 +278,17 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces a new external address candidate.
-	async fn new_external_addr_candidate(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
+	async fn new_external_addr_candidate(&mut self,  _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces a confirmed external address.
-	async fn external_addr_confirmed(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
+	async fn external_addr_confirmed(&mut self,  _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces an expired external address.
-	async fn external_addr_expired(&mut self, _channel: NetworkChannel, _address: Multiaddr) {
+	async fn external_addr_expired(&mut self,  _address: Multiaddr) {
 		// Default implementation
 	}
 
@@ -297,7 +296,7 @@ pub trait EventHandler {
 	/// protocol negotiation.
 	async fn incoming_connection(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
@@ -309,7 +308,7 @@ pub trait EventHandler {
 	/// handshake.
 	async fn incoming_connection_error(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
@@ -321,7 +320,7 @@ pub trait EventHandler {
 	/// handshake.
 	async fn outgoing_connection_error(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_connection_id: ConnectionId,
 		_peer_id: Option<PeerId>,
 	) {
@@ -332,7 +331,7 @@ pub trait EventHandler {
 	/// The duration it took for a round trip is also returned
 	async fn inbound_ping_success(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_peer_id: PeerId,
 		_duration: Duration,
 	) {
@@ -342,7 +341,7 @@ pub trait EventHandler {
 	/// Event that announces a `Ping` error
 	async fn outbound_ping_error(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_peer_id: PeerId,
 		_err_type: Failure,
 	) {
@@ -352,7 +351,7 @@ pub trait EventHandler {
 	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
 	async fn identify_info_recieved(
 		&mut self,
-		_channel: NetworkChannel,
+		
 		_peer_id: PeerId,
 		_info: Info,
 	) {
@@ -360,22 +359,22 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces the successful write of a record to the DHT
-	async fn kademlia_put_record_success(&mut self, _channel: NetworkChannel, _key: Vec<u8>) {
+	async fn kademlia_put_record_success(&mut self,  _key: Vec<u8>) {
 		// Default implementation
 	}
 
 	/// Event that announces the failure of a node to save a record
-	async fn kademlia_put_record_error(&mut self, _channel: NetworkChannel) {
+	async fn kademlia_put_record_error(&mut self) {
 		// Default implementation
 	}
 
 	/// Event that announces a node as a provider of a record in the DHT
-	async fn kademlia_start_providing_success(&mut self, _channel: NetworkChannel, _key: Vec<u8>) {
+	async fn kademlia_start_providing_success(&mut self,  _key: Vec<u8>) {
 		// Default implementation
 	}
 
 	/// Event that announces the failure of a node to become a provider of a record in the DHT
-	async fn kademlia_start_providing_error(&mut self, _channel: NetworkChannel) {
+	async fn kademlia_start_providing_error(&mut self) {
 		// Default implementation
 	}
 
@@ -402,8 +401,6 @@ pub(super) struct NetworkInfo {
 	pub id: StreamProtocol,
 	/// Important information to manage `Ping` operations
 	pub ping: PingInfo,
-	/// Application's event handler network communication channel
-	pub event_comm_channel: NetworkChannel,
 }
 
 /// Module that contains important data structures to manage `Ping` operations on the network
@@ -452,165 +449,26 @@ pub mod ping_config {
 	}
 }
 
-/// Struct that allows the application layer comunicate with the network layer during event handling
-#[derive(Clone)]
-pub struct NetworkChannel {
-	/// The request buffer that keeps track of application requests being handled
-	stream_request_buffer: Arc<Mutex<StreamRequestBuffer>>,
-	/// The consuming end of the stream that recieves data from the network layer
-	// application_receiver: Receiver<StreamData>,
-	/// This serves as a buffer for the results of the requests to the network layer.
-	/// With this, applications can make async requests and fetch their results at a later time
-	/// without waiting. This is made possible by storing a [`StreamId`] for a particular stream
-	/// request.
-	stream_response_buffer: Arc<Mutex<StreamResponseBuffer>>,
-	/// The stream end for writing to the network layer
-	application_sender: Sender<StreamData>,
-	/// Current stream id. Useful for opening new streams, we just have to bump the number by 1
-	current_stream_id: Arc<Mutex<StreamId>>,
-}
+/// Network queue that tracks the execution of application requests in the network layer
+pub(super) struct ExecQueue {
+	buffer: Mutex<VecDeque<StreamId>>
+} 
 
-impl NetworkChannel {
-	/// Create a new application's event handler network communication channel
-	pub(super) fn new(
-		stream_request_buffer: Arc<Mutex<StreamRequestBuffer>>,
-		stream_response_buffer: Arc<Mutex<StreamResponseBuffer>>,
-		application_sender: Sender<StreamData>,
-		current_stream_id: Arc<Mutex<StreamId>>,
-		network_read_delay: AsyncDuration,
-	) -> NetworkChannel {
+impl ExecQueue {
+	// Create new execution queue
+	pub fn new() -> Self {
 		Self {
-			stream_request_buffer,
-			stream_response_buffer,
-			application_sender,
-			current_stream_id,
+			buffer: Mutex::new(VecDeque::new())
 		}
 	}
 
-	/// Send data to the network layer and recieve a unique `StreamId` to track the request
-	/// If the internal stream buffer is full, `None` will be returned.
-	pub async fn send_to_network(&mut self, app_request: AppData) -> Option<StreamId> {
-		// Generate stream id
-		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
-		let request = StreamData::FromApplication(stream_id, app_request.clone());
-
-		// Only a few requests should be tracked internally
-		match app_request {
-			// Doesn't need any tracking
-			AppData::KademliaDeleteRecord { .. } | AppData::KademliaStopProviding { .. } => {
-				// Send request
-				let _ = self.application_sender.send(request).await;
-				return None;
-			},
-			// Okay with the rest
-			_ => {
-				// Acquire lock on stream_request_buffer
-				let mut stream_request_buffer = self.stream_request_buffer.lock().await;
-
-				// Add to request buffer
-				if !stream_request_buffer.insert(stream_id) {
-					// Buffer appears to be full
-					return None;
-				}
-
-				// Send request
-				if let Ok(_) = self.application_sender.send(request).await {
-					// Store latest stream id
-					*self.current_stream_id.lock().await = stream_id;
-					return Some(stream_id);
-				} else {
-					return None;
-				}
-			},
-		}
+	// Remove a [`StreamId`] from the top of the queue
+	pub async fn pop(&mut self) -> Option<StreamId> {
+		self.buffer.lock().await.pop_front()
 	}
 
-	/// TODO! Buffer cleanup algorithm
-	/// Explicitly rectrieve the reponse to a request sent to the network layer.
-	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
-	/// and read immediately as the response to the request should already be in the stream response
-	/// buffer.
-	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
-		#[cfg(feature = "async-std-runtime")]
-		{
-			let channel = self.clone();
-			let response_handler = tokio::task::spawn(async move {
-				let mut loop_count = 0;
-				loop {
-					// Attempt to acquire the lock without blocking
-					let mut buffer_guard = channel.stream_response_buffer.lock().await;
-
-					// Check if the value is available in the response buffer
-					if let Some(result) = buffer_guard.remove(&stream_id) {
-						return Ok(result);
-					}
-
-					// Timeout after 5 trials
-					if loop_count < 5 {
-						loop_count += 1;
-					} else {
-						return Err(NetworkError::NetworkReadTimeout);
-					}
-
-					// Failed to acquire the lock, sleep and retry
-					async_std::task::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
-				}
-			});
-
-			// Wait for the spawned task to complete
-			match response_handler.await {
-				Ok(result) => result?,
-				Err(_) => Err(NetworkError::InternalTaskError),
-			}
-		}
-
-		#[cfg(feature = "tokio-runtime")]
-		{
-			let channel = self.clone();
-			let response_handler = tokio::task::spawn(async move {
-				let mut loop_count = 0;
-				loop {
-					// Attempt to acquire the lock without blocking
-					let mut buffer_guard = channel.stream_response_buffer.lock().await;
-
-					// Check if the value is available in the response buffer
-					if let Some(result) = buffer_guard.remove(&stream_id) {
-						return Ok(result);
-					}
-
-					// Timeout after 5 trials
-					if loop_count < 5 {
-						loop_count += 1;
-					} else {
-						return Err(NetworkError::NetworkReadTimeout);
-					}
-
-					// Failed to acquire the lock, sleep and retry
-					tokio::time::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
-				}
-			});
-
-			// Wait for the spawned task to complete
-			match response_handler.await {
-				Ok(result) => result?,
-				Err(_) => Err(NetworkError::InternalTaskError),
-			}
-		}
-	}
-
-	/// Perform an atomic `send` and `recieve` from the network layer. This function is atomic and
-	/// blocks until the result of the request is returned from the network layer. This function
-	/// should mostly be used when the result of the request is needed immediately and delay can be
-	/// condoned. It will still timeout if the delay exceeds the configured period.
-	/// If the internal buffer is full, it will return an error.
-	pub async fn fetch_from_network(&mut self, request: AppData) -> NetworkResult {
-		// send request
-		if let Some(stream_id) = self.send_to_network(request).await {
-			// wait to recieve response from the network
-			self.recv_from_network(stream_id).await
-		} else {
-			Err(NetworkError::StreamBufferOverflow)
-		}
+	// Append a [`StreamId`] to the queue
+	pub async fn push(&mut self, stream_id: StreamId) {
+		self.buffer.lock().await.push_back(stream_id);
 	}
 }
-

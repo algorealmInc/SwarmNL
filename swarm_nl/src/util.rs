@@ -2,7 +2,9 @@
 ///
 /// This file is part of the SwarmNl library.
 use crate::{prelude::*, setup::BootstrapConfig};
+use base58::FromBase58;
 use ini::Ini;
+use libp2p_identity::PeerId;
 use std::{collections::HashMap, str::FromStr};
 
 /// Read an INI file containing bootstrap config information.
@@ -101,6 +103,11 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 			}
 			acc
 		})
+}
+
+/// Convert PeerId string to peerId
+pub fn string_to_peer_id(peer_id_string: &str) -> Option<PeerId> {
+	PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).ok()
 }
 
 #[cfg(test)]

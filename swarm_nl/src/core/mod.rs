@@ -29,14 +29,14 @@ use libp2p::{
 use self::ping_config::*;
 
 use super::*;
-use crate::setup::BootstrapConfig;
+use crate::{setup::BootstrapConfig, util::string_to_peer_id};
 
 #[cfg(feature = "async-std-runtime")]
 pub use async_std::sync::Mutex;
 
+use tokio::sync::broadcast;
 #[cfg(feature = "tokio-runtime")]
 pub use tokio::sync::Mutex;
-use tokio::sync::broadcast;
 
 mod prelude;
 pub use prelude::*;
@@ -479,8 +479,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		// Add bootnodes to local routing table, if any
 		for peer_info in self.boot_nodes {
 			// PeerId
-			if let Ok(peer_id) = PeerId::from_bytes(&peer_info.0.from_base58().unwrap_or_default())
-			{
+			if let Some(peer_id) = string_to_peer_id(&peer_info.0) {
 				// Multiaddress
 				if let Ok(multiaddr) = peer_info.1.parse::<Multiaddr>() {
 					swarm
@@ -543,20 +542,10 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		let stream_response_buffer =
 			Arc::new(Mutex::new(StreamResponseBuffer::new(self.stream_size)));
 
-		// Setup the application event handler's network communication channel
-		let event_comm_channel = NetworkChannel::new(
-			stream_request_buffer.clone(),
-			stream_response_buffer.clone(),
-			application_sender.clone(),
-			Arc::new(Mutex::new(stream_id)),
-			self.network_read_delay,
-		);
-
 		// Aggregate the useful network information
 		let network_info = NetworkInfo {
 			id: self.network_id,
 			ping: ping_info,
-			event_comm_channel,
 		};
 
 		// Build the network core
@@ -668,37 +657,155 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		self.keypair.public().to_peer_id().to_string()
 	}
 
+	/// Send data to the network layer and recieve a unique `StreamId` to track the request
+	/// If the internal stream buffer is full, `None` will be returned.
+	pub async fn send_to_network(&mut self, app_request: AppData) -> Option<StreamId> {
+		// Generate stream id
+		let stream_id = StreamId::next(*self.current_stream_id.lock().await);
+		let request = StreamData::FromApplication(stream_id, app_request.clone());
+
+		// Only a few requests should be tracked internally
+		match app_request {
+			// Doesn't need any tracking
+			AppData::KademliaDeleteRecord { .. } | AppData::KademliaStopProviding { .. } => {
+				// Send request
+				let _ = self.application_sender.send(request).await;
+				return None;
+			},
+			// Okay with the rest
+			_ => {
+				// Acquire lock on stream_request_buffer
+				let mut stream_request_buffer = self.stream_request_buffer.lock().await;
+
+				// Add to request buffer
+				if !stream_request_buffer.insert(stream_id) {
+					// Buffer appears to be full
+					return None;
+				}
+
+				// Send request
+				if let Ok(_) = self.application_sender.send(request).await {
+					// Store latest stream id
+					*self.current_stream_id.lock().await = stream_id;
+					return Some(stream_id);
+				} else {
+					return None;
+				}
+			},
+		}
+	}
+
+	/// TODO! Buffer cleanup algorithm
+	/// Explicitly rectrieve the reponse to a request sent to the network layer.
+	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
+	/// and read immediately as the response to the request should already be in the stream response
+	/// buffer.
+	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
+		#[cfg(feature = "async-std-runtime")]
+		{
+			let channel = self.clone();
+			let response_handler = tokio::task::spawn(async move {
+				let mut loop_count = 0;
+				loop {
+					// Attempt to acquire the lock without blocking
+					let mut buffer_guard = channel.stream_response_buffer.lock().await;
+
+					// Check if the value is available in the response buffer
+					if let Some(result) = buffer_guard.remove(&stream_id) {
+						return Ok(result);
+					}
+
+					// Timeout after 5 trials
+					if loop_count < 5 {
+						loop_count += 1;
+					} else {
+						return Err(NetworkError::NetworkReadTimeout);
+					}
+
+					// Failed to acquire the lock, sleep and retry
+					async_std::task::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
+				}
+			});
+
+			// Wait for the spawned task to complete
+			match response_handler.await {
+				Ok(result) => result?,
+				Err(_) => Err(NetworkError::InternalTaskError),
+			}
+		}
+
+		#[cfg(feature = "tokio-runtime")]
+		{
+			let channel = self.clone();
+			let response_handler = tokio::task::spawn(async move {
+				let mut loop_count = 0;
+				loop {
+					// Attempt to acquire the lock without blocking
+					let mut buffer_guard = channel.stream_response_buffer.lock().await;
+
+					// Check if the value is available in the response buffer
+					if let Some(result) = buffer_guard.remove(&stream_id) {
+						return Ok(result);
+					}
+
+					// Timeout after 5 trials
+					if loop_count < 5 {
+						loop_count += 1;
+					} else {
+						return Err(NetworkError::NetworkReadTimeout);
+					}
+
+					// Failed to acquire the lock, sleep and retry
+					tokio::time::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
+				}
+			});
+
+			// Wait for the spawned task to complete
+			match response_handler.await {
+				Ok(result) => result?,
+				Err(_) => Err(NetworkError::InternalTaskError),
+			}
+		}
+	}
+
+	/// Perform an atomic `send` and `recieve` from the network layer. This function is atomic and
+	/// blocks until the result of the request is returned from the network layer. This function
+	/// should mostly be used when the result of the request is needed immediately and delay can be
+	/// condoned. It will still timeout if the delay exceeds the configured period.
+	/// If the internal buffer is full, it will return an error.
+	pub async fn fetch_from_network(&mut self, request: AppData) -> NetworkResult {
+		// send request
+		if let Some(stream_id) = self.send_to_network(request).await {
+			// wait to recieve response from the network
+			self.recv_from_network(stream_id).await
+		} else {
+			Err(NetworkError::StreamBufferOverflow)
+		}
+	}
+
 	/// Handle the responses coming from the network layer. This is usually as a result of a request
 	/// from the application layer
 	async fn handle_network_response(mut receiver: Receiver<StreamData>, network_core: Core<T>) {
 		loop {
 			select! {
 				response = receiver.select_next_some() => {
-					if let Ok(mut buffer_guard) = network_core.stream_response_buffer.try_lock() {
-						match response {
-							// Send response to request operations specified by the application layer
-							StreamData::ToApplication(stream_id, response) => match response {
-								res @ AppResponse::Echo(..) => buffer_guard.insert(stream_id, Ok(res)),
-								res @ AppResponse::DailPeer(..) => buffer_guard.insert(stream_id, Ok(res)),
-								res @ AppResponse::KademliaStoreRecordSuccess => buffer_guard.insert(stream_id, Ok(res)),
-								res @ AppResponse::KademliaLookupRecord(..) => buffer_guard.insert(stream_id, Ok(res)),
-								res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
-								res @ AppResponse::KademliaGetRoutingTableInfo { .. } => buffer_guard.insert(stream_id, Ok(res)),
-								res @ AppResponse::FetchData(..) => buffer_guard.insert(stream_id, Ok(res)),
-								// Error
-								AppResponse::Error(error) => buffer_guard.insert(stream_id, Err(error))
-							},
-							_ => false
-						};
-					} else {
-						// sleep for a few seconds
-						#[cfg(feature = "async-std-runtime")]
-						async_std::task::sleep(Duration::from_secs(1)).await;
-
-						// sleep for a few seconds
-						#[cfg(feature = "tokio-runtime")]
-						tokio::time::sleep(Duration::from_secs(1)).await;
-					}
+					// Acquire mutex to write to buffer
+					let mut buffer_guard = network_core.stream_response_buffer.lock().await;
+					match response {
+						// Send response to request operations specified by the application layer
+						StreamData::ToApplication(stream_id, response) => match response {
+							res @ AppResponse::Echo(..) => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::DailPeer(..) => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::KademliaStoreRecordSuccess => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::KademliaLookupRecord(..) => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::KademliaGetRoutingTableInfo { .. } => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::FetchData(..) => buffer_guard.insert(stream_id, Ok(res)),
+							// Error
+							AppResponse::Error(error) => buffer_guard.insert(stream_id, Err(error))
+						},
+						_ => false
+					};
 				}
 			}
 		}
@@ -715,26 +822,19 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		mut receiver: Receiver<StreamData>,
 		mut network_core: Core<T>,
 	) {
-		// Create one-way channels that help the application command receiver synchronize with the
-		// libp2p generated events
-		let (sender_channel_1, _) = broadcast::channel::<StreamId>(500); // For AppData::KademliaStoreRecord
-		let (sender_channel_2, _) = broadcast::channel::<StreamId>(100);  // For AppData::KademliaLookupRecord
-		let (sender_channel_3, _) = broadcast::channel::<StreamId>(100);  // For AppData::KademliaGetProviders
-		let (sender_channel_4, _) = broadcast::channel::<StreamId>(100);  // For AppData::FetchData
+
+		let mut exec_queue_1 = ExecQueue::new();
+		let mut exec_queue_2 = ExecQueue::new();
+		let mut exec_queue_3 = ExecQueue::new();
+		let mut exec_queue_4 = ExecQueue::new();
 
 		// Loop to handle incoming application streams indefinitely.
 		loop {
-			let mut recv_channel_1 = sender_channel_1.subscribe();
-			let mut recv_channel_2 = sender_channel_2.subscribe();
-			let mut recv_channel_3 = sender_channel_3.subscribe();
-			let mut recv_channel_4 = sender_channel_4.subscribe();
-
 			select! {
 				// handle incoming stream data
 				stream_data = receiver.next() => {
 					match stream_data {
 						Some(incoming_data) => {
-							println!("{:?}", incoming_data);
 							match incoming_data {
 								StreamData::FromApplication(stream_id, app_data) => {
 									// Trackable stream id
@@ -767,7 +867,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											// Insert into DHT
 											if let Ok(_) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
 												// Send streamId to libp2p events, to track response
-												let _ = sender_channel_1.clone().send(stream_id);
+												exec_queue_1.push(stream_id).await;
 
 												// Cache record on peers explicitly (if specified)
 												if let Some(explicit_peers) = explicit_peers {
@@ -788,14 +888,14 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
 
 											// Send streamId to libp2p events, to track response
-											let _ = sender_channel_2.clone().send(stream_id);
+											exec_queue_2.push(stream_id).await;
 										},
 										// Perform a lookup of peers that store a record
 										AppData::KademliaGetProviders { key } => {
 											let _ = swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
 
 											// Send streamId to libp2p events, to track response
-											let _ = sender_channel_3.clone().send(stream_id);
+											exec_queue_3.push(stream_id).await;
 										}
 										// Stop providing a record on the network
 										AppData::KademliaStopProviding { key } => {
@@ -821,10 +921,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												.request_response
 												.send_request(&peer, rpc);
 
-											println!("keys: {:?}", keys);
-
 											// Send streamId to libp2p events, to track response
-											let _ = sender_channel_4.clone().send(stream_id);
+											exec_queue_4.push(stream_id).await;
 										}
 									}
 								}
@@ -843,7 +941,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									address,
 								} => {
 									// call configured handler
-									network_core.state.new_listen_addr(network_info.event_comm_channel.clone(), swarm.local_peer_id().to_owned(), listener_id, address).await;
+									network_core.state.new_listen_addr(swarm.local_peer_id().to_owned(), listener_id, address).await;
 								}
 								SwarmEvent::Behaviour(event) => match event {
 									// Ping
@@ -883,7 +981,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}
 
 												// Call custom handler
-												network_core.state.inbound_ping_success(network_info.event_comm_channel.clone(), peer, duration).await;
+												network_core.state.inbound_ping_success(peer, duration).await;
 											}
 											// Outbound ping failure
 											Err(err_type) => {
@@ -952,7 +1050,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}
 
 												// Call custom handler
-												network_core.state.outbound_ping_error(network_info.event_comm_channel.clone(), peer, err_type).await;
+												network_core.state.outbound_ping_error(peer, err_type).await;
 											}
 										}
 									}
@@ -968,7 +1066,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}).collect::<Vec<_>>();
 
 												// Receive data from our one-way channel
-												if let Ok(stream_id) = recv_channel_3.recv().await {
+												if let Some(stream_id) = exec_queue_3.pop().await {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
 												}
@@ -978,7 +1076,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												kad::PeerRecord { record:kad::Record{ value, .. }, .. },
 											))) => {
 												// Receive data from out one-way channel
-												if let Ok(stream_id) = recv_channel_2.recv().await {
+												if let Some(stream_id) = exec_queue_2.pop().await {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaLookupRecord(value))).await;
 												}
@@ -994,20 +1092,20 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												};
 
 												// Receive data from out one-way channel
-												if let Ok(stream_id) = recv_channel_2.recv().await {
+												if let Some(stream_id) = exec_queue_2.pop().await {
 													// Send the error back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(key.to_vec())))).await;
 												}
 											}
 											kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
 												// Receive data from our one-way channel
-												if let Ok(stream_id) = recv_channel_1.recv().await {
+												if let Some(stream_id) = exec_queue_1.pop().await {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaStoreRecordSuccess)).await;
 												}
 
 												// Call handler
-												network_core.state.kademlia_put_record_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
+												network_core.state.kademlia_put_record_success(key.to_vec()).await;
 											}
 											kad::QueryResult::PutRecord(Err(e)) => {
 												let key = match e {
@@ -1015,23 +1113,23 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													kad::PutRecordError::Timeout { key, .. } => key,
 												};
 
-												if let Ok(stream_id) = recv_channel_1.recv().await {
+												if let Some(stream_id) = exec_queue_1.pop().await {
 													// Send the error back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key.to_vec())))).await;
 												}
 
 												// Call handler
-												network_core.state.kademlia_put_record_error(network_info.event_comm_channel.clone()).await;
+												network_core.state.kademlia_put_record_error().await;
 											}
 											kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
 												key,
 											})) => {
 												// Call handler
-												network_core.state.kademlia_start_providing_success(network_info.event_comm_channel.clone(), key.to_vec()).await;
+												network_core.state.kademlia_start_providing_success(key.to_vec()).await;
 											}
 											kad::QueryResult::StartProviding(Err(_)) => {
 												// Call handler
-												network_core.state.kademlia_start_providing_error(network_info.event_comm_channel.clone()).await;
+												network_core.state.kademlia_start_providing_error().await;
 											}
 											_ => {}
 										},
@@ -1042,7 +1140,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									CoreEvent::Identify(event) => match event {
 										identify::Event::Received { peer_id, info } => {
 											// We just recieved an `Identify` info from a peer.s
-											network_core.state.identify_info_recieved(network_info.event_comm_channel.clone(), peer_id, info.clone()).await;
+											network_core.state.identify_info_recieved(peer_id, info.clone()).await;
 
 											// disconnect from peer of the network id is different
 											if info.protocol_version != network_info.id.as_ref() {
@@ -1078,11 +1176,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												// We have a response message
 												request_response::Message::Response { response, .. } => {
 													// Receive data from our one-way channel
-													if let Ok(stream_id) = recv_channel_4.recv().await {
+													if let Some(stream_id) = exec_queue_4.pop().await {
 														match response {
 															Rpc::ReqResponse { data } => {
-																println!("--> {:?}", data);
-
 																// Send the response back to the application layer
 																let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::FetchData(data))).await;
 															},
@@ -1091,15 +1187,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												},
 										},
 										request_response::Event::OutboundFailure { .. } => {
-											// Delete the temporary data and then return error
-											println!("fbujsnfd");
-
 											// Receive data from out one-way channel
-											// if let Ok(stream_id) = recv_channel_4.recv().await {
-											// 	println!("----4-42----");
-											// 	// Send the error back to the application layer
-											// 	let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::RpcDataFetchError))).await;
-											// }
+											if let Some(stream_id) = exec_queue_4.pop().await {
+												// Send the error back to the application layer
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::RpcDataFetchError))).await;
+											} 
 										},
 										_ => {}
 									}
@@ -1114,7 +1206,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 								} => {
 									// call configured handler
 									network_core.state.connection_established(
-										network_info.event_comm_channel.clone(),
 										peer_id,
 										connection_id,
 										&endpoint,
@@ -1131,7 +1222,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 								} => {
 									// call configured handler
 									network_core.state.connection_closed(
-										network_info.event_comm_channel.clone(),
 										peer_id,
 										connection_id,
 										&endpoint,
@@ -1144,7 +1234,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									address,
 								} => {
 									// call configured handler
-									network_core.state.expired_listen_addr(network_info.event_comm_channel.clone(), listener_id, address).await;
+									network_core.state.expired_listen_addr(listener_id, address).await;
 								}
 								SwarmEvent::ListenerClosed {
 									listener_id,
@@ -1152,33 +1242,33 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									reason: _,
 								} => {
 									// call configured handler
-									network_core.state.listener_closed(network_info.event_comm_channel.clone(), listener_id, addresses).await;
+									network_core.state.listener_closed(listener_id, addresses).await;
 								}
 								SwarmEvent::ListenerError {
 									listener_id,
 									error: _,
 								} => {
 									// call configured handler
-									network_core.state.listener_error(network_info.event_comm_channel.clone(), listener_id).await;
+									network_core.state.listener_error(listener_id).await;
 								}
 								SwarmEvent::Dialing {
 									peer_id,
 									connection_id,
 								} => {
 									// call configured handler
-									network_core.state.dialing(network_info.event_comm_channel.clone(), peer_id, connection_id).await;
+									network_core.state.dialing(peer_id, connection_id).await;
 								}
 								SwarmEvent::NewExternalAddrCandidate { address } => {
 									// call configured handler
-									network_core.state.new_external_addr_candidate(network_info.event_comm_channel.clone(), address).await;
+									network_core.state.new_external_addr_candidate(address).await;
 								}
 								SwarmEvent::ExternalAddrConfirmed { address } => {
 									// call configured handler
-									network_core.state.external_addr_confirmed(network_info.event_comm_channel.clone(), address).await;
+									network_core.state.external_addr_confirmed(address).await;
 								}
 								SwarmEvent::ExternalAddrExpired { address } => {
 									// call configured handler
-									network_core.state.external_addr_expired(network_info.event_comm_channel.clone(), address).await;
+									network_core.state.external_addr_expired(address).await;
 								}
 								SwarmEvent::IncomingConnection {
 									connection_id,
@@ -1186,7 +1276,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									send_back_addr,
 								} => {
 									// call configured handler
-									network_core.state.incoming_connection(network_info.event_comm_channel.clone(), connection_id, local_addr, send_back_addr).await;
+									network_core.state.incoming_connection(connection_id, local_addr, send_back_addr).await;
 								}
 								SwarmEvent::IncomingConnectionError {
 									connection_id,
@@ -1196,7 +1286,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 								} => {
 									// call configured handler
 									network_core.state.incoming_connection_error(
-										network_info.event_comm_channel.clone(),
 										connection_id,
 										local_addr,
 										send_back_addr,
@@ -1208,7 +1297,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									error: _,
 								} => {
 									// call configured handler
-									network_core.state.outgoing_connection_error(network_info.event_comm_channel.clone(), connection_id,  peer_id).await;
+									network_core.state.outgoing_connection_error(connection_id,  peer_id).await;
 								}
 								_ => todo!(),
 							}
