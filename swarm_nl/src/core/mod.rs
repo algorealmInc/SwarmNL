@@ -182,13 +182,15 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	/// Note that it must be of the format "/protocol-name/version" else it will default to
 	/// "/swarmnl/1.0"
 	pub fn with_network_id(self, protocol: String) -> Self {
-		if protocol.len() > 2 && protocol.starts_with("/") {
+		if protocol.len() > MIN_NETWORK_ID_LENGTH.into() && protocol.starts_with("/") {
 			CoreBuilder {
-				network_id: StreamProtocol::try_from_owned(protocol).unwrap(),
+				network_id: StreamProtocol::try_from_owned(protocol.clone())
+					.map_err(|_| SwarmNlError::NetworkIdParseError(protocol))
+					.unwrap(),
 				..self
 			}
 		} else {
-			self
+			panic!("Could not parse provided network id: it must be of the format '/protocol-name/version'");
 		}
 	}
 
@@ -1453,21 +1455,18 @@ fn network_id_custom_behavior_works_as_expected() {
 }
 
 #[test]
-#[should_panic(expected = "could not parse provided network id")]
+#[should_panic("Could not parse provided network id: it must be of the format '/protocol-name/version'")]
 fn network_id_custom_behavior_fails() {
 	// build a node with the default network id
 	let mut custom_builder = setup_core_builder();
 
-	// pass in an invalid network ID
-	// illegal: network ID length is less than MIN_NETWORK_ID_LENGTH
+	// pass in an invalid network ID: network ID length is less than MIN_NETWORK_ID_LENGTH
 	let invalid_protocol_1 = "/1.0".to_string();
-
+	assert!(invalid_protocol_1.len() < MIN_NETWORK_ID_LENGTH.into());
 	let custom_builder = custom_builder.with_network_id(invalid_protocol_1);
 
-	// pass in an invalid network ID
-	// network ID must start with a forward slash
+	// pass in an invalid network ID: network ID must start with a forward slash
 	let invalid_protocol_2 = "1.0".to_string();
-
 	custom_builder.with_network_id(invalid_protocol_2);
 }
 
