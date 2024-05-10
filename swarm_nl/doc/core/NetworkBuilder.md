@@ -1,16 +1,22 @@
 # Network builder
 
-The [`CoreBuilder::with_config`] method takes in one parameter for the bootstrap config done by [`setup::BootstrapConfig`] and another parameter to pass in an [`EventHandler`] to handle network events. With this you can build a swarm like this:
+To build a swarm you first need to create a [`CoreBuilder`] object (i.e. the bootstrap node) which is then used to build the [`Core`] network.
+
+The [`CoreBuilder::with_config`] method takes two parameters:
+1. [`BootstrapConfig`] to pass in a bootstrap node configuration
+2. [`EventHandler`] to handle network events.  
+
+Here's how you would build a bootstrap node with the default library settings:
 
 ```rust
-    let config = BootstrapConfig::default();
-    let handler = DefaultHandler; // from the core library
-    let mut network = swarm_nl::core::CoreBuilder::with_config(config, complex_handler).build().await.unwrap();
+let config = BootstrapConfig::default();
+let handler = DefaultHandler;
+let mut network = swarm_nl::core::CoreBuilder::with_config(config, handler).build().await.unwrap();
 ```
 
-## Event Handlers
+To add any custom logic around how you want to handle network events, you must implement the methods you want from [`EventHandler`]. 
 
-You could always just use the [`DefaultHandler`] provided by the library. But if you wanted to add any custom logic around how you want to handle network events, you must implement the methods you want from [`EventHandler`]. For example:
+For example:
 
 ```rust
 use swarm_nl::core::EventHandler;
@@ -24,13 +30,3 @@ impl EventHandler for ComplexHandler {
 	}
 }
 ```
-
-## Custom configurations
-
-You can specify custom transport layers for TCP and QUIC (in the future we will be able to handle other transport options such as WebRTC).
-
-# Implementing your own protocols
-
-For now, the protocols we've implemented are Ping, Kademlia and Identify. You could always introduce your own custom protocol, for example:
-
-TODO

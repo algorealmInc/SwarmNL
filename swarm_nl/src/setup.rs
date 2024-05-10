@@ -10,21 +10,21 @@ use libp2p_identity::rsa;
 /// Import the contents of the exported modules into this module
 use super::*;
 
-/// Configuration data required for node bootstrap
+/// Configuration data required for node bootstrap.
 #[derive(Debug)]
 pub struct BootstrapConfig {
-	/// The port to listen on if using the TCP/IP protocol
+	/// The port to listen on if using the TCP/IP protocol.
 	tcp_port: Port,
-	/// The port to listen on if using the UDP or QUIC protocol
+	/// The port to listen on if using the UDP or QUIC protocol.
 	udp_port: Port,
-	/// The Cryptographic Keypair for node identification and message auth
+	/// The Cryptographic Keypair for node identification and message auth.
 	keypair: Keypair,
-	/// Bootstrap peers
+	/// Bootstrap peers.
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
 }
 
 impl BootstrapConfig {
-	/// Read from a bootstrap config file on disk
+	/// Read from a bootstrap config file on disk.
 	///
 	/// # Panics
 	///
@@ -36,28 +36,29 @@ impl BootstrapConfig {
 	/// Return a new `BootstrapConfig` struct populated by default (empty) values.
 	///
 	/// Must be called first if the config is to be explicitly built without reading `.ini` file
-	/// from disk
+	/// from disk.
 	pub fn new() -> Self {
 		BootstrapConfig {
-			// Default TCP/IP port if not specified
+			// Default TCP/IP port if not specified.
 			tcp_port: MIN_PORT,
-			// Default UDP port if not specified
+			// Default UDP port if not specified.
 			udp_port: MAX_PORT,
-			// Default node keypair type i.e Ed25519
+			// Default node keypair type i.e Ed25519.
 			keypair: Keypair::generate_ed25519(),
 			boot_nodes: Default::default(),
 		}
 	}
 
-	/// Configure available bootnodes
+	/// Configure available bootnodes.
 	pub fn with_bootnodes(mut self, boot_nodes: HashMap<PeerIdString, MultiaddrString>) -> Self {
 		// additive operation
 		self.boot_nodes.extend(boot_nodes.into_iter());
 		self
 	}
 
-	/// Configure the TCP/IP port
-	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
+	/// Configure the TCP/IP port.
+	/// 
+	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`].
 	pub fn with_tcp(self, tcp_port: Port) -> Self {
 		if tcp_port > MIN_PORT && tcp_port < MAX_PORT {
 			BootstrapConfig { tcp_port, ..self }
@@ -66,7 +67,8 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Configure the UDP port
+	/// Configure the UDP port.
+	/// 
 	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
 	pub fn with_udp(self, udp_port: Port) -> Self {
 		if udp_port > MIN_PORT && udp_port < MAX_PORT {
@@ -161,7 +163,7 @@ impl BootstrapConfig {
 	}
 }
 
-/// Implement [`Default`] for [`BootstrapConfig`]
+/// [`Default`] implementation for [`BootstrapConfig`].
 impl Default for BootstrapConfig {
 	fn default() -> Self {
 		Self::new()
