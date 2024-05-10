@@ -6,6 +6,7 @@ use std::{
 	num::NonZeroU32,
 	sync::Arc,
 	time::Duration,
+	fs,
 };
 
 use base58::FromBase58;
@@ -634,10 +635,18 @@ pub struct Core<T: EventHandler + Clone + Send + Sync + 'static> {
 }
 
 impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
-	/// Serialize keypair to protobuf format and write to config file on disk.
-	/// It returns a boolean to indicate success of operation.
-	/// Only key types other than RSA can be serialized to protobuf format.
+	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful
+	/// for saving a keypair when going offline for future use.
+	///
+	/// It returns a boolean to indicate success of operation. Only key types other than RSA can be
+	/// serialized to protobuf format and only a single keypair can be saved at a time.
 	pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
+		// Check the file exists, and create one if not
+		if let Ok(metadata) = fs::metadata(config_file_path) {
+		} else {
+			fs::File::create(config_file_path).expect("could not create config file");
+		}
+
 		// Check if key type is something other than RSA
 		if KeyType::RSA != self.keypair.key_type() {
 			if let Ok(protobuf_keypair) = self.keypair.to_protobuf_encoding() {
@@ -1483,7 +1492,7 @@ fn save_keypair_offline_works_tokio() {
 			.unwrap_or_else(|_| panic!("Could not build node")),
 	);
 
-	// make a saved_keys.ini file
+	// create a saved_keys.ini file
 	let file_path_1 = "saved_keys.ini";
 	create_test_ini_file(file_path_1);
 
@@ -1496,8 +1505,6 @@ fn save_keypair_offline_works_tokio() {
 	// now test if it works for a file name that does not exist
 	let file_path_2 = "test.txt";
 	let saved_2 = result.save_keypair_offline(file_path_2);
-
-	// assert that the keypair was saved successfully
 	assert_eq!(saved_2, true);
 
 	// clean up
