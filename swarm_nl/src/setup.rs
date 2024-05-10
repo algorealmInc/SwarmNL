@@ -3,6 +3,8 @@
 
 //! Data structures and functions to setup a node identity and configure it for networking.
 
+#![doc = include_str!("../doc/setup/NodeSetup.md")]
+
 use std::collections::HashMap;
 
 use libp2p_identity::rsa;
