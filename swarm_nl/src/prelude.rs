@@ -33,7 +33,7 @@ pub enum SwarmNlError {
 	#[error("could not parse provided network id")]
 	NetworkIdParseError(String),
 	#[error("could not configure node for gossiping")]
-	GossipConfigError
+	GossipConfigError,
 }
 
 /// Generic SwarmNl result type.

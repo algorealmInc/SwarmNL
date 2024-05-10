@@ -12,6 +12,8 @@ pub use futures::{
 pub use libp2p::{
 	core::{transport::ListenerId, ConnectedPoint, Multiaddr},
 	swarm::ConnectionId,
+	ping::Failure,
+
 };
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 

@@ -7,7 +7,9 @@
 
 use std::collections::HashMap;
 
-use libp2p_identity::rsa;
+pub use crate::prelude::*;
+pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
+
 
 /// Import the contents of the exported modules into this module
 use super::*;
