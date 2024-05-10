@@ -35,7 +35,6 @@ use crate::{setup::BootstrapConfig, util::string_to_peer_id};
 #[cfg(feature = "async-std-runtime")]
 pub use async_std::sync::Mutex;
 
-use tokio::sync::broadcast;
 #[cfg(feature = "tokio-runtime")]
 pub use tokio::sync::Mutex;
 
@@ -720,7 +719,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		#[cfg(feature = "async-std-runtime")]
 		{
 			let channel = self.clone();
-			let response_handler = aysnc_std::task::spawn(async move {
+			let response_handler = async_std::task::spawn(async move {
 				let mut loop_count = 0;
 				loop {
 					// Attempt to acquire the lock without blocking
@@ -745,7 +744,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 
 			// Wait for the spawned task to complete
 			match response_handler.await {
-				Ok(result) => result?,
+				Ok(result) => result,
 				Err(_) => Err(NetworkError::InternalTaskError),
 			}
 		}
@@ -1331,7 +1330,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 mod tests {
 
 use super::*;
-use async_std::task;
 use futures::TryFutureExt;
 use ini::Ini;
 use std::fs::File;
@@ -1502,31 +1500,17 @@ fn save_keypair_offline_works_tokio() {
 	// assert that the keypair was saved successfully
 	assert_eq!(saved_1, true);
 
+	// test if it works for a file name that does not exist
+	let file_path_2 = "test.ini";
+	let saved_2 = result.save_keypair_offline(file_path_2);
+	assert_eq!(saved_2, true);
+
 	// clean up
 	fs::remove_file(file_path_1).unwrap_or_default();
+	fs::remove_file(file_path_2).unwrap_or_default();
 
 }
 
-// #[cfg(feature = "tokio-runtime")]
-// #[test]
-// fn save_keypair_offline_works_create_new_file_tokio() {
-// 	// build a node with the default network id
-// 	let default_node = setup_core_builder();
-
-// 	// use tokio runtime to test async function
-// 	let result = tokio::runtime::Runtime::new().unwrap().block_on(
-// 		default_node
-// 			.build()
-// 			.unwrap_or_else(|_| panic!("Could not build node")),
-// 	);
-
-// 	// test if it works for a file name that does not exist
-// 	let file_path = "test.ini";
-// 	let saved = result.save_keypair_offline(file_path);
-// 	assert_eq!(saved, true);
-
-// 	fs::remove_file(file_path).unwrap_or_default();
-// }
 
 #[cfg(feature = "async-std-runtime")]
 #[test]
@@ -1535,7 +1519,7 @@ fn save_keypair_offline_works_async_std() {
 	let default_node = setup_core_builder();
 
 	// use tokio runtime to test async function
-	let result = task::block_on(
+	let result = async_std::task::block_on(
 		default_node
 			.build()
 			.unwrap_or_else(|_| panic!("Could not build node")),
