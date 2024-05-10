@@ -241,8 +241,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		}
 	}
 
-=======
->>>>>>> c5204f5 (chore: complete gossipsub impl)
 	/// Configure how long to keep a connection alive (in seconds) once it is idling.
 	/// 
 	/// The default is 60 seconds. See: [`NETWORK_READ_TIMEOUT`].
