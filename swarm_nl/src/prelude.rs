@@ -54,9 +54,6 @@ pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
 /// separates it from others.
 pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
-/// Default keep-alive network duration
-pub static DEFAULT_KEEP_ALIVE_DURATION: u64 = 60;
-
 /// Implement From<&str> for libp2p2_identity::KeyType.
 /// We'll define a custom trait because of the Rust visibility rule to solve this problem
 pub trait CustomFrom {
