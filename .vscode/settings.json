@@ -1,5 +1,6 @@
 {
     "rust-analyzer.linkedProjects": [
-        "./client/Cargo.toml"
+        "./client/Cargo.toml",
+        "./swarm_nl/Cargo.toml"
     ]
 }

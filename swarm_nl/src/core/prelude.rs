@@ -39,7 +39,7 @@ pub enum AppData {
 	/// A simple echo message
 	Echo(String),
 	/// Dail peer
-	DailPeer(MultiaddrString),
+	DailPeer(PeerId, MultiaddrString),
 	/// Store a value associated with a given key in the Kademlia DHT
 	KademliaStoreRecord {
 		key: Vec<u8>,
@@ -360,9 +360,9 @@ pub trait EventHandler {
 		// Default implementation
 	}
 
-	/// Event that announces the arrival of a ping message from a peer.
+	/// Event that announces the arrival of a pong message from a peer.
 	/// The duration it took for a round trip is also returned
-	fn inbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
+	fn outbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
 		// Default implementation
 	}
 
@@ -448,6 +448,7 @@ pub mod ping_config {
 	}
 
 	/// The configuration for the `Ping` protocol
+	#[derive(Debug, Clone)]
 	pub struct PingConfig {
 		/// The interval between successive pings.
 		/// Default is 15 seconds
@@ -490,3 +491,4 @@ impl ExecQueue {
 		self.buffer.lock().await.push_back(stream_id);
 	}
 }
+ 

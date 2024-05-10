@@ -1,4 +1,4 @@
-use libp2p_identity::{KeyType, PeerId};
+use libp2p_identity::KeyType;
 use std::net::Ipv4Addr;
 /// Copyright (c) 2024 Algorealm
 ///  
@@ -31,7 +31,7 @@ pub enum SwarmNlError {
 	#[error("could not parse provided network id")]
 	NetworkIdParseError(String),
 	#[error("could not configure node for gossiping")]
-	GossipConfigError
+	GossipConfigError,
 }
 
 /// Generic SwarmNl result type

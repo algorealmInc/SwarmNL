@@ -14,7 +14,6 @@ libp2p-identity = { version="0.2.8", "features"=["secp256k1", "ecdsa", "rsa", "e
 futures = "0.3.30"
 futures-time = "3.0.0"
 serde = "1.0.200"
-async-trait = "0.1.80"
 base58 = "0.2.0"
 
 [dependencies.async-std]
@@ -28,3 +27,6 @@ optional = true
 [features]
 tokio-runtime = ["tokio"]
 async-std-runtime = ["async-std"]
+default = ["tokio-runtime"]
+
+
