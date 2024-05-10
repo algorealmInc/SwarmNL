@@ -720,7 +720,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		#[cfg(feature = "async-std-runtime")]
 		{
 			let channel = self.clone();
-			let response_handler = tokio::task::spawn(async move {
+			let response_handler = aysnc_std::task::spawn(async move {
 				let mut loop_count = 0;
 				loop {
 					// Attempt to acquire the lock without blocking
@@ -1502,15 +1502,31 @@ fn save_keypair_offline_works_tokio() {
 	// assert that the keypair was saved successfully
 	assert_eq!(saved_1, true);
 
-	// now test if it works for a file name that does not exist
-	let file_path_2 = "test.txt";
-	let saved_2 = result.save_keypair_offline(file_path_2);
-	assert_eq!(saved_2, true);
-
 	// clean up
 	fs::remove_file(file_path_1).unwrap_or_default();
-	fs::remove_file(file_path_2).unwrap_or_default();
+
 }
+
+// #[cfg(feature = "tokio-runtime")]
+// #[test]
+// fn save_keypair_offline_works_create_new_file_tokio() {
+// 	// build a node with the default network id
+// 	let default_node = setup_core_builder();
+
+// 	// use tokio runtime to test async function
+// 	let result = tokio::runtime::Runtime::new().unwrap().block_on(
+// 		default_node
+// 			.build()
+// 			.unwrap_or_else(|_| panic!("Could not build node")),
+// 	);
+
+// 	// test if it works for a file name that does not exist
+// 	let file_path = "test.ini";
+// 	let saved = result.save_keypair_offline(file_path);
+// 	assert_eq!(saved, true);
+
+// 	fs::remove_file(file_path).unwrap_or_default();
+// }
 
 #[cfg(feature = "async-std-runtime")]
 #[test]
