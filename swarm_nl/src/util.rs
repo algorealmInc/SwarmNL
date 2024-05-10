@@ -66,7 +66,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 	}
 }
 
-/// write value into config file
+/// Write value into config file.
 pub fn write_config(section: &str, key: &str, new_value: &str, file_path: &str) -> bool {
 	if let Ok(mut conf) = Ini::load_from_file(file_path) {
 		// Set a value:
@@ -78,7 +78,7 @@ pub fn write_config(section: &str, key: &str, new_value: &str, file_path: &str) 
 	false
 }
 
-/// Parse string into a vector
+/// Parse string into a vector.
 fn string_to_vec<T: FromStr>(input: &str) -> Vec<T> {
 	input
 		.trim_matches(|c| c == '[' || c == ']')
@@ -90,7 +90,7 @@ fn string_to_vec<T: FromStr>(input: &str) -> Vec<T> {
 		})
 }
 
-/// Parse string into a hashmap
+/// Parse string into a hashmap.
 fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 	input
 		.trim_matches(|c| c == '[' || c == ']')
@@ -107,7 +107,7 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 		})
 }
 
-/// Convert PeerId string to peerId
+/// Convert PeerId string to peerId.
 pub fn string_to_peer_id(peer_id_string: &str) -> Option<PeerId> {
 	PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).ok()
 }
