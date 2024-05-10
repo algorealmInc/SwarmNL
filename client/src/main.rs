@@ -6,7 +6,6 @@
 /// Enjoy!
 use std::{borrow::Cow, num::NonZeroU32, time::Duration};
 use swarm_nl::{
-	async_trait,
 	core::{EventHandler, AppResponse},
 	core::{AppData, Core, CoreBuilder},
 	setup::BootstrapConfig,
@@ -44,9 +43,8 @@ impl Empire {
 	}
 }
 
-#[async_trait]
 impl EventHandler for Empire {
-	async fn new_listen_addr(
+	fn new_listen_addr(
 		&mut self,
 		local_peer_id: PeerId,
 		_listener_id: swarm_nl::ListenerId,
@@ -61,7 +59,7 @@ impl EventHandler for Empire {
 		);
 	}
 
-	async fn connection_established(
+	fn connection_established(
 		&mut self,
 		peer_id: PeerId,
 		_connection_id: ConnectionId,
@@ -145,11 +143,6 @@ pub async fn play_game() {
 
 	// TODO! FUNCTION TO CHECK NODES I'M CONNECTED WITH
 
-	// TODO: Wait a little to help the network boot
-
-	// Let them connect first
-	tokio::time::sleep(Duration::from_secs(6)).await;
-
 	let request = vec!["military_status".as_bytes().to_vec()];
 
 	// Spartan Empire
@@ -162,11 +155,11 @@ pub async fn play_game() {
 	};
 
 	// Send request
-	let stream_id = core.send_to_network(status_request).await.unwrap();
+	// let stream_id = core.send_to_network(status_request).await.unwrap();
 
 	// Get response
 	// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
-	if let Ok(status_response) = core.recv_from_network(stream_id).await {
+	if let Ok(status_response) = core.fetch_from_network(status_request).await {
 		if let AppResponse::FetchData(status) = status_response {
 			let empire_name = String::from_utf8_lossy(&status[0]);
 			let military_status = status[1][0];
@@ -181,3 +174,20 @@ pub async fn play_game() {
 	// Keep looping so we can record network events
 	loop {}
 }
+
+
+// make pr
+// merge to main
+// loggings
+// network data
+// gossip
+// examples
+// appdata
+// configure logger
+
+
+// TEST
+// Events, dailing, AppData, RPC, Kad, Ping, Gossip
+// check for rexeports e.g to initialize gossipsub
+
+// check if i'm subscribed to topics

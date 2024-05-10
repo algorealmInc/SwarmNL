@@ -13,7 +13,6 @@ pub use libp2p::{
 	swarm::ConnectionId,
 };
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
-pub use async_trait::async_trait;
 
 pub mod core;
 mod prelude;

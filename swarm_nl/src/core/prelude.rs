@@ -1,7 +1,6 @@
-use async_trait::async_trait;
 /// Copyright (c) 2024 Algorealm
 use serde::{Deserialize, Serialize};
-use std::{time::Instant, collections::VecDeque};
+use std::{collections::VecDeque, time::Instant};
 use thiserror::Error;
 
 use self::ping_config::PingInfo;
@@ -15,8 +14,15 @@ pub const NETWORK_READ_TIMEOUT: u64 = 60;
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
 /// the repsonse buffer (7 seconds)
 pub const TASK_SLEEP_DURATION: u64 = 7;
+
 /// Type that represents the response of the network layer to the application layer's event handler
 pub type AppResponseResult = Result<AppResponse, NetworkError>;
+
+/// Time to wait (in seconds) for node (network layer) to boot
+pub const BOOT_WAIT_TIME: u64 = 1;
+
+/// The buffer capacity of an mpsc stream
+pub const STREAM_BUFFER_CAPACITY: usize = 100;
 
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug, Clone)]
@@ -55,8 +61,26 @@ pub enum AppData {
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network
 	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
-	// Get network information
-	// Gossip related requests
+	/// Get network information about the node
+	GetNetworkInfo,
+	// Send message to gossip peers in a mesh network
+	GossipsubBroadcastMessage {
+		/// Topic to send messages to
+		topic: String,
+		message: Vec<String>,
+		/// Explicit peers to gossip to
+		peers: Option<Vec<PeerId>>,
+	},
+	/// Join a mesh network
+	GossipsubJoinNetwork(String),
+	/// Get gossip information about node
+	GossipsubGetInfo,
+	/// Leave a network we are a part of
+	GossipsubExitNetwork(String),
+	/// Blacklist a peer explicitly
+	GossipsubBlacklistPeer(PeerId),
+	/// Remove a peer from the blacklist
+	GossipsubFilterBlacklist(PeerId),
 }
 
 /// Response to requests sent from the aplication to the network layer
@@ -81,6 +105,27 @@ pub enum AppResponse {
 	FetchData(Vec<Vec<u8>>),
 	/// A network error occured while executing the request
 	Error(NetworkError),
+	/// Important information about the node
+	GetNetworkInfo {
+		peer_id: PeerId,
+		connected_peers: Vec<PeerId>,
+		external_addresses: Vec<MultiaddrString>,
+	},
+	/// Successfully broadcast the network
+	GossipsubBroadcastSuccess,
+	/// Successfully joined a mesh network
+	GossipsubJoinSuccess,
+	/// Successfully exited a mesh network
+	GossipsubExitSuccess,
+	/// Get gossip information about node
+	GossipsubGetInfo {
+		/// Topics that the node is currently subscribed to
+		topics: Vec<String>,
+		/// Peers we know about and their corresponding topics
+		mesh_peers: Vec<(PeerId, Vec<String>)>,
+	},
+	/// Blacklist operation success
+	GossipsubBlacklistSuccess
 }
 
 /// Network error type containing errors encountered during network operations
@@ -100,6 +145,10 @@ pub enum NetworkError {
 	InternalTaskError,
 	#[error("failed to dail peer")]
 	DailPeerError,
+	#[error("failed to broadcast message to peers in the topic")]
+	GossipsubBroadcastMessageError,
+	#[error("failed to join a mesh network")]
+	GossipsubJoinNetworkError,
 }
 
 /// A simple struct used to track requests sent from the application layer to the network layer
@@ -203,12 +252,11 @@ pub struct RpcConfig {
 
 /// The high level trait that provides default implementations to handle most supported network
 /// swarm events.
-#[async_trait]
 pub trait EventHandler {
 	/// Event that informs the network core that we have started listening on a new multiaddr.
-	async fn new_listen_addr(
+	fn new_listen_addr(
 		&mut self,
-		
+
 		_local_peer_id: PeerId,
 		_listener_id: ListenerId,
 		_addr: Multiaddr,
@@ -217,9 +265,9 @@ pub trait EventHandler {
 	}
 
 	/// Event that informs the network core about a newly established connection to a peer.
-	async fn connection_established(
+	fn connection_established(
 		&mut self,
-		
+
 		_peer_id: PeerId,
 		_connection_id: ConnectionId,
 		_endpoint: &ConnectedPoint,
@@ -230,9 +278,9 @@ pub trait EventHandler {
 	}
 
 	/// Event that informs the network core about a closed connection to a peer.
-	async fn connection_closed(
+	fn connection_closed(
 		&mut self,
-		
+
 		_peer_id: PeerId,
 		_connection_id: ConnectionId,
 		_endpoint: &ConnectedPoint,
@@ -243,60 +291,45 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces expired listen address.
-	async fn expired_listen_addr(
-		&mut self,
-		
-		_listener_id: ListenerId,
-		_address: Multiaddr,
-	) {
+	fn expired_listen_addr(&mut self, _listener_id: ListenerId, _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces a closed listener.
-	async fn listener_closed(
-		&mut self,
-		
-		_listener_id: ListenerId,
-		_addresses: Vec<Multiaddr>,
-	) {
+	fn listener_closed(&mut self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>) {
 		// Default implementation
 	}
 
 	/// Event that announces a listener error.
-	async fn listener_error(&mut self,  _listener_id: ListenerId) {
+	fn listener_error(&mut self, _listener_id: ListenerId) {
 		// Default implementation
 	}
 
 	/// Event that announces a dialing attempt.
-	async fn dialing(
-		&mut self,
-		
-		_peer_id: Option<PeerId>,
-		_connection_id: ConnectionId,
-	) {
+	fn dialing(&mut self, _peer_id: Option<PeerId>, _connection_id: ConnectionId) {
 		// Default implementation
 	}
 
 	/// Event that announces a new external address candidate.
-	async fn new_external_addr_candidate(&mut self,  _address: Multiaddr) {
+	fn new_external_addr_candidate(&mut self, _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces a confirmed external address.
-	async fn external_addr_confirmed(&mut self,  _address: Multiaddr) {
+	fn external_addr_confirmed(&mut self, _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces an expired external address.
-	async fn external_addr_expired(&mut self,  _address: Multiaddr) {
+	fn external_addr_expired(&mut self, _address: Multiaddr) {
 		// Default implementation
 	}
 
 	/// Event that announces new connection arriving on a listener and in the process of
 	/// protocol negotiation.
-	async fn incoming_connection(
+	fn incoming_connection(
 		&mut self,
-		
+
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
@@ -306,9 +339,9 @@ pub trait EventHandler {
 
 	/// Event that announces an error happening on an inbound connection during its initial
 	/// handshake.
-	async fn incoming_connection_error(
+	fn incoming_connection_error(
 		&mut self,
-		
+
 		_connection_id: ConnectionId,
 		_local_addr: Multiaddr,
 		_send_back_addr: Multiaddr,
@@ -318,9 +351,9 @@ pub trait EventHandler {
 
 	/// Event that announces an error happening on an outbound connection during its initial
 	/// handshake.
-	async fn outgoing_connection_error(
+	fn outgoing_connection_error(
 		&mut self,
-		
+
 		_connection_id: ConnectionId,
 		_peer_id: Option<PeerId>,
 	) {
@@ -329,52 +362,37 @@ pub trait EventHandler {
 
 	/// Event that announces the arrival of a ping message from a peer.
 	/// The duration it took for a round trip is also returned
-	async fn inbound_ping_success(
-		&mut self,
-		
-		_peer_id: PeerId,
-		_duration: Duration,
-	) {
+	fn inbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
 		// Default implementation
 	}
 
 	/// Event that announces a `Ping` error
-	async fn outbound_ping_error(
-		&mut self,
-		
-		_peer_id: PeerId,
-		_err_type: Failure,
-	) {
+	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure) {
 		// Default implementation
 	}
 
 	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-	async fn identify_info_recieved(
-		&mut self,
-		
-		_peer_id: PeerId,
-		_info: Info,
-	) {
+	fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info) {
 		// Default implementation
 	}
 
 	/// Event that announces the successful write of a record to the DHT
-	async fn kademlia_put_record_success(&mut self,  _key: Vec<u8>) {
+	fn kademlia_put_record_success(&mut self, _key: Vec<u8>) {
 		// Default implementation
 	}
 
 	/// Event that announces the failure of a node to save a record
-	async fn kademlia_put_record_error(&mut self) {
+	fn kademlia_put_record_error(&mut self) {
 		// Default implementation
 	}
 
 	/// Event that announces a node as a provider of a record in the DHT
-	async fn kademlia_start_providing_success(&mut self,  _key: Vec<u8>) {
+	fn kademlia_start_providing_success(&mut self, _key: Vec<u8>) {
 		// Default implementation
 	}
 
 	/// Event that announces the failure of a node to become a provider of a record in the DHT
-	async fn kademlia_start_providing_error(&mut self) {
+	fn kademlia_start_providing_error(&mut self) {
 		// Default implementation
 	}
 
@@ -451,14 +469,14 @@ pub mod ping_config {
 
 /// Network queue that tracks the execution of application requests in the network layer
 pub(super) struct ExecQueue {
-	buffer: Mutex<VecDeque<StreamId>>
-} 
+	buffer: Mutex<VecDeque<StreamId>>,
+}
 
 impl ExecQueue {
 	// Create new execution queue
 	pub fn new() -> Self {
 		Self {
-			buffer: Mutex::new(VecDeque::new())
+			buffer: Mutex::new(VecDeque::new()),
 		}
 	}
 
