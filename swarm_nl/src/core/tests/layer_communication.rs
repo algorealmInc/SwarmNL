@@ -48,7 +48,7 @@ pub async fn setup_node_1() -> Core<AppState> {
 		148, 159, 36, 170, 109, 178,
 	];
 	// Ports for the first node
-	let ports = (49500, 49501);
+	let ports = (49600, 49501);
 
 	// The PeerId of the first node
 	let peer_id = Keypair::from_protobuf_encoding(&protobuf)
@@ -81,12 +81,13 @@ pub async fn setup_node(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> 
 fn echo_for_node_1_fetch_from_network() {
 	// Prepare an echo request
 	let echo_string = "Sacha rocks!".to_string();
+    let data_request = AppData::Echo(echo_string.clone());
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1()
 			.await
-			.fetch_from_network(AppData::Echo(echo_string.clone()))
+			.fetch_from_network(data_request)
 			.await
 		{
 			if let AppResponse::Echo(echoed_response) = result {
@@ -101,12 +102,13 @@ fn echo_for_node_1_fetch_from_network() {
 fn echo_for_node_1_send_and_receive(){
     // Prepare an echo request
 	let echo_string = "Sacha rocks!".to_string();
+    let data_request = AppData::Echo(echo_string.clone());
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let stream_id = setup_node_1()
 			.await
-			.send_to_network(AppData::Echo(echo_string.clone()))
+			.send_to_network(data_request)
             .await
             .unwrap();
 
@@ -121,4 +123,31 @@ fn echo_for_node_1_send_and_receive(){
 			}
 		}
 	});
+}
+
+#[test]
+fn dial_peer_failure_works() {
+    // What we're dialing
+	let peer_id = PeerId::random();
+    let multi_addr = "/ip4/192.168.1.205/tcp/1509".to_string();
+
+    let dial_request = AppData::DailPeer(peer_id, multi_addr.clone());
+
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		let stream_id = setup_node_1()
+			.await
+			.send_to_network(dial_request)
+            .await
+            .unwrap();
+
+            if let Ok(result) = setup_node_1()
+			.await
+			.recv_from_network(stream_id)
+			.await
+		{
+            assert_eq!(AppResponse::Error(NetworkError::DailPeerError), result);
+		}
+	});
+
 }

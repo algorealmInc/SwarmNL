@@ -83,8 +83,8 @@ pub enum AppData {
 	GossipsubFilterBlacklist(PeerId),
 }
 
-/// Response to requests sent from the aplication to the network layer.
-#[derive(Debug, Clone)]
+/// Response to requests sent from the aplication to the network layer
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppResponse {
 	/// The value written to the network.
 	Echo(String),
@@ -128,8 +128,8 @@ pub enum AppResponse {
 	GossipsubBlacklistSuccess
 }
 
-/// Network error type containing errors encountered during network operations.
-#[derive(Error, Debug, Clone)]
+/// Network error type containing errors encountered during network operations
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum NetworkError {
 	#[error("timeout occured waiting for data from network layer")]
 	NetworkReadTimeout,
