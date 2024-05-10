@@ -183,9 +183,10 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		}
 	}
 
-	/// Explicitly configure the network (protocol) id e.g /swarmnl/1.0.
-	/// Note that it must be of the format "/protocol-name/version" else it will default to
-	/// "/swarmnl/1.0"
+	/// Explicitly configure the network (protocol) id.
+	/// 
+	/// Note that it must be of the format "/protocol-name/version" otherwise it will default to
+	/// "/swarmnl/1.0". See: [`DEFAULT_NETWORK_ID`].
 	pub fn with_network_id(self, protocol: String) -> Self {
 		if protocol.len() > MIN_NETWORK_ID_LENGTH.into() && protocol.starts_with("/") {
 			CoreBuilder {
@@ -199,15 +200,18 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		}
 	}
 
-	/// Configure the IP address to listen on
+	/// Configure the IP address to listen on.
+	/// 
+	/// If none is specified, the default value is `Ipv4Addr::new(0, 0, 0, 0)`. See: [`DEFAULT_IP_ADDRESS`].
 	pub fn listen_on(self, ip_address: IpAddr) -> Self {
 		CoreBuilder { ip_address, ..self }
 	}
 
 	/// Configure the timeout for requests to read from the network layer.
+	/// 
 	/// Reading from the network layer could potentially block if the data corresponding to the
 	/// [`StreamId`] specified could not be found (or has been read already). This prevents the
-	/// future from `await`ing forever. Defaults to 60 seconds
+	/// future from `await`ing forever. The default is 60 seconds. See: [`NETWORK_READ_TIMEOUT`].
 	pub fn with_network_read_delay(self, network_read_delay: AsyncDuration) -> Self {
 		CoreBuilder {
 			network_read_delay,
@@ -216,6 +220,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	}
 
 	/// Configure how long to keep a connection alive (in seconds) once it is idling.
+	/// 
+	/// The default is 60 seconds. See: [`NETWORK_READ_TIMEOUT`].
 	pub fn with_idle_connection_timeout(self, keep_alive_duration: Seconds) -> Self {
 		CoreBuilder {
 			keep_alive_duration,
@@ -279,8 +285,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { transport, ..self }
 	}
 
-	/// Configure network event handler
-	/// This configures the functions to be called when various network events take place
+	/// Configure network event handler.
+	/// 
+	/// This configures the functions to be called when various network events take place.
 	pub fn configure_network_events(self, handler: T) -> Self {
 		CoreBuilder { handler, ..self }
 	}
