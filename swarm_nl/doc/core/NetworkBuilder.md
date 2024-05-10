@@ -17,6 +17,37 @@ let mut network = CoreBuilder::with_config(config, handler)
 	.unwrap()
 ```
 
+### Custom event handler
+
+To add any custom logic around how you want to handle network events, you must implement the methods from [`EventHandler`]. The role of this implementation override is to respond to your custom network's state and instruct the network to behave in a pre-configured way. For example:
+
+```rust
+use swarm_nl::core::EventHandler;
+
+#[derive(Clone)]
+struct ApplicationHandler{
+	name: String,
+	version: u8,
+}
+
+impl EventHandler for ApplicationHandler {
+	async fn new_listen_addr(
+		&mut self,
+		local_peer_id: PeerId,
+		_listener_id: swarm_nl::ListenerId,
+		addr: swarm_nl::Multiaddr,
+	) {
+		// announce interfaces we're listening on
+		println!("Peer id: {}", local_peer_id);
+		println!("We're listening on the {}", addr);
+		println!(
+			"Connected to {}, current version: {} ",
+			self.name, self.version
+		);
+	}
+}
+```
+
 ## Overriding the default network configuration
 
 You can explicitly change the default values of [`CoreBuilder::with_config`] by calling the following methods before building the network:
@@ -55,36 +86,4 @@ For example: TODO make it docified.
 			.with_transports(custom_transport.clone())
 			.with_idle_connection_timeout(custom_keep_alive_duration.clone())
 			.listen_on(custom_ip_address.clone());
-```
-
-### Custom event handler
-
-To add any custom logic around how you want to handle network events, you must implement the methods from [`EventHandler`]. The role of this implementation override is to respond to your custom network's state and instruct the network to behave in a pre-configured way. For example:
-
-```rust
-use swarm_nl::core::EventHandler;
-
-#[derive(Clone)]
-struct ApplicationHandler{
-	name: String,
-	version: u8,
-}
-
-#[async_trait]
-impl EventHandler for ApplicationHandler {
-	async fn new_listen_addr(
-		&mut self,
-		local_peer_id: PeerId,
-		_listener_id: swarm_nl::ListenerId,
-		addr: swarm_nl::Multiaddr,
-	) {
-		// announce interfaces we're listening on
-		println!("Peer id: {}", local_peer_id);
-		println!("We're listening on the {}", addr);
-		println!(
-			"Connected to {}, current version: {} ",
-			self.name, self.version
-		);
-	}
-}
 ```

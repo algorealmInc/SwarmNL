@@ -1,6 +1,6 @@
 # Node setup
 
-For any node setup, you need a valid `.ini` file to create the bootstrap config object and a [`EventHandler`] object to specify what events you would like to listen to and how you want to handle them. 
+For any node setup, you need a valid `.ini` file to create the bootstrap config object and a [`core::EventHandler`] object to specify what events you would like to listen to and how you want to handle them. 
 
 When we say "node setup" we mean the requirements to launch a single or a set of peers that can bootstrap the network. This requires passing in an `.ini` file with bootstrap configuration data such as bootstrap nodes, TCP/UDP ports and cryptographic types for keypair generation.
 
