@@ -1,7 +1,7 @@
 // Copyright 2024 Algorealm
 // Apache 2.0 License
 
-//! Types and traits that are used throughout the library.
+//! Types and traits that are used throughout SwarmNL.
 
 use libp2p_identity::{KeyType, PeerId};
 use std::net::Ipv4Addr;
@@ -34,19 +34,20 @@ pub enum SwarmNlError {
 	NetworkIdParseError(String),
 }
 
-/// Generic SwarmNl result type
+/// Generic SwarmNl result type.
 pub type SwarmNlResult<T> = Result<T, SwarmNlError>;
-/// Port type
+/// Port type.
 pub type Port = u16;
-/// Seconds type
+/// Seconds type.
 pub type Seconds = u64;
-/// The stringified PeerId type
+/// The stringified PeerId type.
 pub type PeerIdString = String;
-/// The stringified Multiaddr type
+/// The stringified Multiaddr type.
 pub type MultiaddrString = String;
 
-/// Port ranges
+/// Lower bound port range (u16::MIN).
 pub const MIN_PORT: u16 = 49152;
+/// Upper bound port range (u16::MAX).
 pub const MAX_PORT: u16 = 65535;
 
 /// Default network id
@@ -56,8 +57,9 @@ pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
 /// separates it from others.
 pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
-/// Implement From<&str> for libp2p2_identity::KeyType.
-/// We'll define a custom trait because of the Rust visibility rule to solve this problem
+/// An implementation of [`From<&str>`] for [`KeyType`] to read a key type from a file.
+/// 
+/// We define a custom trait because of the Rust visibility rule.
 pub trait CustomFrom {
 	fn from(string: &str) -> Option<Self>
 	where
@@ -76,15 +78,14 @@ impl CustomFrom for KeyType {
 	}
 }
 
-/// Supported transport protocols
+/// Supported transport protocols.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum TransportOpts {
-	/// QUIC transport protocol enabled with TCP/IP as fallback.
-	/// DNS lookup is also configured by default
+	/// QUIC transport protocol enabled with TCP/IP as fallback. DNS lookup is also configured by default.
 	TcpQuic { tcp_config: TcpConfig },
 }
 
-/// TCP setup Config
+/// TCP setup configuration.
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum TcpConfig {
 	/// Default configuration specified in the [libp2p docs](https://docs.rs/libp2p/latest/libp2p/tcp/struct.Config.html#method.new).
@@ -101,8 +102,8 @@ pub enum TcpConfig {
 	},
 }
 
-/// A unique type that indicates that a struct is not yet initialized to its default state
+/// A unique type that indicates that a struct is not yet initialized to its default state.
 pub struct NotInitialiazed;
 
-/// A unique type that indicates that a struct has been default configured
+/// A unique type that indicates that a struct has been default configured.
 pub struct Initialized;

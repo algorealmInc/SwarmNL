@@ -77,12 +77,13 @@ impl BootstrapConfig {
 	}
 
 	/// Generate a Cryptographic Keypair.
+	/// 
 	/// An RSA keypair cannot be generated on-the-fly. It has to be generated from a `.pk8` file.
 	/// Hence the `Option` parameter is always `None` except in the case of RSA.
 	/// Please note that calling this function overrides whatever might have been read from the
 	/// `.ini` file
 	///
-	/// # Panics (Only applies to the RSA keypair instance)
+	/// # Panics
 	///
 	/// This function will panic if:
 	/// 1. The RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
