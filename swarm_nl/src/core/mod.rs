@@ -281,6 +281,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { handler, ..self }
 	}
 
+	/// Return the id of the network
+	fn network_id(&self) -> String {
+		self.network_id.to_string()
+	}
+
 	/// Build the [`Core`] data structure.
 	///
 	/// Handles the configuration of the libp2p Swarm structure and the selected transport
@@ -1320,6 +1325,7 @@ use futures::TryFutureExt;
 use ini::Ini;
 use std::fs::File;
 use std::net::Ipv6Addr;
+use std::fs;
 
 // set up a default node helper
 pub fn setup_core_builder() -> CoreBuilder<DefaultHandler> {
@@ -1356,7 +1362,7 @@ fn default_behavior_works() {
 	let default_node = setup_core_builder();
 
 	// assert that the default network id is '/swarmnl/1.0'
-	assert_eq!(default_node.network_id(), DEFAULT_NETWORK_ID.to_string());
+	assert_eq!(default_node.network_id, DEFAULT_NETWORK_ID);
 
 	// default transport is TCP/QUIC
 	assert_eq!(

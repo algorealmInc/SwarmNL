@@ -383,8 +383,8 @@ pub trait EventHandler {
 }
 
 /// Default network event handler
+#[derive(Clone)]
 pub struct DefaultHandler;
-
 /// Implement [`EventHandler`] for [`DefaultHandler`]
 impl EventHandler for DefaultHandler {
 	/// Echo the message back to the sender
