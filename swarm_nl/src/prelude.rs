@@ -32,6 +32,8 @@ pub enum SwarmNlError {
 	RemotePeerDialError(String),
 	#[error("could not parse provided network id")]
 	NetworkIdParseError(String),
+	#[error("could not configure node for gossiping")]
+	GossipConfigError
 }
 
 /// Generic SwarmNl result type.
