@@ -1,8 +1,10 @@
+// Copyright 2024 Algorealm
+// Apache 2.0 License
+
+//! Types and traits that are used throughout the library.
+
 use libp2p_identity::{KeyType, PeerId};
 use std::net::Ipv4Addr;
-/// Copyright (c) 2024 Algorealm
-///  
-/// This file is part of the SwarmNL library.
 use thiserror::Error;
 
 /// Default IP address when no address is specified.

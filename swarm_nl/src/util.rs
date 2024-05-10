@@ -1,6 +1,8 @@
-/// Copyright (c) 2024 Algorealm
-///
-/// This file is part of the SwarmNl library.
+// Copyright 2024 Algorealm
+// Apache 2.0 License
+
+//! Utility helpers for reading from and writing to `.ini` files.
+
 use crate::{prelude::*, setup::BootstrapConfig};
 use base58::FromBase58;
 use ini::Ini;

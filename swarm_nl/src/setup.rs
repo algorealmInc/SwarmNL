@@ -1,9 +1,8 @@
-/// Copyright (c) 2024 Algorealm
+// Copyright 2024 Algorealm
+// Apache 2.0 License
 
-// The module containing the data structures and functions to setup a node identity and
-/// configure it for networking.
-///
-/// This file is part of the SwarmNl library.
+//! Data structures and functions to setup a node identity and configure it for networking.
+
 use std::collections::HashMap;
 
 use libp2p_identity::rsa;

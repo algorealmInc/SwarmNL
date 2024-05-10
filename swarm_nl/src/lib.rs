@@ -1,6 +1,7 @@
-/// Copyright (c) 2024 Algorealm
-///
-/// This file is part of the SwarmNL library.
+// Copyright 2024 Algorealm
+// Apache 2.0 License
+
+#![doc = include_str!("../../README.md")]
 
 /// Re-exports
 pub use crate::prelude::*;
