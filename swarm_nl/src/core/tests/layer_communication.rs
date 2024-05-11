@@ -300,3 +300,71 @@ fn kademlia_lookup_record_works() {
 		}
 	});
 }
+
+#[test]
+fn kademlia_get_providers_works() {
+	// Prepare an kademlia request to send to the network layer
+	let req_key = "Deji".as_bytes().to_vec();
+
+	let kad_request = AppData::KademliaGetProviders { key: req_key.clone() };
+
+
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		
+		if let Ok(result) = setup_node_1((49999, 64444))
+			.await
+			.fetch_from_network(kad_request)
+			.await
+		{
+			println!("Failed??🚀");
+			if let AppResponse::KademliaGetProviders { key, providers  } = result {
+				// Assert that what was sent was gotten back
+				println!("Providers: {:?}", providers);
+				assert_eq!(key, req_key);
+			} else {
+				println!("Failed!🚀");
+
+			}
+		}
+	});
+}
+
+// /// Port ranges
+// pub const MIN_PORT: u16 = 49152;
+// pub const MAX_PORT: u16 = 65535;
+// KademliaGetProviders { key: Vec<u8> },
+// 	/// Stop providing a record on the network
+// 	KademliaStopProviding { key: Vec<u8> },
+// 	/// Remove record from local store
+// 	KademliaDeleteRecord { key: Vec<u8> },
+// 	/// Return important information about the local routing table
+// 	KademliaGetRoutingTableInfo,
+// 	/// Fetch data(s) quickly from a peer over the network
+// 	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
+// 	/// Get network information about the node
+// 	GetNetworkInfo,
+// 	// Send message to gossip peers in a mesh network
+// 	GossipsubBroadcastMessage {
+// 		/// Topic to send messages to
+// 		topic: String,
+// 		message: Vec<String>,
+// 		/// Explicit peers to gossip to
+// 		peers: Option<Vec<PeerId>>,
+// 	},
+// 	/// Join a mesh network
+// 	GossipsubJoinNetwork(String),
+// 	/// Get gossip information about node
+// 	GossipsubGetInfo,
+// 	/// Leave a network we are a part of
+// 	GossipsubExitNetwork(String),
+// 	/// Blacklist a peer explicitly
+// 	GossipsubBlacklistPeer(PeerId),
+// 	/// Remove a peer from the blacklist
+// 	GossipsubFilterBlacklist(PeerId),
+// }
+
+// TODO:
+// - check that DHT record store between nodes work, using a storing peer and a looking up 
+// and all other tests for AppData
+// -
