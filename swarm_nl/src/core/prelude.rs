@@ -89,7 +89,7 @@ pub enum AppResponse {
 	/// The value written to the network
 	Echo(String),
 	/// The peer we dailed
-	DailPeer(String),
+	DailPeerSuccess(String),
 	/// Store record success
 	KademliaStoreRecordSuccess,
 	/// DHT lookup result

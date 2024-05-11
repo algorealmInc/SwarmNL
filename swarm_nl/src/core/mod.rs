@@ -844,7 +844,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 							// Error
 							AppResponse::Error(error) => buffer_guard.insert(stream_id, Err(error)),
 							res @ AppResponse::Echo(..) => buffer_guard.insert(stream_id, Ok(res)),
-							res @ AppResponse::DailPeer(..) => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::DailPeerSuccess(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaStoreRecordSuccess => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaLookupRecord(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
@@ -903,7 +903,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												swarm.behaviour_mut().kademlia.add_address(&peer_id, multiaddr.clone());
 												if let Ok(_) = swarm.dial(peer_id) {
 													// Send the response back to the application layer
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::DailPeer(multiaddr.to_string()))).await;
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::DailPeerSuccess(multiaddr.to_string()))).await;
 												} else {
 													// Return error
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::DailPeerError))).await;
