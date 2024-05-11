@@ -333,6 +333,12 @@ fn kademlia_get_providers_works() {
 	});
 }
 
+// KademliaSTopProviding and KademliaDeleteRecord will alwys succeed.
+// The right function to use is sent_to_network() which will not return a Some(StreamId) but will always return None.
+// This is because it always succedds and doesnt need to be tracked internally.
+// DO not use fetch_from_network() to send the command, if you do, it will succeed but you will get a wrong error.
+// The wrong error will be NetworkError::StreamBufferOverflow, (which is wrong)
+
 // /// Port ranges
 // pub const MIN_PORT: u16 = 49152;
 // pub const MAX_PORT: u16 = 65535;
