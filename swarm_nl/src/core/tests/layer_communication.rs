@@ -1,5 +1,5 @@
 //! Tests for the communication between the layers of the application.
-//! 
+//!
 //! To run the dialing test you need dialing_peer_works with listening_node feature enabled first:
 //! ```bash
 //! cargo test dialing_peer_works --features=tokio-runtime --features=listening-node
@@ -67,7 +67,10 @@ pub async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
 }
 
 /// Used to create a node to peer with node_1.
-pub async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<AppState>, PeerId) {
+pub async fn setup_node_2(
+	node_1_ports: (Port, Port),
+	ports: (Port, Port),
+) -> (Core<AppState>, PeerId) {
 	let app_state = AppState;
 
 	// Our test keypair for the node_1
@@ -100,13 +103,14 @@ pub async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (C
 		.with_udp(ports.1);
 
 	// Set up network
-	(CoreBuilder::with_config(config, app_state)
-		.build()
-		.await
-		.unwrap(),
-        peer_id)
+	(
+		CoreBuilder::with_config(config, app_state)
+			.build()
+			.await
+			.unwrap(),
+		peer_id,
+	)
 }
-
 
 pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> {
 	let app_state = AppState;
@@ -130,7 +134,7 @@ pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<
 fn echo_for_node_1_fetch_from_network() {
 	// Prepare an echo request
 	let echo_string = "Sacha rocks!".to_string();
-    let data_request = AppData::Echo(echo_string.clone());
+	let data_request = AppData::Echo(echo_string.clone());
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -148,20 +152,20 @@ fn echo_for_node_1_fetch_from_network() {
 }
 
 #[test]
-fn echo_for_node_1_send_and_receive(){
-    // Prepare an echo request
+fn echo_for_node_1_send_and_receive() {
+	// Prepare an echo request
 	let echo_string = "Sacha rocks!".to_string();
-    let data_request = AppData::Echo(echo_string.clone());
+	let data_request = AppData::Echo(echo_string.clone());
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let stream_id = setup_node_1((49500, 49501))
 			.await
 			.send_to_network(data_request)
-            .await
-            .unwrap();
+			.await
+			.unwrap();
 
-            if let Ok(result) = setup_node_1((49400, 49401))
+		if let Ok(result) = setup_node_1((49400, 49401))
 			.await
 			.recv_from_network(stream_id)
 			.await
@@ -176,68 +180,86 @@ fn echo_for_node_1_send_and_receive(){
 
 #[test]
 fn dial_peer_failure_works() {
-    // What we're dialing
+	// What we're dialing
 	let peer_id = PeerId::random();
-    let multi_addr = "/ip4/192.168.1.205/tcp/1509".to_string();
+	let multi_addr = "/ip4/192.168.1.205/tcp/1509".to_string();
 
-    let dial_request = AppData::DailPeer(peer_id, multi_addr.clone());
+	let dial_request = AppData::DailPeer(peer_id, multi_addr.clone());
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let stream_id = setup_node_1((49600, 49601))
 			.await
 			.send_to_network(dial_request)
-            .await
-            .unwrap();
+			.await
+			.unwrap();
 
-            if let Ok(result) = setup_node_1((49500, 49501))
+		if let Ok(result) = setup_node_1((49500, 49501))
 			.await
 			.recv_from_network(stream_id)
 			.await
 		{
-            assert_eq!(AppResponse::Error(NetworkError::DailPeerError), result);
+			assert_eq!(AppResponse::Error(NetworkError::DailPeerError), result);
 		}
 	});
-
 }
 
 #[cfg(feature = "listening-node")]
 #[test]
 fn dialing_peer_works() {
-
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-    // set up the node that will be dialled
-    setup_node_1((49666, 49606)).await;
-	// loop for the listening node to keep running
-	loop {}
-
+		// set up the node that will be dialled
+		setup_node_1((49666, 49606)).await;
+		// loop for the listening node to keep running
+		loop {}
 	});
 }
 
 #[cfg(feature = "dialing-node")]
 #[test]
 fn dialing_peer_works() {
-
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-    // set up the second node that will dial
-    let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+		// set up the second node that will dial
+		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
 
-    // what we're dialing
-    let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
+		// what we're dialing
+		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
 
-    let dial_request = AppData::DailPeer(node_1_peer_id, multi_addr.clone());
-		let stream_id = node_2
-			.send_to_network(dial_request)
-            .await
-            .unwrap();
+		let dial_request = AppData::DailPeer(node_1_peer_id, multi_addr.clone());
+		let stream_id = node_2.send_to_network(dial_request).await.unwrap();
 
-            if let Ok(result) = node_2
-			.recv_from_network(stream_id)
-			.await
-		{
-            assert_eq!(AppResponse::DailPeerSuccess(multi_addr), result);
+		if let Ok(result) = node_2.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::DailPeerSuccess(multi_addr), result);
 		}
 	});
 }
 
+#[test]
+fn kademlia_store_records_works() {
+	// Prepare an kademlia request to send to the network layer
+	let (key, value, expiration_time, explicit_peers) = (
+		"Deji".as_bytes().to_vec(),
+		"1000".as_bytes().to_vec(),
+		None,
+		None,
+	);
+
+	let kad_request = AppData::KademliaStoreRecord {
+		key,
+		value,
+		expiration_time,
+		explicit_peers,
+	};
+
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		if let Ok(result) = setup_node_1((49100, 49101))
+			.await
+			.fetch_from_network(kad_request)
+			.await
+		{
+			assert_eq!(AppResponse::KademliaStoreRecordSuccess, result);
+		}
+	});
+}
