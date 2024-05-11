@@ -1209,20 +1209,31 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									// Kademlia
 									CoreEvent::Kademlia(event) => match event {
 										kad::Event::OutboundQueryProgressed { result, .. } => match result {
-											kad::QueryResult::GetProviders(Ok(
-												kad::GetProvidersOk::FoundProviders { key, providers, .. },
-											)) => {
-												// Stringify the PeerIds
-												let peer_id_strings = providers.iter().map(|peer_id| {
-													peer_id.to_base58()
-												}).collect::<Vec<_>>();
+											kad::QueryResult::GetProviders(Ok(success)) => {
+												match success {
+													kad::GetProvidersOk::FoundProviders { key, providers, .. } => {
+														// Stringify the PeerIds
+														let peer_id_strings = providers.iter().map(|peer_id| {
+															peer_id.to_base58()
+														}).collect::<Vec<_>>();
 
-												// Receive data from our one-way channel
-												if let Some(stream_id) = exec_queue_3.pop().await {
-													// Send the response back to the application layer
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
+														// Receive data from our one-way channel
+														if let Some(stream_id) = exec_queue_3.pop().await {
+															// Send the response back to the application layer
+															let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
+														}
+													},
+													// No providers found
+													_ => {
+														// Receive data from our one-way channel
+														if let Some(stream_id) = exec_queue_3.pop().await {
+															// Send the response back to the application layer
+															let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
+														}
+													}
 												}
-											}
+											},
+
 											kad::QueryResult::GetProviders(Err(_)) => {
 												// Receive data from our one-way channel
 												if let Some(stream_id) = exec_queue_3.pop().await {
