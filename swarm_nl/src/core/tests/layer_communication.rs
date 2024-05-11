@@ -283,16 +283,10 @@ fn kademlia_lookup_record_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let mut node = setup_node_1((49155, 49222)).await;
 
-		if let Ok(result) = node.clone()
-			.fetch_from_network(kad_request)
-			.await
-		{
+		if let Ok(result) = node.clone().fetch_from_network(kad_request).await {
 			let kad_request = AppData::KademliaLookupRecord { key };
 
-			if let Ok(result) = node
-				.fetch_from_network(kad_request)
-				.await
-			{
+			if let Ok(result) = node.fetch_from_network(kad_request).await {
 				if let AppResponse::KademliaLookupSuccess(value) = result {
 					assert_eq!("1000".as_bytes().to_vec(), value);
 				}
@@ -303,26 +297,16 @@ fn kademlia_lookup_record_works() {
 
 #[test]
 fn kademlia_get_providers_works() {
+	// Note: we can only test for the error case here, an integration test is needed to actually check that the providers can be fetched
+
 	// Prepare an kademlia request to send to the network layer
 	let req_key = "Deji".as_bytes().to_vec();
 
-	let kad_request = AppData::KademliaGetProviders { key: req_key.clone() };
+	let kad_request = AppData::KademliaGetProviders {
+		key: req_key.clone(),
+	};
 
-
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		if let Ok(result) = setup_node_1((49999, 64444))
-			.await
-			.fetch_from_network(kad_request.clone())
-			.await
-		{
-			if let AppResponse::KademliaGetProviders { key, providers  } = result {
-				// Assert that what was sent was gotten back
-				println!("Providers: {:?}", providers);
-				assert_eq!(key, req_key);
-			} 
-		}
-
 		if let Ok(result) = setup_node_1((49988, 64544))
 			.await
 			.fetch_from_network(kad_request)
@@ -374,6 +358,6 @@ fn kademlia_get_providers_works() {
 // }
 
 // TODO:
-// - check that DHT record store between nodes work, using a storing peer and a looking up 
+// - check that DHT record store between nodes work, using a storing peer and a looking up
 // and all other tests for AppData
 // -
