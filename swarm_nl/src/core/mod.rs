@@ -960,7 +960,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 										AppData::KademliaDeleteRecord { key } => {
 											swarm.behaviour_mut().kademlia.remove_record(&key.into());
 										}
-										// Return important routing table info
+										// Return important routing table info. We could return kbuckets depending on needs, for now it's just the network ID.
 										AppData::KademliaGetRoutingTableInfo => {
 											// Send the response back to the application layer
 											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetRoutingTableInfo{protocol_id: network_info.id.to_string()})).await;
