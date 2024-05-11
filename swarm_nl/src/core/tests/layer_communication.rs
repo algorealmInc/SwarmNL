@@ -42,7 +42,9 @@ impl EventHandler for AppState {
 		println!("Connection established with peer: {:?}", peer_id);
 	}
 
+	// we're just echoing the data back
 	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+		println!("Recvd incoming RPC: {:?}", data);
 		data
 	}
 }
@@ -317,24 +319,79 @@ fn kademlia_get_providers_works() {
 	});
 }
 
-// KademliaSTopProviding and KademliaDeleteRecord will alwys succeed.
+#[test]
+fn kademlia_get_routing_table_info_works() {
+	// Prepare an kademlia request to send to the network layer
+	let kad_request = AppData::KademliaGetRoutingTableInfo;
+
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		if let Ok(result) = setup_node_1((49999, 64555))
+			.await
+			.fetch_from_network(kad_request)
+			.await
+		{
+			assert_eq!(AppResponse::KademliaGetRoutingTableInfo { protocol_id: DEFAULT_NETWORK_ID.to_string() }, result);
+		}
+	});
+
+}
+
+// For fetch tests
+
+#[cfg(feature = "server-node")]
+#[test]
+fn rpc_fetch_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		setup_node_1((49666, 49606)).await;
+		// loop for the listening node to keep running
+		loop {}
+	});
+}
+
+#[cfg(feature = "client-node")]
+#[test]
+fn rpc_fetch_works() {
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the second node that will dial
+		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+		let fetch_key = vec!["SomeFetchKey".as_bytes().to_vec()];
+
+		// what we're dialing
+		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
+
+		// prepare fetch request
+		let fetch_request = AppData::FetchData { keys: fetch_key.clone(), peer: node_1_peer_id };
+		
+		let stream_id = node_2.send_to_network(fetch_request).await.unwrap();
+
+		if let Ok(result) = node_2.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::FetchData(fetch_key), result);
+		}
+	});
+}
+
+// KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
 // The right function to use is sent_to_network() which will not return a Some(StreamId) but will always return None.
-// This is because it always succedds and doesnt need to be tracked internally.
-// DO not use fetch_from_network() to send the command, if you do, it will succeed but you will get a wrong error.
-// The wrong error will be NetworkError::StreamBufferOverflow, (which is wrong)
+// This is because it always succeeds and doesn't need to be tracked internally.
+// Do not use fetch_from_network() to send the command, if you do, it will succeed but you will get a wrong error.
+// The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).
 
 // /// Port ranges
 // pub const MIN_PORT: u16 = 49152;
 // pub const MAX_PORT: u16 = 65535;
 // KademliaGetProviders { key: Vec<u8> },
-// 	/// Stop providing a record on the network
-// 	KademliaStopProviding { key: Vec<u8> },
-// 	/// Remove record from local store
-// 	KademliaDeleteRecord { key: Vec<u8> },
+
+
 // 	/// Return important information about the local routing table
 // 	KademliaGetRoutingTableInfo,
+
 // 	/// Fetch data(s) quickly from a peer over the network
 // 	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
+
 // 	/// Get network information about the node
 // 	GetNetworkInfo,
 // 	// Send message to gossip peers in a mesh network
