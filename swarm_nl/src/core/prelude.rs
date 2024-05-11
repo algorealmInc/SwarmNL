@@ -93,8 +93,8 @@ pub enum AppResponse {
 	/// Store record success
 	KademliaStoreRecordSuccess,
 	/// DHT lookup result
-	KademliaLookupRecord(Vec<u8>),
-	/// Nodes storing a particular record in the DHT.
+	KademliaLookupSuccess(Vec<u8>),
+	/// Nodes storing a particular record in the DHT
 	KademliaGetProviders {
 		key: Vec<u8>,
 		providers: Vec<PeerIdString>,

@@ -121,8 +121,6 @@ pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<
 		.with_tcp(ports.0)
 		.with_udp(ports.1);
 
-	println!("First node here!");
-
 	// Set up network
 	CoreBuilder::with_config(config, app_state)
 		.build()
@@ -260,6 +258,45 @@ fn kademlia_store_records_works() {
 			.await
 		{
 			assert_eq!(AppResponse::KademliaStoreRecordSuccess, result);
+		}
+	});
+}
+
+#[test]
+fn kademlia_lookup_record_works() {
+	// Prepare an kademlia request to send to the network layer
+	let (key, value, expiration_time, explicit_peers) = (
+		"Deji".as_bytes().to_vec(),
+		"1000".as_bytes().to_vec(),
+		None,
+		None,
+	);
+
+	let kad_request = AppData::KademliaStoreRecord {
+		key: key.clone(),
+		value,
+		expiration_time,
+		explicit_peers,
+	};
+
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		let mut node = setup_node_1((49155, 49222)).await;
+
+		if let Ok(result) = node.clone()
+			.fetch_from_network(kad_request)
+			.await
+		{
+			let kad_request = AppData::KademliaLookupRecord { key };
+
+			if let Ok(result) = node
+				.fetch_from_network(kad_request)
+				.await
+			{
+				if let AppResponse::KademliaLookupSuccess(value) = result {
+					assert_eq!("1000".as_bytes().to_vec(), value);
+				}
+			}
 		}
 	});
 }

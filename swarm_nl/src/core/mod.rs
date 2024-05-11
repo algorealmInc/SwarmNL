@@ -850,7 +850,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 							res @ AppResponse::Echo(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::DailPeerSuccess(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaStoreRecordSuccess => buffer_guard.insert(stream_id, Ok(res)),
-							res @ AppResponse::KademliaLookupRecord(..) => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::KademliaLookupSuccess(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaGetRoutingTableInfo { .. } => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::FetchData(..) => buffer_guard.insert(stream_id, Ok(res)),
@@ -1229,7 +1229,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												// Receive data from out one-way channel
 												if let Some(stream_id) = exec_queue_2.pop().await {
 													// Send the response back to the application layer
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaLookupRecord(value))).await;
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaLookupSuccess(value))).await;
 												}
 											}
 											kad::QueryResult::GetRecord(Ok(_)) => {
