@@ -99,7 +99,9 @@ pub enum AppResponse {
 		key: Vec<u8>,
 		providers: Vec<PeerIdString>,
 	},
-	/// Routing table information.
+	/// No providers found,
+	KademliaNoProvidersFound,
+	/// Routing table information
 	KademliaGetRoutingTableInfo { protocol_id: String },
 	/// RPC result.
 	FetchData(Vec<Vec<u8>>),

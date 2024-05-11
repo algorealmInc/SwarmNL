@@ -852,6 +852,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 							res @ AppResponse::KademliaStoreRecordSuccess => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaLookupSuccess(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::KademliaNoProvidersFound => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaGetRoutingTableInfo { .. } => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::FetchData(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::GetNetworkInfo{..} => buffer_guard.insert(stream_id, Ok(res)),
@@ -1222,7 +1223,13 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
 												}
 											}
-											kad::QueryResult::GetProviders(Err(_)) => {},
+											kad::QueryResult::GetProviders(Err(_)) => {
+												// Receive data from our one-way channel
+												if let Some(stream_id) = exec_queue_3.pop().await {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
+												}
+											},
 											kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
 												kad::PeerRecord { record:kad::Record{ value, .. }, .. },
 											))) => {
