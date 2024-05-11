@@ -311,21 +311,24 @@ fn kademlia_get_providers_works() {
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		
 		if let Ok(result) = setup_node_1((49999, 64444))
 			.await
-			.fetch_from_network(kad_request)
+			.fetch_from_network(kad_request.clone())
 			.await
 		{
-			println!("Failed??🚀");
 			if let AppResponse::KademliaGetProviders { key, providers  } = result {
 				// Assert that what was sent was gotten back
 				println!("Providers: {:?}", providers);
 				assert_eq!(key, req_key);
-			} else {
-				println!("Failed!🚀");
+			} 
+		}
 
-			}
+		if let Ok(result) = setup_node_1((49988, 64544))
+			.await
+			.fetch_from_network(kad_request)
+			.await
+		{
+			assert_eq!(AppResponse::KademliaNoProvidersFound, result);
 		}
 	});
 }
