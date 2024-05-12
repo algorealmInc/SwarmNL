@@ -43,7 +43,7 @@ impl EventHandler for AppState {
 	}
 
 	// we're just echoing the data back
-	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		println!("Recvd incoming RPC: {:?}", data);
 		data
 	}
@@ -334,17 +334,17 @@ fn kademlia_get_routing_table_info_works() {
 			assert_eq!(AppResponse::KademliaGetRoutingTableInfo { protocol_id: DEFAULT_NETWORK_ID.to_string() }, result);
 		}
 	});
-
 }
 
 // For fetch tests
-
 #[cfg(feature = "server-node")]
 #[test]
 fn rpc_fetch_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the node that will be dialled
 		setup_node_1((49666, 49606)).await;
+
+		println!("This is the server node for rpc testing");
 		// loop for the listening node to keep running
 		loop {}
 	});
@@ -357,6 +357,8 @@ fn rpc_fetch_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+		println!("This is the client node for rpc testing");
 
 		let fetch_key = vec!["SomeFetchKey".as_bytes().to_vec()];
 
@@ -373,6 +375,123 @@ fn rpc_fetch_works() {
 		}
 	});
 }
+
+#[test]
+fn get_network_info_works() {
+	// Prepare an info request to send to the network layer
+	let kad_request = AppData::GetNetworkInfo;
+
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		let mut node = setup_node_1((59999, 54555)).await;
+
+		if let Ok(result) = node
+			.fetch_from_network(kad_request)
+			.await
+		{
+			// we'll use the peer id returned to validate the network information recieved
+			if let AppResponse::GetNetworkInfo { peer_id, connected_peers, external_addresses } = result {
+				println!("Connected peers: {:?}", connected_peers);
+				println!("External Addresses: {:?}", external_addresses);
+				assert_eq!(peer_id, node.peer_id());
+			}
+		}
+	});
+}
+
+// For gossip tests
+#[test]
+fn gossipsub_join_and_exit_network_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		let mut node_1 = setup_node_1((49655, 49609)).await;
+
+		let network = "Testers";
+
+		// join a network (subscribe to a topic)
+		let gossip_request = AppData::GossipsubJoinNetwork(network.to_string());
+
+		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+
+		if let Ok(result) = node_1.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::GossipsubJoinSuccess, result);
+		}
+
+		// exit a network (unsubscribe to a topic)
+		let gossip_request = AppData::GossipsubExitNetwork(network.to_string());
+
+		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+
+		// test for exit
+		if let Ok(result) = node_1.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::GossipsubExitSuccess, result);
+		}
+	});
+}
+
+// Test 
+#[test]
+fn gossipsub_blacklist_and_remove_blacklist_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		let mut node_1 = setup_node_1((49695, 49699)).await;
+
+		// random peer id
+		let peer_id = PeerId::random();
+
+		// blacklist
+		let gossip_request = AppData::GossipsubBlacklistPeer(peer_id);
+		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+
+		if let Ok(result) = node_1.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::GossipsubBlacklistSuccess, result);
+		}
+
+		// remove blacklist
+		let gossip_request = AppData::GossipsubFilterBlacklist(peer_id);
+		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+
+		if let Ok(result) = node_1.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::GossipsubBlacklistSuccess, result);
+		}
+	});
+}
+
+#[test]
+fn gossipsub_info_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		let mut node_1 = setup_node_1((49395, 43699)).await;
+
+		// random peer id
+		let peer_id = PeerId::random();
+		let network = "Blackbeard".to_string();
+
+		// join a network (subscribe to a topic)
+		let gossip_request = AppData::GossipsubJoinNetwork(network.clone());
+		node_1.fetch_from_network(gossip_request).await.unwrap();
+
+		// blacklist a random peer
+		let gossip_request = AppData::GossipsubBlacklistPeer(peer_id);
+		node_1.fetch_from_network(gossip_request).await.unwrap();
+
+		// Prepare request
+		let gossip_request = AppData::GossipsubGetInfo;
+		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+
+		if let Ok(result) = node_1.recv_from_network(stream_id).await {
+			// break up the response info
+			if let AppResponse::GossipsubGetInfo { topics, blacklist, .. } = result {
+				// make assertions for the topic joined
+				assert_eq!(network, topics[0].clone());
+
+				// make assertions for the peers blacklisted
+				assert_eq!(peer_id, *blacklist.get(&peer_id).unwrap());
+			}
+		}
+	});
+}
+
 
 // KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
 // The right function to use is sent_to_network() which will not return a Some(StreamId) but will always return None.

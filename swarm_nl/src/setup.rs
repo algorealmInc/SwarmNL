@@ -6,6 +6,7 @@
 /// This file is part of the SwarmNl library.
 use std::collections::HashMap;
 
+use crate::core::gossipsub_cfg::Blacklist;
 pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 
@@ -24,6 +25,8 @@ pub struct BootstrapConfig {
 	keypair: Keypair,
 	/// Bootstrap peers
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+	/// Blacklisted peers
+	blacklist: Blacklist
 }
 
 impl BootstrapConfig {
@@ -49,6 +52,7 @@ impl BootstrapConfig {
 			// Default node keypair type i.e Ed25519
 			keypair: Keypair::generate_ed25519(),
 			boot_nodes: Default::default(),
+			blacklist: Default::default()
 		}
 	}
 
@@ -59,6 +63,13 @@ impl BootstrapConfig {
 		self
 	}
 
+	/// Configure a list of peers to add to blacklist
+	pub fn with_blacklist(mut self, list: Vec<PeerId>) -> Self {
+		// additive operation
+		self.blacklist.list.extend(list.into_iter());
+		self
+	}
+	
 	/// Configure the TCP/IP port
 	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
 	pub fn with_tcp(self, tcp_port: Port) -> Self {
@@ -161,6 +172,11 @@ impl BootstrapConfig {
 	pub fn bootnodes(&self) -> HashMap<PeerIdString, MultiaddrString> {
 		self.boot_nodes.clone()
 	}
+
+	/// Return the peer id's of nodes that are to be blacklisted
+	pub fn blacklist(&self) -> Blacklist {
+		self.blacklist.clone()
+	}
 }
 
 /// Implement [`Default`] for [`BootstrapConfig`]
@@ -172,8 +188,6 @@ impl Default for BootstrapConfig {
 
 #[cfg(test)]
 mod tests {
-	use libp2p_identity::ed25519;
-
 	use super::*;
 	use std::fs;
 	use std::panic;

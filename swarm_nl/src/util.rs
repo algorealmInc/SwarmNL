@@ -53,9 +53,18 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 		// get the provided bootnodes
 		let boot_nodes = string_to_hashmap(section.get("boot_nodes").unwrap_or_default());
 
+		// now, move onto reading the blacklist if any
+		let section = config
+			.section(Some("blacklist"))
+			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
+
+		// blacklist
+		let blacklist = string_to_vec(section.get("blacklist").unwrap_or_default());
+
 		Ok(BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type, &mut serialized_keypair)
 			.with_bootnodes(boot_nodes)
+			.with_blacklist(blacklist)
 			.with_tcp(tcp_port)
 			.with_udp(udp_port))
 	} else {
