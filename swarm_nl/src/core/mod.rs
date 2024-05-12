@@ -34,7 +34,10 @@ use libp2p::{
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
 
-use self::ping_config::*;
+use self::{
+	gossipsub_cfg::{Blacklist, GossipsubInfo},
+	ping_config::*,
+};
 
 use super::*;
 use crate::{setup::BootstrapConfig, util::string_to_peer_id};
@@ -109,7 +112,8 @@ pub struct CoreBuilder<T: EventHandler + Clone + Send + Sync + 'static> {
 	tcp_udp_port: (Port, Port),
 	/// The bootnodes to connect to.
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
-	/// The network event handler.
+	blacklist: Blacklist,
+	/// the network event handler
 	handler: T,
 	/// Prevents blocking forever due to absence of expected data from the network layer.
 	network_read_delay: AsyncDuration,
@@ -182,6 +186,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			keypair: config.keypair(),
 			tcp_udp_port: config.ports(),
 			boot_nodes: config.bootnodes(),
+			blacklist: config.blacklist(),
 			handler,
 			stream_size: usize::MAX,
 			// Default is to listen on all interfaces (ipv4).
@@ -519,23 +524,31 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			if let Some(peer_id) = string_to_peer_id(&peer_info.0) {
 				// Multiaddress
 				if let Ok(multiaddr) = peer_info.1.parse::<Multiaddr>() {
-					swarm
-						.behaviour_mut()
-						.kademlia
-						.add_address(&peer_id, multiaddr.clone());
+					// Strange but make sure the peers are not a part of our blacklist
+					if !self.blacklist.list.iter().any(|&id| id == peer_id) {
+						swarm
+							.behaviour_mut()
+							.kademlia
+							.add_address(&peer_id, multiaddr.clone());
 
-					println!("Dailing {}", multiaddr);
+						println!("Dailing {}", multiaddr);
 
-					// Dial them
-					swarm
-						.dial(peer_id)
-						.map_err(|_| SwarmNlError::RemotePeerDialError(multiaddr.to_string()))?;
+						// Dial them
+						swarm.dial(peer_id).map_err(|_| {
+							SwarmNlError::RemotePeerDialError(multiaddr.to_string())
+						})?;
+					}
 				}
 			}
 		}
 
 		// Begin DHT bootstrap, hopefully bootnodes were supplied
 		let _ = swarm.behaviour_mut().kademlia.bootstrap();
+
+		// Register and inform swarm of our blacklist
+		for peer_id in &self.blacklist.list {
+			swarm.behaviour_mut().gossipsub.blacklist_peer(peer_id);
+		}
 
 		// There must be a way for the application to communicate with the underlying networking
 		// core. This will involve accepting and pushing data to the application layer.
@@ -572,6 +585,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			manager,
 		};
 
+		// Set up Gossipsub network information
+		let gossip_info = GossipsubInfo {
+			blacklist: self.blacklist,
+		};
+
 		// Initials stream id
 		let stream_id = StreamId::new();
 		let stream_request_buffer =
@@ -583,6 +601,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		let network_info = NetworkInfo {
 			id: self.network_id,
 			ping: ping_info,
+			gossipsub: gossip_info,
 		};
 
 		// Build the network core
@@ -676,8 +695,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	/// serialized to protobuf format and only a single keypair can be saved at a time.
 	pub fn save_keypair_offline(&self, config_file_path: &str) -> bool {
 		// Check the file exists, and create one if not
-		if let Ok(_metadata) = fs::metadata(config_file_path) {
-		} else {
+		if let Err(_) = fs::metadata(config_file_path) {
 			fs::File::create(config_file_path).expect("could not create config file");
 		}
 
@@ -696,15 +714,15 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 					&format!("{}", self.keypair.key_type()),
 					config_file_path,
 				);
-			}
+			} 
 		}
 
 		false
 	}
 
-	/// Return the node's `PeerId`.
-	pub fn peer_id(&self) -> String {
-		self.keypair.public().to_peer_id().to_string()
+	/// Return the node's `PeerId`
+	pub fn peer_id(&self) -> PeerId {
+		self.keypair.public().to_peer_id()
 	}
 
 	/// Send data to the network layer and recieve a unique `StreamId` to track the request.
@@ -997,7 +1015,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GetNetworkInfo { peer_id: swarm.local_peer_id().clone(), connected_peers, external_addresses })).await;
 										},
 										// Send gossip message to peers
-										AppData::GossipsubBroadcastMessage { message, peers: _, topic } => {
+										AppData::GossipsubBroadcastMessage { message, topic } => {
 											// Get the topic hash
 											let topic_hash = TopicHash::from_raw(topic);
 
@@ -1042,8 +1060,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												(peer.to_owned(), topics.iter().map(|&t| t.clone().as_str().to_owned()).collect::<Vec<_>>())
 											}).collect::<Vec<_>>();
 
+											// Retrieve blacklist
+											let blacklist = network_info.gossipsub.blacklist.into_inner();
+
 											// Send the response back to the application layer
-											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubGetInfo { topics: subscribed_topics, mesh_peers })).await;
+											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubGetInfo { topics: subscribed_topics, mesh_peers, blacklist })).await;
 										},
 										// Exit a network we're a part of
 										AppData::GossipsubExitNetwork(topic) => {
@@ -1064,6 +1085,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											// Add to list
 											swarm.behaviour_mut().gossipsub.blacklist_peer(&peer);
 
+											// Add peer to blacklist
+											network_info.gossipsub.blacklist.list.insert(peer);
+
 											// Send the response back to the application layer
 											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBlacklistSuccess)).await;
 										},
@@ -1071,6 +1095,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 										AppData::GossipsubFilterBlacklist(peer) => {
 											// Add to list
 											swarm.behaviour_mut().gossipsub.remove_blacklisted_peer(&peer);
+
+											// Add peer to blacklist
+											network_info.gossipsub.blacklist.list.remove(&peer);
 
 											// Send the response back to the application layer
 											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBlacklistSuccess)).await;
@@ -1332,7 +1359,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													match request {
 														Rpc::ReqResponse { data } => {
 															// Pass request data to configured request handler
-															let response_data = network_core.state.handle_incoming_message(data);
+															let response_data = network_core.state.rpc_handle_incoming_message(data);
 
 															// construct an RPC
 															let response_rpc = Rpc::ReqResponse { data: response_data };
@@ -1367,14 +1394,20 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									// Gossipsub
 									CoreEvent::Gossipsub(event) => match event {
 										// We've recieved an inbound message
-										gossipsub::Event::Message { propagation_source, message_id, message } => {
-
+										gossipsub::Event::Message { propagation_source, message_id: _, message } => {
+											// Pass incoming data to configured handler
+											network_core.state.gossipsub_handle_incoming_message(propagation_source, message.data);
 										},
 										// A peer just subscribed
 										gossipsub::Event::Subscribed { peer_id, topic } => {
-											// We want to check that we care about the topic and then add it to our mesh
+											// Call handler
+											network_core.state.gossipsub_subscribe_message_recieved(peer_id, topic.to_string());
 										},
-										gossipsub::Event::Unsubscribed { peer_id, topic } => todo!(),
+										// A peer just unsubscribed
+										gossipsub::Event::Unsubscribed { peer_id, topic } => {
+											// Call handler
+											network_core.state.gossipsub_unsubscribe_message_recieved(peer_id, topic.to_string());
+										},
 										_ => {},
 									}
 								},
@@ -1481,7 +1514,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									// call configured handler
 									network_core.state.outgoing_connection_error(connection_id,  peer_id);
 								}
-								_ => todo!(),
+								_ => {},
 							}
 						},
 						_ => {}
