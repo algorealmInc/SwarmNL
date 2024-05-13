@@ -15,6 +15,13 @@ use libp2p::{
 	PeerId,
 };
 
+/// Time to wait for the other peer to act, during integration tests (in seconds)
+pub const ITEST_WAIT_TIME: u64 = 15;
+/// The key to test the Kademlia DHT
+pub const KADEMLIA_TEST_KEY: &str = "GOAT";
+/// The value to test the Kademlia DHT
+pub const KADEMLIA_TEST_VALUE: &str = "Steve Jobs";
+
 /// Sate of the Application
 #[derive(Clone)]
 pub struct AppState;
@@ -46,6 +53,15 @@ impl EventHandler for AppState {
 	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		println!("Recvd incoming RPC: {:?}", data);
 		data
+	}
+
+	// handle the incoming gossip message
+	fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<u8>) {
+		println!("Recvd incoming gossip: {:?}", data);
+	}
+
+	fn kademlia_put_record_success(&mut self, key: Vec<u8>) {
+		println!("Record successfully written to DHT. Key: {:?}", key);
 	}
 }
 
@@ -204,7 +220,7 @@ fn dial_peer_failure_works() {
 	});
 }
 
-#[cfg(feature = "listening-node")]
+#[cfg(feature = "test-listening-node")]
 #[test]
 fn dialing_peer_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -215,7 +231,7 @@ fn dialing_peer_works() {
 	});
 }
 
-#[cfg(feature = "dialing-node")]
+#[cfg(feature = "test-dialing-node")]
 #[test]
 fn dialing_peer_works() {
 	// use tokio runtime to test async function
@@ -224,7 +240,7 @@ fn dialing_peer_works() {
 		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
 
 		// what we're dialing
-		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
+		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666); 
 
 		let dial_request = AppData::DailPeer(node_1_peer_id, multi_addr.clone());
 		let stream_id = node_2.send_to_network(dial_request).await.unwrap();
@@ -239,8 +255,8 @@ fn dialing_peer_works() {
 fn kademlia_store_records_works() {
 	// Prepare an kademlia request to send to the network layer
 	let (key, value, expiration_time, explicit_peers) = (
-		"Deji".as_bytes().to_vec(),
-		"1000".as_bytes().to_vec(),
+		KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+		KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
 		None,
 		None,
 	);
@@ -268,8 +284,8 @@ fn kademlia_store_records_works() {
 fn kademlia_lookup_record_works() {
 	// Prepare an kademlia request to send to the network layer
 	let (key, value, expiration_time, explicit_peers) = (
-		"Deji".as_bytes().to_vec(),
-		"1000".as_bytes().to_vec(),
+		KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+		KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
 		None,
 		None,
 	);
@@ -290,7 +306,7 @@ fn kademlia_lookup_record_works() {
 
 			if let Ok(result) = node.fetch_from_network(kad_request).await {
 				if let AppResponse::KademliaLookupSuccess(value) = result {
-					assert_eq!("1000".as_bytes().to_vec(), value);
+					assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
 				}
 			}
 		}
@@ -302,7 +318,7 @@ fn kademlia_get_providers_works() {
 	// Note: we can only test for the error case here, an integration test is needed to actually check that the providers can be fetched
 
 	// Prepare an kademlia request to send to the network layer
-	let req_key = "Deji".as_bytes().to_vec();
+	let req_key = KADEMLIA_TEST_KEY.as_bytes().to_vec();
 
 	let kad_request = AppData::KademliaGetProviders {
 		key: req_key.clone(),
@@ -356,7 +372,7 @@ fn rpc_fetch_works() {
 	});
 }
 
-#[cfg(feature = "client-node")]
+#[cfg(feature = "test-client-node")]
 #[test]
 fn rpc_fetch_works() {
 	// use tokio runtime to test async function
@@ -498,6 +514,76 @@ fn gossipsub_info_works() {
 		}
 	});
 }
+
+// INTEGRATION TESTS FOR KADEMLIA
+// TWO NODES WILL INTERACT WITH EACH OTHER USING THE COMMANDS TO THE DHT
+// For fetch tests
+
+#[cfg(feature = "test-reading-node")]
+#[test]
+fn test_kademlia_itest_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		let mut node_1 = setup_node_1((51666, 51606)).await;
+
+		// Wait for a few seconds before trying to read the DHT
+		#[cfg(feature = "async-std-runtime")]
+		async_std::task::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
+
+		// Wait for a few seconds before trying to read the DHT
+		#[cfg(feature ="tokio-runtime")]
+		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
+
+		// now poll for the kademlia record
+		let kad_request = AppData::KademliaLookupRecord { key: KADEMLIA_TEST_KEY.as_bytes().to_vec() };
+		if let Ok(result) = node_1.fetch_from_network(kad_request).await {
+			if let AppResponse::KademliaLookupSuccess(value) = result {
+				assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
+			}
+		} else {
+			println!("No record found");
+		}
+	});
+}
+
+#[cfg(feature = "test-writing-node")]
+#[test]
+fn test_kademlia_itest_works() {
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the second node that will dial
+		let (mut node_2, node_1_peer_id) = setup_node_2((51666, 51606), (51667, 51607)).await;
+
+		// create request to read the DHT
+		let (key, value, expiration_time, explicit_peers) = (
+			KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+			KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
+			None,
+			None,
+		);
+
+		println!("fiudgjfd");
+	
+		let kad_request = AppData::KademliaStoreRecord {
+			key,
+			value,
+			expiration_time,
+			explicit_peers,
+		};
+
+		let res = node_2.fetch_from_network(kad_request).await;
+		println!("{:?}", res);
+
+		// if let Ok(_) = node_2.fetch_from_network(kad_request).await {
+		// 	loop {}
+		// } else {
+		// 	println!("Error");
+		// }
+	});
+}
+
+
+// SPECIFY THE RUNTIME TO RUN THE TESTS
 
 
 // KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
