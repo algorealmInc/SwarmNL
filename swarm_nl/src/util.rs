@@ -324,15 +324,12 @@ mod tests {
 			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
 		);
 
-		let black_list_node = "[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq]";
-
-		let black_list_node_trimmed = black_list_node.trim_matches(|c| c == '[' || c == ']');
-
-		let str_to_peer_id = string_to_peer_id(black_list_node_trimmed).unwrap();
+		let blacklist_peer_id: PeerId = PeerId::random();
+		let black_list_peer_id_string = format!("[{}]", blacklist_peer_id.to_base58());
 
 		config
 			.with_section(Some("blacklist"))
-			.set("blacklist", black_list_node.to_string());
+			.set("blacklist", black_list_peer_id_string);
 
 		// write config to a new INI file
 		config.write_to_file(file_path).unwrap_or_default();
@@ -341,7 +338,7 @@ mod tests {
 		let ini_file_result: BootstrapConfig = read_ini_file(file_path).unwrap();
 
 		assert_eq!(ini_file_result.blacklist().list.len(), 1);
-		assert!(ini_file_result.blacklist().list.contains(&str_to_peer_id));
+		assert!(ini_file_result.blacklist().list.contains(&blacklist_peer_id));
 
 		fs::remove_file(file_path).unwrap_or_default();
 	}
