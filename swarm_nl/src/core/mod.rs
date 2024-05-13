@@ -1298,6 +1298,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												network_core.state.kademlia_put_record_success(key.to_vec());
 											}
 											kad::QueryResult::PutRecord(Err(e)) => {
+												println!("{:?}", e);
 												let key = match e {
 													kad::PutRecordError::QuorumFailed { key, .. } => key,
 													kad::PutRecordError::Timeout { key, .. } => key,
