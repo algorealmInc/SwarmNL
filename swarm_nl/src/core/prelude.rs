@@ -39,7 +39,7 @@ pub enum AppData {
 	/// A simple echo message.
 	Echo(String),
 	/// Dail peer
-	DailPeer(MultiaddrString),
+	DailPeer(PeerId, MultiaddrString),
 	/// Store a value associated with a given key in the Kademlia DHT
 	KademliaStoreRecord {
 		key: Vec<u8>,
@@ -68,8 +68,6 @@ pub enum AppData {
 		/// Topic to send messages to
 		topic: String,
 		message: Vec<String>,
-		/// Explicit peers to gossip to
-		peers: Option<Vec<PeerId>>,
 	},
 	/// Join a mesh network
 	GossipsubJoinNetwork(String),
@@ -84,21 +82,23 @@ pub enum AppData {
 }
 
 /// Response to requests sent from the aplication to the network layer
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppResponse {
 	/// The value written to the network.
 	Echo(String),
 	/// The peer we dailed
-	DailPeer(String),
+	DailPeerSuccess(String),
 	/// Store record success
 	KademliaStoreRecordSuccess,
 	/// DHT lookup result
-	KademliaLookupRecord(Vec<u8>),
+	KademliaLookupSuccess(Vec<u8>),
 	/// Nodes storing a particular record in the DHT
 	KademliaGetProviders {
 		key: Vec<u8>,
 		providers: Vec<PeerIdString>,
 	},
+	/// No providers found,
+	KademliaNoProvidersFound,
 	/// Routing table information
 	KademliaGetRoutingTableInfo { protocol_id: String },
 	/// RPC result.
@@ -123,13 +123,15 @@ pub enum AppResponse {
 		topics: Vec<String>,
 		/// Peers we know about and their corresponding topics
 		mesh_peers: Vec<(PeerId, Vec<String>)>,
+		/// Peers we have blacklisted
+		blacklist: HashSet<PeerId>,
 	},
 	/// Blacklist operation success
-	GossipsubBlacklistSuccess
+	GossipsubBlacklistSuccess,
 }
 
 /// Network error type containing errors encountered during network operations
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum NetworkError {
 	#[error("timeout occured waiting for data from network layer")]
 	NetworkReadTimeout,
@@ -172,7 +174,6 @@ impl StreamId {
 pub type NetworkResult = Result<AppResponse, NetworkError>;
 
 /// Type that keeps track of the requests from the application layer.
-/// 
 /// This type has a maximum buffer size and will drop subsequent requests when full.
 /// It is unlikely to be ever full as the default is usize::MAX except otherwise specified during
 /// configuration. It is always good practice to read responses from the internal stream buffer
@@ -194,7 +195,6 @@ impl StreamRequestBuffer {
 	}
 
 	/// Push [`StreamId`]s into buffer.
-	/// 
 	/// Returns `false` if the buffer is full and request cannot be stored.
 	pub fn insert(&mut self, id: StreamId) -> bool {
 		if self.buffer.len() < self.size {
@@ -222,7 +222,6 @@ impl StreamResponseBuffer {
 	}
 
 	/// Push a [`StreamId`] into buffer.
-	/// 
 	/// Returns `false` if the buffer is full and request cannot be stored.
 	pub fn insert(&mut self, id: StreamId, response: AppResponseResult) -> bool {
 		if self.buffer.len() < self.size {
@@ -365,51 +364,10 @@ pub trait EventHandler {
 
 	/// Event that announces the arrival of a ping message from a peer.
 	/// The duration it took for a round trip is also returned
-	fn inbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
+	fn outbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
 		// Default implementation
 	}
 
-	/// Event that announces a `Ping` error
-	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure) {
-		// Default implementation
-	}
-
-	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol.
-	async fn identify_info_recieved(
-		&mut self,
-		
-		_peer_id: PeerId,
-		_info: Info,
-	) {
-	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
-	fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info) {
-		// Default implementation
-	}
-
-	/// Event that announces the successful write of a record to the DHT.
-	async fn kademlia_put_record_success(&mut self,  _key: Vec<u8>) {
-	/// Event that announces the successful write of a record to the DHT
-	fn kademlia_put_record_success(&mut self, _key: Vec<u8>) {
-		// Default implementation
-	}
-
-	/// Event that announces the failure of a node to save a record.
-	async fn kademlia_put_record_error(&mut self) {
-	/// Event that announces the failure of a node to save a record
-	fn kademlia_put_record_error(&mut self) {
-		// Default implementation
-	}
-
-	/// Event that announces a node as a provider of a record in the DHT.
-	async fn kademlia_start_providing_success(&mut self,  _key: Vec<u8>) {
-	/// Event that announces a node as a provider of a record in the DHT
-	fn kademlia_start_providing_success(&mut self, _key: Vec<u8>) {
-		// Default implementation
-	}
-
-	/// Event that announces the failure of a node to become a provider of a record in the DHT.
-	async fn kademlia_start_providing_error(&mut self) {
-=======
 	/// Event that announces a `Ping` error
 	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure) {
 		// Default implementation
@@ -441,36 +399,59 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces the arrival of an RPC message
-	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
+	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
+
+	/// Event that announces that a peer has just left a network
+	fn gossipsub_unsubscribe_message_recieved(&mut self, _peer_id: PeerId, _topic: String) {
+		// Default implementation
+	}
+
+	/// Event that announces that a peer has just joined a network
+	fn gossipsub_subscribe_message_recieved(&mut self, _peer_id: PeerId, _topic: String) {
+		// Default implementation
+	}
+
+	/// Event that announces the arrival of a gossip message
+	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {
+		// Default implementation
+	}
 }
 
-/// Default network event handler.
+/// Default network event handler
 #[derive(Clone)]
 pub struct DefaultHandler;
-/// Implement [`EventHandler`] for [`DefaultHandler`].
+/// Implement [`EventHandler`] for [`DefaultHandler`]
 impl EventHandler for DefaultHandler {
 	/// Echo the message back to the sender
-	fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		data
+	}
+
+	/// Echo the incoming gossip message to the console
+	fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<u8>) {
+		// Default implementation
 	}
 }
 
 /// Important information to obtain from the [`CoreBuilder`], to properly handle network
-/// operations.
+/// operations
 #[derive(Clone)]
 pub(super) struct NetworkInfo {
-	/// The name/id of the network.
+	/// The name/id of the network
 	pub id: StreamProtocol,
-	/// Important information to manage `Ping` operations.
+	/// Important information to manage `Ping` operations
 	pub ping: PingInfo,
+	/// Important information to manage `Gossipsub` operations
+	pub gossipsub: gossipsub_cfg::GossipsubInfo,
 }
 
-/// Module that contains important data structures to manage `Ping` operations on the network.
+/// Module that contains important data structures to manage `Ping` operations on the network
 pub mod ping_config {
 	use libp2p_identity::PeerId;
 	use std::{collections::HashMap, time::Duration};
 
-	/// Policies to handle a `Ping` error. All connections to peers are closed during a disconnect operation.
+	/// Policies to handle a `Ping` error
+	/// - All connections to peers are closed during a disconnect operation.
 	#[derive(Debug, Clone)]
 	pub enum PingErrorPolicy {
 		/// Do not disconnect under any circumstances.
@@ -481,7 +462,7 @@ pub mod ping_config {
 		DisconnectAfterMaxTimeouts(u16),
 	}
 
-	/// Stores critical information for the execution of the [`PingErrorPolicy`].
+	/// Struct that stores critical information for the execution of the [`PingErrorPolicy`].
 	#[derive(Debug, Clone)]
 	pub struct PingManager {
 		/// The number of timeout errors encountered from a peer
@@ -491,6 +472,7 @@ pub mod ping_config {
 	}
 
 	/// The configuration for the `Ping` protocol
+	#[derive(Debug, Clone)]
 	pub struct PingConfig {
 		/// The interval between successive pings.
 		/// Default is 15 seconds.
@@ -510,6 +492,31 @@ pub mod ping_config {
 	}
 }
 
+/// Module containing important state relating to the `Gossipsub` protocol
+pub(crate) mod gossipsub_cfg {
+	use super::*;
+
+	/// The struct containing the list of blacklisted peers
+	#[derive(Clone, Debug, Default)]
+	pub struct Blacklist {
+		// Blacklist
+		pub list: HashSet<PeerId>,
+	}
+
+	impl Blacklist {
+		/// Return the inner list we're keeping track of
+		pub fn into_inner(&self) -> HashSet<PeerId> {
+			self.list.clone()
+		}
+	}
+
+	/// Important information to manage `Gossipsub` operations
+	#[derive(Clone)]
+	pub struct GossipsubInfo {
+		pub blacklist: Blacklist,
+	}
+}
+
 /// Network queue that tracks the execution of application requests in the network layer
 pub(super) struct ExecQueue {
 	buffer: Mutex<VecDeque<StreamId>>,
@@ -523,12 +530,12 @@ impl ExecQueue {
 		}
 	}
 
-	/// Remove a [`StreamId`] from the top of the queue.
+	// Remove a [`StreamId`] from the top of the queue.
 	pub async fn pop(&mut self) -> Option<StreamId> {
 		self.buffer.lock().await.pop_front()
 	}
 
-	/// Append a [`StreamId`] to the queue.
+	// Append a [`StreamId`] to the queue.
 	pub async fn push(&mut self, stream_id: StreamId) {
 		self.buffer.lock().await.push_back(stream_id);
 	}
