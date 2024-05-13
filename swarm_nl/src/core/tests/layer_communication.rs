@@ -336,7 +336,13 @@ fn kademlia_get_routing_table_info_works() {
 	});
 }
 
-// For fetch tests
+// -- For fetch tests --
+
+// To run these test you will need to execute the following commands in separate terminals (in this order):
+// cargo test rpc --features=tokio-runtime --features=server-node -- --nocapture
+// cargo test rpc  --features=tokio-runtime --features=client-node -- --nocapture
+// And then you can check that the server node prints out a "Recvd incoming RPC:" message with the data sent by the client node.
+
 #[cfg(feature = "server-node")]
 #[test]
 fn rpc_fetch_works() {
@@ -399,7 +405,8 @@ fn get_network_info_works() {
 	});
 }
 
-// For gossip tests
+// -- For gossip tests --
+
 #[test]
 fn gossipsub_join_and_exit_network_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {

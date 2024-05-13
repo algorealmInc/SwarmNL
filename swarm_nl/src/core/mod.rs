@@ -218,7 +218,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 				..self
 			}
 		} else {
-			panic!("Could not parse provided network id: it must be of the format '/protocol-name/version'");
+			panic!("Could not parse provided network id");
 		}
 	}
 

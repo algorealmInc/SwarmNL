@@ -133,9 +133,7 @@ fn network_id_custom_behavior_works_as_expected() {
 }
 
 #[test]
-#[should_panic(
-    "Could not parse provided network id: it must be of the format '/protocol-name/version'"
-)]
+#[should_panic(expected="Could not parse provided network id")]
 fn network_id_custom_behavior_fails() {
     // build a node with the default network id
     let mut custom_builder = setup_core_builder();
@@ -178,7 +176,7 @@ fn save_keypair_offline_works_tokio() {
     let saved_2 = result.save_keypair_offline(file_path_2);
     assert_eq!(saved_2, true);
 
-    // clean up
+    // // clean up
     fs::remove_file(file_path_1).unwrap_or_default();
     fs::remove_file(file_path_2).unwrap_or_default();
 }
@@ -216,29 +214,4 @@ fn save_keypair_offline_works_async_std() {
     // clean up
     fs::remove_file(file_path_1).unwrap_or_default();
     fs::remove_file(file_path_2).unwrap_or_default();
-}
-
-#[test]
-fn node_setup_with_custom_ping_works() {
-    // e.g. if the node is unreachable after a specific amount of time, it should be
-    // disconnected if 10th inteval is configured, if failed 9th time, test decay as each ping
-    // comes in
-
-    // build a node with the default network id
-    let default_node = setup_core_builder();
-
-    // custom ping configuration
-    let custom_ping = PingConfig {
-        interval: Duration::from_secs(5),
-        timeout: Duration::from_secs(10),
-        err_policy: PingErrorPolicy::DisconnectAfterMaxErrors(10),
-    };
-
-    // pass in the custom ping configuration and assert it works as expected
-    let custom_node = default_node.with_ping(custom_ping.clone());
-
-    let ping_from_custom_node = custom_node.ping;
-
-    // The peer will be disconnected after 20 successive timeout errors are recorded
-    println!("❤️❤️❤️❤️❤️{:?}", ping_from_custom_node.1);
 }
