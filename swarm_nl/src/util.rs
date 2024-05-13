@@ -308,4 +308,41 @@ mod tests {
 
 		assert_eq!(result, expected);
 	}
+
+	#[test]
+	fn bootstrap_config_blacklist_works() {
+		let file_path = "bootstrap_config_blacklist_test.ini";
+
+		let mut config = Ini::new();
+		config
+			.with_section(Some("ports"))
+			.set("tcp", CUSTOM_TCP_PORT.to_string())
+			.set("udp", CUSTOM_UDP_PORT.to_string());
+
+		config.with_section(Some("bootstrap")).set(
+			"boot_nodes",
+			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
+		);
+
+		let black_list_node = "[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq]";
+
+		let black_list_node_trimmed = black_list_node.trim_matches(|c| c == '[' || c == ']');
+
+		let str_to_peer_id = string_to_peer_id(black_list_node_trimmed).unwrap();
+
+		config
+			.with_section(Some("blacklist"))
+			.set("blacklist", black_list_node.to_string());
+
+		// write config to a new INI file
+		config.write_to_file(file_path).unwrap_or_default();
+
+		// read the new file
+		let ini_file_result: BootstrapConfig = read_ini_file(file_path).unwrap();
+
+		assert_eq!(ini_file_result.blacklist().list.len(), 1);
+		assert!(ini_file_result.blacklist().list.contains(&str_to_peer_id));
+
+		fs::remove_file(file_path).unwrap_or_default();
+	}
 }
