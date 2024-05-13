@@ -362,7 +362,7 @@ pub trait EventHandler {
 		// Default implementation
 	}
 
-	/// Event that announces the arrival of a ping message from a peer.
+	/// Event that announces the arrival of a pong message from a peer.
 	/// The duration it took for a round trip is also returned
 	fn outbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
 		// Default implementation
