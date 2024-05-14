@@ -1,5 +1,11 @@
-/// Copyright (c) 2024 Algorealm
-/// Core data structures and protocol implementations for building a swarm.
+// Copyright 2024 Algorealm
+// Apache 2.0 License
+
+//! Core data structures and protocol implementations for building a swarm.
+
+#![doc = include_str!("../../doc/core/NetworkBuilder.md")]
+#![doc = include_str!("../../doc/core/ApplicationInteraction.md")]
+
 use std::{
 	collections::{HashMap, HashSet},
 	fs,
@@ -46,7 +52,7 @@ pub use prelude::*;
 mod tests;
 
 /// The Core Behaviour implemented which highlights the various protocols
-/// we'll be adding support for
+/// we'll be adding support for.
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "CoreEvent")]
 struct CoreBehaviour {
@@ -57,7 +63,7 @@ struct CoreBehaviour {
 	gossipsub: gossipsub::Behaviour,
 }
 
-/// Network events generated as a result of supported and configured `NetworkBehaviour`'s
+/// Network events generated as a result of supported and configured [`NetworkBehaviour`]'s
 #[derive(Debug)]
 enum CoreEvent {
 	Ping(ping::Event),
@@ -67,42 +73,42 @@ enum CoreEvent {
 	Gossipsub(gossipsub::Event),
 }
 
-/// Implement ping events for [`CoreEvent`]
+/// Implement ping events for [`CoreEvent`].
 impl From<ping::Event> for CoreEvent {
 	fn from(event: ping::Event) -> Self {
 		CoreEvent::Ping(event)
 	}
 }
 
-/// Implement kademlia events for [`CoreEvent`]
+/// Implement kademlia events for [`CoreEvent`].
 impl From<kad::Event> for CoreEvent {
 	fn from(event: kad::Event) -> Self {
 		CoreEvent::Kademlia(event)
 	}
 }
 
-/// Implement identify events for [`CoreEvent`]
+/// Implement identify events for [`CoreEvent`].
 impl From<identify::Event> for CoreEvent {
 	fn from(event: identify::Event) -> Self {
 		CoreEvent::Identify(event)
 	}
 }
 
-/// Implement request_response events for [`CoreEvent`]
+/// Implement request_response events for [`CoreEvent`].
 impl From<request_response::Event<Rpc, Rpc>> for CoreEvent {
 	fn from(event: request_response::Event<Rpc, Rpc>) -> Self {
 		CoreEvent::RequestResponse(event)
 	}
 }
 
-/// Implement gossipsub events for [`CoreEvent`]
+/// Implement gossipsub events for [`CoreEvent`].
 impl From<gossipsub::Event> for CoreEvent {
 	fn from(event: gossipsub::Event) -> Self {
 		CoreEvent::Gossipsub(event)
 	}
 }
 
-/// Structure containing necessary data to build [`Core`]
+/// Structure containing necessary data to build [`Core`].
 pub struct CoreBuilder<T: EventHandler + Clone + Send + Sync + 'static> {
 	network_id: StreamProtocol,
 	keypair: Keypair,
@@ -115,18 +121,18 @@ pub struct CoreBuilder<T: EventHandler + Clone + Send + Sync + 'static> {
 	/// internally.
 	stream_size: usize,
 	ip_address: IpAddr,
-	/// Connection keep-alive duration while idle
+	/// Connection keep-alive duration while idle.
 	keep_alive_duration: Seconds,
-	transport: TransportOpts, /* Maybe this can be a collection in the future to support
-	                           * additive transports */
-	/// The `Behaviour` of the `Ping` protocol
+	/// The transport protocols being used.
+	/// TODO: This can be a collection in the future to support additive transports.
+	transport: TransportOpts,
+	/// The `Behaviour` of the `Ping` protocol.
 	ping: (ping::Behaviour, PingErrorPolicy),
-	/// The `Behaviour` of the `Kademlia` protocol
+	/// The `Behaviour` of the `Kademlia` protocol.
 	kademlia: kad::Behaviour<kad::store::MemoryStore>,
-	/// The `Behaviour` of the `Identify` protocol
+	/// The `Behaviour` of the `Identify` protocol.
 	identify: identify::Behaviour,
-	/// The `Behaviour` of the `Request-Response` protocol.
-	/// The second field value is the function to handle an incoming request from a peer
+	/// The `Behaviour` of the `Request-Response` protocol. The second field value is the function to handle an incoming request from a peer.
 	request_response: Behaviour<Rpc, Rpc>,
 	/// The `Behaviour` of the `GossipSub` protocol
 	gossipsub: gossipsub::Behaviour,
@@ -140,18 +146,17 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		// The default network id
 		let network_id = DEFAULT_NETWORK_ID;
 
-		// TCP/IP and QUIC are supported by default
+		// The default transports (TCP/IP and QUIC)
 		let default_transport = TransportOpts::TcpQuic {
 			tcp_config: TcpConfig::Default,
 		};
 
-		// Peer Id
+		// The peer ID of the node
 		let peer_id = config.keypair().public().to_peer_id();
 
 		// Set up default config for Kademlia
 		let mut cfg = kad::Config::default();
 		cfg.set_protocol_names(vec![StreamProtocol::new(network_id)]);
-
 		let store = kad::store::MemoryStore::new(peer_id);
 		let kademlia = kad::Behaviour::with_config(peer_id, store, cfg);
 
@@ -184,9 +189,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			blacklist: config.blacklist(),
 			handler,
 			stream_size: usize::MAX,
-			// Default is to listen on all interfaces (ipv4)
-			ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-			// Default to 60 seconds
+			// Default is to listen on all interfaces (ipv4).
+			ip_address: IpAddr::V4(DEFAULT_IP_ADDRESS),
 			keep_alive_duration: DEFAULT_KEEP_ALIVE_DURATION,
 			transport: default_transport,
 			// The peer will be disconnected after 20 successive timeout errors are recorded
@@ -201,9 +205,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		}
 	}
 
-	/// Explicitly configure the network (protocol) id e.g /swarmnl/1.0.
-	/// Note that it must be of the format "/protocol-name/version" else it will default to
-	/// "/swarmnl/1.0"
+
+	/// Explicitly configure the network (protocol) id.
+	/// 
+	/// Note that it must be of the format "/protocol-name/version" otherwise it will default to
+	/// "/swarmnl/1.0". See: [`DEFAULT_NETWORK_ID`].
 	pub fn with_network_id(self, protocol: String) -> Self {
 		if protocol.len() > MIN_NETWORK_ID_LENGTH.into() && protocol.starts_with("/") {
 			CoreBuilder {
@@ -217,7 +223,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		}
 	}
 
-	/// Configure the IP address to listen on
+	/// Configure the IP address to listen on.
+	/// 
+	/// If none is specified, the default value is `Ipv4Addr::new(0, 0, 0, 0)`. See: [`DEFAULT_IP_ADDRESS`].
 	pub fn listen_on(self, ip_address: IpAddr) -> Self {
 		CoreBuilder { ip_address, ..self }
 	}
@@ -305,8 +313,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { transport, ..self }
 	}
 
-	/// Configure network event handler
-	/// This configures the functions to be called when various network events take place
+	/// Configure network event handler.
+	/// This configures the functions to be called when various network events take place.
 	pub fn configure_network_events(self, handler: T) -> Self {
 		CoreBuilder { handler, ..self }
 	}
@@ -318,22 +326,15 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 
 	/// Build the [`Core`] data structure.
 	///
-	/// Handles the configuration of the libp2p Swarm structure and the selected transport
-	/// protocols, behaviours and node identity.
+	/// Handles the configuration of the libp2p Swarm structure and the selected transport protocols, behaviours and node identity for tokio and async-std runtimes. The Swarm is wrapped in the Core
+	/// construct which serves as the interface to interact with the internal networking layer.
 	pub async fn build(self) -> SwarmNlResult<Core<T>> {
-		// Build and configure the libp2p Swarm structure. Thereby configuring the selected
-		// transport protocols, behaviours and node identity. The Swarm is wrapped in the Core
-		// construct which serves as the interface to interact with the internal networking
-		// layer
-
 		#[cfg(feature = "async-std-runtime")]
 		let mut swarm = {
-			// We're dealing with async-std here
-			// Configure transports
+			// Configure transports for default and custom configurations
 			let swarm_builder: SwarmBuilder<_, _> = match self.transport {
 				TransportOpts::TcpQuic { tcp_config } => match tcp_config {
 					TcpConfig::Default => {
-						// Use the default config
 						libp2p::SwarmBuilder::with_existing_identity(self.keypair.clone())
 							.with_async_std()
 							.with_tcp(
@@ -351,13 +352,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 							.await
 							.map_err(|_| SwarmNlError::DNSConfigError)?
 					},
-
 					TcpConfig::Custom {
 						ttl,
 						nodelay,
 						backlog,
 					} => {
-						// Use the provided config
 						let tcp_config = tcp::Config::default()
 							.ttl(ttl)
 							.nodelay(nodelay)
@@ -390,7 +389,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			// Configure the selected protocols and their corresponding behaviours
 			swarm_builder
 				.with_behaviour(|_|
-                        // Configure the selected behaviours
                         CoreBehaviour {
                             ping: self.ping.0,
                             kademlia: self.kademlia,
@@ -407,12 +405,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 
 		#[cfg(feature = "tokio-runtime")]
 		let mut swarm = {
-			// We're dealing with tokio here
-			// Configure transports
 			let swarm_builder: SwarmBuilder<_, _> = match self.transport {
 				TransportOpts::TcpQuic { tcp_config } => match tcp_config {
 					TcpConfig::Default => {
-						// Use the default config
 						libp2p::SwarmBuilder::with_existing_identity(self.keypair.clone())
 							.with_tokio()
 							.with_tcp(
@@ -427,13 +422,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 							})?
 							.with_quic()
 					},
-
 					TcpConfig::Custom {
 						ttl,
 						nodelay,
 						backlog,
 					} => {
-						// Use the provided config
 						let tcp_config = tcp::Config::default()
 							.ttl(ttl)
 							.nodelay(nodelay)
@@ -463,7 +456,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			// Configure the selected protocols and their corresponding behaviours
 			swarm_builder
 				.with_behaviour(|_|
-                        // Configure the selected behaviours
                         CoreBehaviour {
                             ping: self.ping.0,
                             kademlia: self.kademlia,
@@ -479,7 +471,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		};
 
 		// Configure the transport multiaddress and begin listening.
-		// It can handle multiple future tranports based on configuration e.g WebRTC
+		// It can handle multiple future tranports based on configuration e.g, in the future, WebRTC.
 		match self.transport {
 			// TCP/IP and QUIC
 			TransportOpts::TcpQuic { tcp_config: _ } => {
@@ -546,11 +538,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		}
 
 		// There must be a way for the application to communicate with the underlying networking
-		// core. This will involve acceptiing data and pushing data to the application layer.
+		// core. This will involve accepting and pushing data to the application layer.
 		// Two streams will be opened: The first mpsc stream will allow SwarmNL push data to the
-		// application and the application will comsume it (single consumer) The second stream
+		// application and the application will consume it (single consumer). The second stream
 		// will have SwarmNl (being the consumer) recieve data and commands from multiple areas
-		// in the application;
+		// in the application.
 		let (application_sender, network_receiver) =
 			mpsc::channel::<StreamData>(STREAM_BUFFER_CAPACITY);
 		let (network_sender, application_receiver) =
@@ -660,16 +652,16 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	}
 }
 
-/// The core interface for the application layer to interface with the networking layer
+/// The core interface for the application layer to interface with the networking layer.
 #[derive(Clone)]
 pub struct Core<T: EventHandler + Clone + Send + Sync + 'static> {
 	keypair: Keypair,
 	/// The producing end of the stream that sends data to the network layer from the
-	/// application
+	/// application.
 	application_sender: Sender<StreamData>,
-	/// The consuming end of the stream that recieves data from the network layer
+	/// The consuming end of the stream that recieves data from the network layer.
 	// application_receiver: Receiver<StreamData>,
-	/// The producing end of the stream that sends data from the network layer to the application
+	/// The producing end of the stream that sends data from the network layer to the application.
 	// network_sender: Sender<StreamData>,
 	/// This serves as a buffer for the results of the requests to the network layer.
 	/// With this, applications can make async requests and fetch their results at a later time
@@ -722,7 +714,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		self.keypair.public().to_peer_id()
 	}
 
-	/// Send data to the network layer and recieve a unique `StreamId` to track the request
+	/// Send data to the network layer and recieve a unique `StreamId` to track the request.
+	/// 
 	/// If the internal stream buffer is full, `None` will be returned.
 	pub async fn send_to_network(&mut self, app_request: AppData) -> Option<StreamId> {
 		// Generate stream id
@@ -885,9 +878,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	}
 
 	/// Handle async operations, which basically involved handling two major data sources:
+	/// 
 	/// - Streams coming from the application layer.
 	/// - Events generated by (libp2p) network activities.
-	/// Important information are sent to the application layer over a (mpsc) stream
+	///
+	/// Important information are sent to the application layer over a (mpsc) stream.
 	async fn handle_async_operations(
 		mut swarm: Swarm<CoreBehaviour>,
 		mut network_info: NetworkInfo,

@@ -8,11 +8,11 @@ use self::ping_config::PingInfo;
 use super::*;
 
 /// Type to indicate the duration (in seconds) to wait for data from the network layer before timing
-/// out
+/// out.
 pub const NETWORK_READ_TIMEOUT: u64 = 60;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
-/// the repsonse buffer (7 seconds)
+/// the repsonse buffer (7 seconds).
 pub const TASK_SLEEP_DURATION: u64 = 7;
 
 /// Type that represents the response of the network layer to the application layer's event handler
@@ -27,16 +27,16 @@ pub const STREAM_BUFFER_CAPACITY: usize = 100;
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug, Clone)]
 pub(super) enum StreamData {
-	/// Application data sent over the stream
+	/// Application data sent over the stream.
 	FromApplication(StreamId, AppData),
-	/// Network response data sent over the stream to the application layer
+	/// Network response data sent over the stream to the application layer.
 	ToApplication(StreamId, AppResponse),
 }
 
-/// Data sent from the application layer to the networking layer
+/// Data sent from the application layer to the networking layer.
 #[derive(Debug, Clone)]
 pub enum AppData {
-	/// A simple echo message
+	/// A simple echo message.
 	Echo(String),
 	/// Dail peer
 	DailPeer(PeerId, MultiaddrString),
@@ -49,17 +49,17 @@ pub enum AppData {
 		// store on explicit peers
 		explicit_peers: Option<Vec<PeerIdString>>,
 	},
-	/// Perform a lookup of a value associated with a given key in the Kademlia DHT
+	/// Perform a lookup of a value associated with a given key in the Kademlia DHT.
 	KademliaLookupRecord { key: Vec<u8> },
-	/// Perform a lookup of peers that store a record
+	/// Perform a lookup of peers that store a record.
 	KademliaGetProviders { key: Vec<u8> },
-	/// Stop providing a record on the network
+	/// Stop providing a record on the network.
 	KademliaStopProviding { key: Vec<u8> },
-	/// Remove record from local store
+	/// Remove record from local store.
 	KademliaDeleteRecord { key: Vec<u8> },
-	/// Return important information about the local routing table
+	/// Return important information about the local routing table.
 	KademliaGetRoutingTableInfo,
-	/// Fetch data(s) quickly from a peer over the network
+	/// Fetch data(s) quickly from a peer over the network.
 	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
 	/// Get network information about the node
 	GetNetworkInfo,
@@ -84,7 +84,7 @@ pub enum AppData {
 /// Response to requests sent from the aplication to the network layer
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppResponse {
-	/// The value written to the network
+	/// The value written to the network.
 	Echo(String),
 	/// The peer we dailed
 	DailPeerSuccess(String),
@@ -101,9 +101,9 @@ pub enum AppResponse {
 	KademliaNoProvidersFound,
 	/// Routing table information
 	KademliaGetRoutingTableInfo { protocol_id: String },
-	/// RPC result
+	/// RPC result.
 	FetchData(Vec<Vec<u8>>),
-	/// A network error occured while executing the request
+	/// A network error occured while executing the request.
 	Error(NetworkError),
 	/// Important information about the node
 	GetNetworkInfo {
@@ -153,7 +153,7 @@ pub enum NetworkError {
 	GossipsubJoinNetworkError,
 }
 
-/// A simple struct used to track requests sent from the application layer to the network layer
+/// A simple struct used to track requests sent from the application layer to the network layer.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct StreamId(u32);
 
@@ -164,13 +164,13 @@ impl StreamId {
 		StreamId(0)
 	}
 
-	/// Generate a new random stream id, using the current as guide
+	/// Generate a new random stream id, using the current as guide.
 	pub fn next(current_id: StreamId) -> Self {
 		StreamId(current_id.0.wrapping_add(1))
 	}
 }
 
-/// Type that specifies the result of querying the network layer
+/// Type that specifies the result of querying the network layer.
 pub type NetworkResult = Result<AppResponse, NetworkError>;
 
 /// Type that keeps track of the requests from the application layer.
@@ -180,13 +180,13 @@ pub type NetworkResult = Result<AppResponse, NetworkError>;
 /// using `query_network()` or explicitly using `recv_from_network`
 #[derive(Clone, Debug)]
 pub(super) struct StreamRequestBuffer {
-	/// Max requests we can keep track of
+	/// Max requests we can keep track of.
 	size: usize,
 	buffer: HashSet<StreamId>,
 }
 
 impl StreamRequestBuffer {
-	/// Create a new request buffer
+	/// Create a new request buffer.
 	pub fn new(buffer_size: usize) -> Self {
 		Self {
 			size: buffer_size,
@@ -195,7 +195,7 @@ impl StreamRequestBuffer {
 	}
 
 	/// Push [`StreamId`]s into buffer.
-	/// Returns `false` if the buffer is full and request cannot be stored
+	/// Returns `false` if the buffer is full and request cannot be stored.
 	pub fn insert(&mut self, id: StreamId) -> bool {
 		if self.buffer.len() < self.size {
 			self.buffer.insert(id);
@@ -207,13 +207,13 @@ impl StreamRequestBuffer {
 
 /// Type that keeps track of the response to the requests from the application layer.
 pub(super) struct StreamResponseBuffer {
-	/// Max responses we can keep track of
+	/// Max responses we can keep track of.
 	size: usize,
 	buffer: HashMap<StreamId, AppResponseResult>,
 }
 
 impl StreamResponseBuffer {
-	/// Create a new request buffer
+	/// Create a new request buffer.
 	pub fn new(buffer_size: usize) -> Self {
 		Self {
 			size: buffer_size,
@@ -222,7 +222,7 @@ impl StreamResponseBuffer {
 	}
 
 	/// Push a [`StreamId`] into buffer.
-	/// Returns `false` if the buffer is full and request cannot be stored
+	/// Returns `false` if the buffer is full and request cannot be stored.
 	pub fn insert(&mut self, id: StreamId, response: AppResponseResult) -> bool {
 		if self.buffer.len() < self.size {
 			self.buffer.insert(id, response);
@@ -231,24 +231,24 @@ impl StreamResponseBuffer {
 		false
 	}
 
-	/// Remove a [`StreamId`] from the buffer
+	/// Remove a [`StreamId`] from the buffer.
 	pub fn remove(&mut self, id: &StreamId) -> Option<AppResponseResult> {
 		self.buffer.remove(&id)
 	}
 }
 
-/// Type representing the RPC data structure sent between nodes in the network
+/// Type representing the RPC data structure sent between nodes in the network.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) enum Rpc {
-	/// Using request-response
+	/// Using request-response.
 	ReqResponse { data: Vec<Vec<u8>> },
 }
 
-/// The configuration for the RPC protocol
+/// The configuration for the RPC protocol.
 pub struct RpcConfig {
-	/// Timeout for inbound and outbound requests
+	/// Timeout for inbound and outbound requests.
 	pub timeout: Duration,
-	/// Maximum number of concurrent inbound + outbound streams
+	/// Maximum number of concurrent inbound + outbound streams.
 	pub max_concurrent_streams: usize,
 }
 
@@ -462,15 +462,15 @@ pub mod ping_config {
 	/// - All connections to peers are closed during a disconnect operation.
 	#[derive(Debug, Clone)]
 	pub enum PingErrorPolicy {
-		/// Do not disconnect under any circumstances
+		/// Do not disconnect under any circumstances.
 		NoDisconnect,
-		/// Disconnect after a number of outbound errors
+		/// Disconnect after a number of outbound errors.
 		DisconnectAfterMaxErrors(u16),
-		/// Disconnect after a certain number of concurrent timeouts
+		/// Disconnect after a certain number of concurrent timeouts.
 		DisconnectAfterMaxTimeouts(u16),
 	}
 
-	/// Struct that stores critical information for the execution of the [`PingErrorPolicy`]
+	/// Struct that stores critical information for the execution of the [`PingErrorPolicy`].
 	#[derive(Debug, Clone)]
 	pub struct PingManager {
 		/// The number of timeout errors encountered from a peer
@@ -483,16 +483,16 @@ pub mod ping_config {
 	#[derive(Debug, Clone)]
 	pub struct PingConfig {
 		/// The interval between successive pings.
-		/// Default is 15 seconds
+		/// Default is 15 seconds.
 		pub interval: Duration,
 		/// The duration before which the request is considered failure.
-		/// Default is 20 seconds
+		/// Default is 20 seconds.
 		pub timeout: Duration,
-		/// Error policy
+		/// Error policy.
 		pub err_policy: PingErrorPolicy,
 	}
 
-	/// Critical information to manage `Ping` operations
+	/// Critical information to manage `Ping` operations.
 	#[derive(Debug, Clone)]
 	pub struct PingInfo {
 		pub policy: PingErrorPolicy,
@@ -538,12 +538,12 @@ impl ExecQueue {
 		}
 	}
 
-	// Remove a [`StreamId`] from the top of the queue
+	// Remove a [`StreamId`] from the top of the queue.
 	pub async fn pop(&mut self) -> Option<StreamId> {
 		self.buffer.lock().await.pop_front()
 	}
 
-	// Append a [`StreamId`] to the queue
+	// Append a [`StreamId`] to the queue.
 	pub async fn push(&mut self, stream_id: StreamId) {
 		self.buffer.lock().await.push_back(stream_id);
 	}

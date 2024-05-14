@@ -1,9 +1,10 @@
-/// Copyright (c) 2024 Algorealm
+// Copyright 2024 Algorealm
+// Apache 2.0 License
 
-// The module containing the data structures and functions to setup a node identity and
-/// configure it for networking.
-///
-/// This file is part of the SwarmNl library.
+//! Data structures and functions to setup a node identity and configure it for networking.
+
+#![doc = include_str!("../doc/setup/NodeSetup.md")]
+
 use std::collections::HashMap;
 
 use crate::core::gossipsub_cfg::Blacklist;
@@ -14,23 +15,23 @@ pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 /// Import the contents of the exported modules into this module
 use super::*;
 
-/// Configuration data required for node bootstrap
+/// Configuration data required for node bootstrap.
 #[derive(Debug)]
 pub struct BootstrapConfig {
-	/// The port to listen on if using the TCP/IP protocol
+	/// The port to listen on if using the TCP/IP protocol.
 	tcp_port: Port,
-	/// The port to listen on if using the UDP or QUIC protocol
+	/// The port to listen on if using the UDP or QUIC protocol.
 	udp_port: Port,
-	/// The Cryptographic Keypair for node identification and message auth
+	/// The Cryptographic Keypair for node identification and message auth.
 	keypair: Keypair,
-	/// Bootstrap peers
+	/// Bootstrap peers.
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
 	/// Blacklisted peers
 	blacklist: Blacklist
 }
 
 impl BootstrapConfig {
-	/// Read from a bootstrap config file on disk
+	/// Read from a bootstrap config file on disk.
 	///
 	/// # Panics
 	///
@@ -42,21 +43,21 @@ impl BootstrapConfig {
 	/// Return a new `BootstrapConfig` struct populated by default (empty) values.
 	///
 	/// Must be called first if the config is to be explicitly built without reading `.ini` file
-	/// from disk
+	/// from disk.
 	pub fn new() -> Self {
 		BootstrapConfig {
-			// Default TCP/IP port if not specified
+			// Default TCP/IP port if not specified.
 			tcp_port: MIN_PORT,
-			// Default UDP port if not specified
+			// Default UDP port if not specified.
 			udp_port: MAX_PORT,
-			// Default node keypair type i.e Ed25519
+			// Default node keypair type i.e Ed25519.
 			keypair: Keypair::generate_ed25519(),
 			boot_nodes: Default::default(),
 			blacklist: Default::default()
 		}
 	}
 
-	/// Configure available bootnodes
+	/// Configure available bootnodes.
 	pub fn with_bootnodes(mut self, boot_nodes: HashMap<PeerIdString, MultiaddrString>) -> Self {
 		// additive operation
 		self.boot_nodes.extend(boot_nodes.into_iter());
@@ -80,7 +81,8 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Configure the UDP port
+	/// Configure the UDP port.
+	/// 
 	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
 	pub fn with_udp(self, udp_port: Port) -> Self {
 		if udp_port > MIN_PORT && udp_port < MAX_PORT {
@@ -91,12 +93,13 @@ impl BootstrapConfig {
 	}
 
 	/// Generate a Cryptographic Keypair.
+	/// 
 	/// An RSA keypair cannot be generated on-the-fly. It has to be generated from a `.pk8` file.
 	/// Hence the `Option` parameter is always `None` except in the case of RSA.
 	/// Please note that calling this function overrides whatever might have been read from the
 	/// `.ini` file
 	///
-	/// # Panics (Only applies to the RSA keypair instance)
+	/// # Panics
 	///
 	/// This function will panic if:
 	/// 1. The RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
@@ -179,7 +182,7 @@ impl BootstrapConfig {
 	}
 }
 
-/// Implement [`Default`] for [`BootstrapConfig`]
+/// [`Default`] implementation for [`BootstrapConfig`].
 impl Default for BootstrapConfig {
 	fn default() -> Self {
 		Self::new()
