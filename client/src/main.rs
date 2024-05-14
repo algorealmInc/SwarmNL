@@ -164,7 +164,7 @@ mod age_of_empire {
 
 		// Get response
 		// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
-		if let Ok(status_response) = core.fetch_from_network(status_request).await {
+		if let Ok(status_response) = core.query_network(status_request).await {
 			if let AppResponse::FetchData(status) = status_response {
 				let empire_name = String::from_utf8_lossy(&status[0]);
 				let military_status = status[1][0];
@@ -394,7 +394,7 @@ mod layer_communication {
 	pub async fn test_echo_atomically(mut node: Core<AppState>) {
 		// Prepare an echo request
 		let echo_string = "Sacha rocks!".to_string();
-		if let Ok(status_response) = node.fetch_from_network(AppData::Echo(echo_string.clone())).await {
+		if let Ok(status_response) = node.query_network(AppData::Echo(echo_string.clone())).await {
 			if let AppResponse::Echo(echoed_response) = status_response {
 				// Assert that what was sent was gotten back
 				assert_eq!(echo_string, echoed_response);

@@ -29,7 +29,7 @@ use libp2p::{
 	noise,
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
-	swarm::{dial_opts::DialOpts, ConnectionError, NetworkBehaviour, SwarmEvent},
+	swarm::{ConnectionError, NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
 
@@ -703,7 +703,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 					&format!("{}", self.keypair.key_type()),
 					config_file_path,
 				);
-			} 
+			}
 		}
 
 		false
@@ -831,7 +831,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	/// should mostly be used when the result of the request is needed immediately and delay can be
 	/// condoned. It will still timeout if the delay exceeds the configured period.
 	/// If the internal buffer is full, it will return an error.
-	pub async fn fetch_from_network(&mut self, request: AppData) -> NetworkResult {
+	pub async fn query_network(&mut self, request: AppData) -> NetworkResult {
 		// send request
 		if let Some(stream_id) = self.send_to_network(request).await {
 			// wait to recieve response from the network
@@ -854,6 +854,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 						StreamData::ToApplication(stream_id, response) => match response {
 							// Error
 							AppResponse::Error(error) => buffer_guard.insert(stream_id, Err(error)),
+							// Success
 							res @ AppResponse::Echo(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::DailPeerSuccess(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaStoreRecordSuccess => buffer_guard.insert(stream_id, Ok(res)),
@@ -944,6 +945,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 														PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
 													}).filter_map(Result::ok).collect::<Vec<_>>();
 
+													// TODO: Shouldn't this be set to one?
 													swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
 												}
 											} else {
@@ -1152,7 +1154,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											}
 											// Outbound ping failure
 											Err(err_type) => {
-												println!("not on me");
 												// Handle error by examining selected policy
 												match network_info.ping.policy {
 													PingErrorPolicy::NoDisconnect => {
@@ -1319,6 +1320,10 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											}
 											_ => {}
 										},
+										kad::Event::RoutingUpdated { peer, .. } => {
+											// Call handler
+											network_core.state.routing_table_updated(peer);
+										}
 										// Other events we don't care about
 										_ => {}
 									},

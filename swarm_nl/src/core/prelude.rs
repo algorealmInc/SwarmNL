@@ -177,7 +177,7 @@ pub type NetworkResult = Result<AppResponse, NetworkError>;
 /// This type has a maximum buffer size and will drop subsequent requests when full.
 /// It is unlikely to be ever full as the default is usize::MAX except otherwise specified during
 /// configuration. It is always good practice to read responses from the internal stream buffer
-/// using `fetch_from_network()` or explicitly using `recv_from_network`.
+/// using `query_network()` or explicitly using `recv_from_network`
 #[derive(Clone, Debug)]
 pub(super) struct StreamRequestBuffer {
 	/// Max requests we can keep track of.
@@ -262,6 +262,14 @@ pub trait EventHandler {
 		_local_peer_id: PeerId,
 		_listener_id: ListenerId,
 		_addr: Multiaddr,
+	) {
+		// Default implementation
+	}
+
+	/// Event that informs the network core that a new peer (with its location details) has just been added to the routing table
+	fn routing_table_updated(
+		&mut self,
+		_peer_id: PeerId,
 	) {
 		// Default implementation
 	}
@@ -428,7 +436,7 @@ impl EventHandler for DefaultHandler {
 	}
 
 	/// Echo the incoming gossip message to the console
-	fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<u8>) {
+	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {
 		// Default implementation
 	}
 }
