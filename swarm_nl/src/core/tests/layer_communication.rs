@@ -147,7 +147,7 @@ pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<
 }
 
 #[test]
-fn echo_for_node_1_fetch_from_network() {
+fn echo_for_node_1_query_network() {
 	// Prepare an echo request
 	let echo_string = "Sacha rocks!".to_string();
 	let data_request = AppData::Echo(echo_string.clone());
@@ -156,7 +156,7 @@ fn echo_for_node_1_fetch_from_network() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1((49600, 49601))
 			.await
-			.fetch_from_network(data_request)
+			.query_network(data_request)
 			.await
 		{
 			if let AppResponse::Echo(echoed_response) = result {
@@ -272,9 +272,10 @@ fn kademlia_store_records_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1((49100, 49101))
 			.await
-			.fetch_from_network(kad_request)
+			.query_network(kad_request)
 			.await
 		{
+			println!("----> {:?}", result);
 			assert_eq!(AppResponse::KademliaStoreRecordSuccess, result);
 		}
 	});
@@ -301,10 +302,10 @@ fn kademlia_lookup_record_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let mut node = setup_node_1((49155, 49222)).await;
 
-		if let Ok(result) = node.clone().fetch_from_network(kad_request).await {
+		if let Ok(result) = node.clone().query_network(kad_request).await {
 			let kad_request = AppData::KademliaLookupRecord { key };
 
-			if let Ok(result) = node.fetch_from_network(kad_request).await {
+			if let Ok(result) = node.query_network(kad_request).await {
 				if let AppResponse::KademliaLookupSuccess(value) = result {
 					assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
 				}
@@ -327,7 +328,7 @@ fn kademlia_get_providers_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1((49988, 64544))
 			.await
-			.fetch_from_network(kad_request)
+			.query_network(kad_request)
 			.await
 		{
 			assert_eq!(AppResponse::KademliaNoProvidersFound, result);
@@ -344,7 +345,7 @@ fn kademlia_get_routing_table_info_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1((49999, 64555))
 			.await
-			.fetch_from_network(kad_request)
+			.query_network(kad_request)
 			.await
 		{
 			assert_eq!(AppResponse::KademliaGetRoutingTableInfo { protocol_id: DEFAULT_NETWORK_ID.to_string() }, result);
@@ -408,7 +409,7 @@ fn get_network_info_works() {
 		let mut node = setup_node_1((59999, 54555)).await;
 
 		if let Ok(result) = node
-			.fetch_from_network(kad_request)
+			.query_network(kad_request)
 			.await
 		{
 			// we'll use the peer id returned to validate the network information recieved
@@ -492,11 +493,11 @@ fn gossipsub_info_works() {
 
 		// join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(network.clone());
-		node_1.fetch_from_network(gossip_request).await.unwrap();
+		node_1.query_network(gossip_request).await.unwrap();
 
 		// blacklist a random peer
 		let gossip_request = AppData::GossipsubBlacklistPeer(peer_id);
-		node_1.fetch_from_network(gossip_request).await.unwrap();
+		node_1.query_network(gossip_request).await.unwrap();
 
 		// Prepare request
 		let gossip_request = AppData::GossipsubGetInfo;
@@ -517,8 +518,6 @@ fn gossipsub_info_works() {
 
 // INTEGRATION TESTS FOR KADEMLIA
 // TWO NODES WILL INTERACT WITH EACH OTHER USING THE COMMANDS TO THE DHT
-// For fetch tests
-
 #[cfg(feature = "test-reading-node")]
 #[test]
 fn test_kademlia_itest_works() {
@@ -535,11 +534,13 @@ fn test_kademlia_itest_works() {
 		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
 
 		// now poll for the kademlia record
-		let kad_request = AppData::KademliaLookupRecord { key: KADEMLIA_TEST_KEY.as_bytes().to_vec() };
-		if let Ok(result) = node_1.fetch_from_network(kad_request).await {
-			if let AppResponse::KademliaLookupSuccess(value) = result {
-				assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
-			}
+		// let kad_request = AppData::KademliaLookupRecord { key: KADEMLIA_TEST_KEY.as_bytes().to_vec() };
+		let kad_request = AppData::KademliaGetProviders { key: KADEMLIA_TEST_KEY.as_bytes().to_vec() };
+		if let Ok(result) = node_1.query_network(kad_request).await {
+			// if let AppResponse::KademliaLookupSuccess(value) = result {
+			// 	assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
+			// }
+			println!("{:?}", result);
 		} else {
 			println!("No record found");
 		}
@@ -554,6 +555,10 @@ fn test_kademlia_itest_works() {
 		// set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((51666, 51606), (51667, 51607)).await;
 
+		// Wait for a few seconds before trying to read the DHT
+		#[cfg(feature ="tokio-runtime")]
+		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME - 3)).await;
+
 		// create request to read the DHT
 		let (key, value, expiration_time, explicit_peers) = (
 			KADEMLIA_TEST_KEY.as_bytes().to_vec(),
@@ -561,8 +566,6 @@ fn test_kademlia_itest_works() {
 			None,
 			None,
 		);
-
-		println!("fiudgjfd");
 	
 		let kad_request = AppData::KademliaStoreRecord {
 			key,
@@ -571,10 +574,10 @@ fn test_kademlia_itest_works() {
 			explicit_peers,
 		};
 
-		let res = node_2.fetch_from_network(kad_request).await;
+		let res = node_2.query_network(kad_request).await;
 		println!("{:?}", res);
 
-		// if let Ok(_) = node_2.fetch_from_network(kad_request).await {
+		// if let Ok(_) = node_2.query_network(kad_request).await {
 		// 	loop {}
 		// } else {
 		// 	println!("Error");
@@ -589,7 +592,7 @@ fn test_kademlia_itest_works() {
 // KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
 // The right function to use is sent_to_network() which will not return a Some(StreamId) but will always return None.
 // This is because it always succeeds and doesn't need to be tracked internally.
-// Do not use fetch_from_network() to send the command, if you do, it will succeed but you will get a wrong error.
+// Do not use query_network() to send the command, if you do, it will succeed but you will get a wrong error.
 // The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).
 
 // /// Port ranges

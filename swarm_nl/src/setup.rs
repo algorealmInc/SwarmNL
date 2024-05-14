@@ -268,10 +268,10 @@ mod tests {
 	fn new_config_with_bootnodes_works() {
 		// setup test data
 		let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
-		let mut key_1 = "12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
-		let mut val_1 = "/ip4/192.168.1.205/tcp/1509".to_string();
-		let mut key_2 = "12A0ZooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
-		let mut val_2 = "/ip4/192.168.1.205/tcp/1588".to_string();
+		let key_1 = "12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
+		let val_1 = "/ip4/192.168.1.205/tcp/1509".to_string();
+		let key_2 = "12A0ZooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
+		let val_2 = "/ip4/192.168.1.205/tcp/1588".to_string();
 		bootnodes.insert(key_1.clone(), val_1.clone());
 		bootnodes.insert(key_2.clone(), val_2.clone());
 
@@ -393,7 +393,7 @@ mod tests {
 		// create a valid private.pk8 file
 		generate_rsa_keypair_files();
 
-		let mut bootstrap_config =
+		let bootstrap_config =
 			BootstrapConfig::new().generate_keypair(KeyType::RSA, Some("private.pk8"));
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::RSA);
@@ -411,7 +411,7 @@ mod tests {
 			Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
 		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new()
+		let bootstrap_config = BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type_str, &mut ed25519_serialized_keypair);
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ed25519);
@@ -425,7 +425,7 @@ mod tests {
 			Keypair::generate_ecdsa().to_protobuf_encoding().unwrap();
 
 		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new()
+		let bootstrap_config = BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type_str, &mut ecdsa_serialized_keypair);
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ecdsa);
@@ -440,7 +440,7 @@ mod tests {
 			.unwrap();
 
 		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new()
+		let bootstrap_config = BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type_str, &mut secp256k1_serialized_keypair);
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Secp256k1);
