@@ -6,7 +6,7 @@
 
 <div style="
       background:linear-gradient(0deg, rgba(255, 0, 150, 0.3), rgba(255, 0, 150, 0.3)), url(https://github.com/algorealmInc/SwarmNL/blob/43089dda11cbc487d031cd28fe32a27ec4885c09/network.jpg);
-      background-size:cover;">
+      background-size:cover; height: 100px;">
    SwarmNl
 </div>
 
