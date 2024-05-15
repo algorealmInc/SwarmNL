@@ -18,7 +18,177 @@ async fn main() {
 	// ping_test::run_ping_example().await;
 
 	// Communication example
-	layer_communication::run_comm_example().await;
+	// layer_communication::run_comm_example().await;
+
+	kademlia::test_kademlia_itest_works().await;
+}
+
+mod kademlia {
+	use std::collections::HashMap;
+
+	use swarm_nl::{
+		core::{Core, CoreBuilder, AppData},
+		setup::BootstrapConfig,
+		Keypair, PeerId, Port,
+	};
+
+	use crate::layer_communication::AppState;
+
+	/// Time to wait for the other peer to act, during integration tests (in seconds)
+	pub const ITEST_WAIT_TIME: u64 = 15;
+	/// The key to test the Kademlia DHT
+	pub const KADEMLIA_TEST_KEY: &str = "GOAT";
+	/// The value to test the Kademlia DHT
+	pub const KADEMLIA_TEST_VALUE: &str = "Steve Jobs";
+
+	/// Used to create a detereministic node.
+	pub async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
+		// Our test keypair for the first node
+		let mut protobuf = vec![
+			8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
+			27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
+			147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
+			152, 42, 164, 148, 159, 36, 170, 109, 178,
+		];
+
+		// The PeerId of the first node
+		let peer_id = Keypair::from_protobuf_encoding(&protobuf)
+			.unwrap()
+			.public()
+			.to_peer_id();
+
+		setup_core_builder_1(&mut protobuf[..], ports).await
+	}
+
+	/// Used to create a node to peer with node_1.
+	pub async fn setup_node_2(
+		node_1_ports: (Port, Port),
+		ports: (Port, Port),
+	) -> (Core<AppState>, PeerId) {
+		let app_state = AppState;
+
+		// Our test keypair for the node_1
+		let mut protobuf = vec![
+			8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
+			27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
+			147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
+			152, 42, 164, 148, 159, 36, 170, 109, 178,
+		];
+
+		// The PeerId of the first node
+		let peer_id = Keypair::from_protobuf_encoding(&protobuf)
+			.unwrap()
+			.public()
+			.to_peer_id();
+
+		// Set up bootnode to query node 1
+		let mut bootnode = HashMap::new();
+		bootnode.insert(
+			peer_id.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", node_1_ports.0),
+		);
+
+		println!("Second node here!");
+
+		// First, we want to configure our node
+		let config = BootstrapConfig::new()
+			.with_bootnodes(bootnode)
+			.with_tcp(ports.0)
+			.with_udp(ports.1);
+
+		// Set up network
+		(
+			CoreBuilder::with_config(config, app_state)
+				.build()
+				.await
+				.unwrap(),
+			peer_id,
+		)
+	}
+
+	pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> {
+		let app_state = AppState;
+
+		// First, we want to configure our node with the bootstrap config file on disk
+		let config = BootstrapConfig::default()
+			.generate_keypair_from_protobuf("ed25519", buffer)
+			.with_tcp(ports.0)
+			.with_udp(ports.1);
+
+		// Set up network
+		CoreBuilder::with_config(config, app_state)
+			.build()
+			.await
+			.unwrap()
+	}
+
+	pub async fn test_kademlia_itest_works() {
+		#[cfg(feature = "test-reading-node")]
+		async {
+			// set up the node that will be dialled
+			let mut node_1 = setup_node_1((51666, 51606)).await;
+
+			// Wait for a few seconds before trying to read the DHT
+			#[cfg(feature = "tokio-runtime")]
+			tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME + 20)).await;
+
+			// now poll for the kademlia record
+			// let kad_request = AppData::KademliaLookupRecord { key:
+			// KADEMLIA_TEST_KEY.as_bytes().to_vec() };
+			let kad_request = AppData::KademliaGetProviders {
+				key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+			};
+			if let Ok(result) = node_1.query_network(kad_request).await {
+				// if let AppResponse::KademliaLookupSuccess(value) = result {
+				// 	assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
+				// }
+				println!("{:?}", result);
+			} else {
+				println!("No record found");
+			}
+		}
+		.await;
+
+		#[cfg(feature = "test-writing-node")]
+		async {
+			// set up the second node that will dial
+			let (mut node_2, node_1_peer_id) = setup_node_2((51666, 51606), (51667, 51607)).await;
+
+			// create request to read the DHT
+			let (key, value, expiration_time, explicit_peers) = (
+				KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+				KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
+				None,
+				None,
+			);
+
+			let kad_request = AppData::KademliaStoreRecord {
+				key,
+				value,
+				expiration_time,
+				explicit_peers,
+			};
+
+			let res = node_2.query_network(kad_request).await;
+			println!("{:?}", res);
+
+			let kad_request = AppData::KademliaGetProviders {
+				key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+			};
+			let result = node_2.query_network(kad_request).await;
+
+			println!("{:?}", result);
+
+			loop {}
+
+			// if let Ok(_) = node_2.query_network(kad_request).await {
+			// 	loop {}
+			// } else {
+			// 	println!("Error");
+			// }
+		}
+		.await;
+	}
 }
 
 mod age_of_empire {
@@ -76,7 +246,7 @@ mod age_of_empire {
 		}
 
 		/// Handle any incoming RPC from any neighbouring empire
-		fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+		fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 			// The semantics is left to the application to handle
 			match String::from_utf8_lossy(&data[0]) {
 				// Handle the request to get military status
@@ -93,6 +263,8 @@ mod age_of_empire {
 				_ => Default::default(),
 			}
 		}
+
+		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {}
 	}
 
 	/// Setup game (This is for the persian Empire)
@@ -223,9 +395,11 @@ mod ping_test {
 			println!("Tried to ping {:?}. Error: {:?}", peer_id, err_type);
 		}
 
-		fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+		fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 			data
 		}
+
+		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {}
 	}
 
 	#[cfg(not(feature = "second-node"))]
@@ -338,9 +512,11 @@ mod layer_communication {
 			println!("Connection established with peer: {}", peer_id);
 		}
 
-		fn handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+		fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 			data
 		}
+
+		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {}
 	}
 
 	pub async fn run_comm_example() {
@@ -367,7 +543,6 @@ mod layer_communication {
 
 		// Test that AppData::Echo works
 		test_echo(node.clone()).await;
-
 
 		loop {}
 	}
@@ -409,7 +584,10 @@ mod layer_communication {
 		let echo_string = "Sacha rocks!".to_string();
 
 		// Get request stream id
-		let stream_id = node.send_to_network(AppData::Echo(echo_string.clone())).await.unwrap();
+		let stream_id = node
+			.send_to_network(AppData::Echo(echo_string.clone()))
+			.await
+			.unwrap();
 
 		println!("This is between the sending and the recieving of the payload. It is stored in an internal buffer, until polled for");
 

@@ -21,6 +21,8 @@ pub const ITEST_WAIT_TIME: u64 = 15;
 pub const KADEMLIA_TEST_KEY: &str = "GOAT";
 /// The value to test the Kademlia DHT
 pub const KADEMLIA_TEST_VALUE: &str = "Steve Jobs";
+/// The test network we join for our mesh
+pub const GOSSIP_NETWORK: &str = "avada";
 
 /// Sate of the Application
 #[derive(Clone)]
@@ -56,7 +58,7 @@ impl EventHandler for AppState {
 	}
 
 	// handle the incoming gossip message
-	fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<u8>) {
+	fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<String>) {
 		println!("Recvd incoming gossip: {:?}", data);
 	}
 
@@ -240,7 +242,7 @@ fn dialing_peer_works() {
 		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
 
 		// what we're dialing
-		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666); 
+		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
 
 		let dial_request = AppData::DailPeer(node_1_peer_id, multi_addr.clone());
 		let stream_id = node_2.send_to_network(dial_request).await.unwrap();
@@ -316,7 +318,8 @@ fn kademlia_lookup_record_works() {
 
 #[test]
 fn kademlia_get_providers_works() {
-	// Note: we can only test for the error case here, an integration test is needed to actually check that the providers can be fetched
+	// Note: we can only test for the error case here, an integration test is needed to actually
+	// check that the providers can be fetched
 
 	// Prepare an kademlia request to send to the network layer
 	let req_key = KADEMLIA_TEST_KEY.as_bytes().to_vec();
@@ -348,17 +351,23 @@ fn kademlia_get_routing_table_info_works() {
 			.query_network(kad_request)
 			.await
 		{
-			assert_eq!(AppResponse::KademliaGetRoutingTableInfo { protocol_id: DEFAULT_NETWORK_ID.to_string() }, result);
+			assert_eq!(
+				AppResponse::KademliaGetRoutingTableInfo {
+					protocol_id: DEFAULT_NETWORK_ID.to_string()
+				},
+				result
+			);
 		}
 	});
 }
 
 // -- For fetch tests --
 
-// To run these test you will need to execute the following commands in separate terminals (in this order):
-// cargo test rpc --features=tokio-runtime --features=server-node -- --nocapture
+// To run these test you will need to execute the following commands in separate terminals (in this
+// order): cargo test rpc --features=tokio-runtime --features=server-node -- --nocapture
 // cargo test rpc  --features=tokio-runtime --features=client-node -- --nocapture
-// And then you can check that the server node prints out a "Recvd incoming RPC:" message with the data sent by the client node.
+// And then you can check that the server node prints out a "Recvd incoming RPC:" message with the
+// data sent by the client node.
 
 #[cfg(feature = "server-node")]
 #[test]
@@ -389,8 +398,11 @@ fn rpc_fetch_works() {
 		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
 
 		// prepare fetch request
-		let fetch_request = AppData::FetchData { keys: fetch_key.clone(), peer: node_1_peer_id };
-		
+		let fetch_request = AppData::FetchData {
+			keys: fetch_key.clone(),
+			peer: node_1_peer_id,
+		};
+
 		let stream_id = node_2.send_to_network(fetch_request).await.unwrap();
 
 		if let Ok(result) = node_2.recv_from_network(stream_id).await {
@@ -408,12 +420,14 @@ fn get_network_info_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let mut node = setup_node_1((59999, 54555)).await;
 
-		if let Ok(result) = node
-			.query_network(kad_request)
-			.await
-		{
+		if let Ok(result) = node.query_network(kad_request).await {
 			// we'll use the peer id returned to validate the network information recieved
-			if let AppResponse::GetNetworkInfo { peer_id, connected_peers, external_addresses } = result {
+			if let AppResponse::GetNetworkInfo {
+				peer_id,
+				connected_peers,
+				external_addresses,
+			} = result
+			{
 				println!("Connected peers: {:?}", connected_peers);
 				println!("External Addresses: {:?}", external_addresses);
 				assert_eq!(peer_id, node.peer_id());
@@ -453,7 +467,7 @@ fn gossipsub_join_and_exit_network_works() {
 	});
 }
 
-// Test 
+// Test
 #[test]
 fn gossipsub_blacklist_and_remove_blacklist_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -505,7 +519,10 @@ fn gossipsub_info_works() {
 
 		if let Ok(result) = node_1.recv_from_network(stream_id).await {
 			// break up the response info
-			if let AppResponse::GossipsubGetInfo { topics, blacklist, .. } = result {
+			if let AppResponse::GossipsubGetInfo {
+				topics, blacklist, ..
+			} = result
+			{
 				// make assertions for the topic joined
 				assert_eq!(network, topics[0].clone());
 
@@ -520,27 +537,23 @@ fn gossipsub_info_works() {
 // TWO NODES WILL INTERACT WITH EACH OTHER USING THE COMMANDS TO THE DHT
 #[cfg(feature = "test-reading-node")]
 #[test]
-fn test_kademlia_itest_works() {
+fn test_kademlia_record_store_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the node that will be dialled
 		let mut node_1 = setup_node_1((51666, 51606)).await;
 
 		// Wait for a few seconds before trying to read the DHT
-		#[cfg(feature = "async-std-runtime")]
-		async_std::task::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
-
-		// Wait for a few seconds before trying to read the DHT
-		#[cfg(feature ="tokio-runtime")]
+		#[cfg(feature = "tokio-runtime")]
 		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
 
 		// now poll for the kademlia record
-		// let kad_request = AppData::KademliaLookupRecord { key: KADEMLIA_TEST_KEY.as_bytes().to_vec() };
-		let kad_request = AppData::KademliaGetProviders { key: KADEMLIA_TEST_KEY.as_bytes().to_vec() };
+		let kad_request = AppData::KademliaLookupRecord {
+			key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+		};
 		if let Ok(result) = node_1.query_network(kad_request).await {
-			// if let AppResponse::KademliaLookupSuccess(value) = result {
-			// 	assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
-			// }
-			println!("{:?}", result);
+			if let AppResponse::KademliaLookupSuccess(value) = result {
+				assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
+			}
 		} else {
 			println!("No record found");
 		}
@@ -549,24 +562,19 @@ fn test_kademlia_itest_works() {
 
 #[cfg(feature = "test-writing-node")]
 #[test]
-fn test_kademlia_itest_works() {
+fn test_kademlia_record_store_itest_works() {
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((51666, 51606), (51667, 51607)).await;
 
-		// Wait for a few seconds before trying to read the DHT
-		#[cfg(feature ="tokio-runtime")]
-		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME - 3)).await;
-
-		// create request to read the DHT
 		let (key, value, expiration_time, explicit_peers) = (
 			KADEMLIA_TEST_KEY.as_bytes().to_vec(),
 			KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
 			None,
 			None,
 		);
-	
+
 		let kad_request = AppData::KademliaStoreRecord {
 			key,
 			value,
@@ -574,62 +582,122 @@ fn test_kademlia_itest_works() {
 			explicit_peers,
 		};
 
+		// submit query
 		let res = node_2.query_network(kad_request).await;
-		println!("{:?}", res);
 
-		// if let Ok(_) = node_2.query_network(kad_request).await {
-		// 	loop {}
-		// } else {
-		// 	println!("Error");
-		// }
+		loop {}
+	});
+}
+
+// TEST FOR PROVIDERS
+#[cfg(feature = "test-reading-node")]
+#[test]
+fn test_kademlia_provider_records_itest_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		let mut node_1 = setup_node_1((51066, 51006)).await;
+
+		let (key, value, expiration_time, explicit_peers) = (
+			KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+			KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
+			None,
+			None,
+		);
+
+		let kad_request = AppData::KademliaStoreRecord {
+			key,
+			value,
+			expiration_time,
+			explicit_peers,
+		};
+
+		let res = node_1.query_network(kad_request).await;
+
+		loop {}
+	});
+}
+
+// TEST FOR PROVIDERS
+#[cfg(feature = "test-writing-node")]
+#[test]
+fn test_kademlia_provider_records_itest_works() {
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the second node that will dial
+		let (mut node_2, node_1_peer_id) = setup_node_2((51066, 51006), (51067, 51007)).await;
+
+		// Wait for a few seconds before trying to read the DHT
+		#[cfg(feature = "tokio-runtime")]
+		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
+
+		// now poll for the kademlia provider
+		let kad_request = AppData::KademliaGetProviders {
+			key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+		};
+		if let Ok(result) = node_2.query_network(kad_request).await {
+			if let AppResponse::KademliaGetProviders { key, providers } = result {
+				assert_eq!(providers[0], node_1_peer_id.to_base58());
+			}
+		} else {
+			println!("No record found");
+		}
+	});
+}
+
+// GOSSIPSUB INTEGRATION TESTS
+#[cfg(feature = "test-subscribe-node")]
+#[test]
+fn gossipsub_join_exit_itest_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		let mut node_1 = setup_node_1((49775, 49779)).await;
+
+		// join a network (subscribe to a topic)
+		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
+
+		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+
+		if let Ok(result) = node_1.recv_from_network(stream_id).await {
+			println!("Subscription successfull");
+			assert_eq!(AppResponse::GossipsubJoinSuccess, result);
+		}
+
+		loop {}
+	});
+}
+
+#[cfg(feature = "test-query-node")]
+#[test]
+fn gossipsub_join_exit_itest_works() {
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the second node that will dial
+		let (mut node_2, node_1_peer_id) = setup_node_2((49775, 49779), (51767, 51707)).await;
+
+		// Wait for a few seconds for propagation
+		#[cfg(feature = "tokio-runtime")]
+		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
+
+		// join a network (subscribe to a topic)
+		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
+
+		if let Ok(_) = node_2.query_network(gossip_request).await {
+			println!("Subscription successfull");
+			// query the network to confirm subscription of peer
+			let gossip_request = AppData::GossipsubGetInfo;
+			if let Ok(result) = node_2.query_network(gossip_request).await {
+				if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = result {
+					assert_eq!(mesh_peers[0].0, node_1_peer_id);
+					assert_eq!(mesh_peers[0].1[0], GOSSIP_NETWORK);
+				}
+			}
+		}
 	});
 }
 
 
-// SPECIFY THE RUNTIME TO RUN THE TESTS
-
-
 // KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
-// The right function to use is sent_to_network() which will not return a Some(StreamId) but will always return None.
-// This is because it always succeeds and doesn't need to be tracked internally.
-// Do not use query_network() to send the command, if you do, it will succeed but you will get a wrong error.
-// The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).
-
-// /// Port ranges
-// pub const MIN_PORT: u16 = 49152;
-// pub const MAX_PORT: u16 = 65535;
-// KademliaGetProviders { key: Vec<u8> },
-
-
-// 	/// Return important information about the local routing table
-// 	KademliaGetRoutingTableInfo,
-
-// 	/// Fetch data(s) quickly from a peer over the network
-// 	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
-
-// 	/// Get network information about the node
-// 	GetNetworkInfo,
-// 	// Send message to gossip peers in a mesh network
-// 	GossipsubBroadcastMessage {
-// 		/// Topic to send messages to
-// 		topic: String,
-// 		message: Vec<String>,
-// 		/// Explicit peers to gossip to
-// 		peers: Option<Vec<PeerId>>,
-// 	},
-// 	/// Join a mesh network
-// 	GossipsubJoinNetwork(String),
-// 	/// Get gossip information about node
-// 	GossipsubGetInfo,
-// 	/// Leave a network we are a part of
-// 	GossipsubExitNetwork(String),
-// 	/// Blacklist a peer explicitly
-// 	GossipsubBlacklistPeer(PeerId),
-// 	/// Remove a peer from the blacklist
-// 	GossipsubFilterBlacklist(PeerId),
-// }
-
-// TODO:
-// - check that DHT record store between nodes work, using a storing peer and a looking up
-// and all other tests for AppData
-// -
+// The right function to use is sent_to_network() which will not return a Some(StreamId) but will
+// always return None. This is because it always succeeds and doesn't need to be tracked internally.
+// Do not use query_network() to send the command, if you do, it will succeed but you will get a
+// wrong error. The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).

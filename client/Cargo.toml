@@ -13,3 +13,5 @@ base58 = "0.2.0"
 
 [features]
 second-node = []
+test-reading-node = []
+test-writing-node = []

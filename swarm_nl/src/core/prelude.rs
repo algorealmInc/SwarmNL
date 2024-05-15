@@ -18,6 +18,9 @@ pub const TASK_SLEEP_DURATION: u64 = 7;
 /// Type that represents the response of the network layer to the application layer's event handler
 pub type AppResponseResult = Result<AppResponse, NetworkError>;
 
+/// The delimeter that separates the messages to gossip
+pub const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
+
 /// Time to wait (in seconds) for node (network layer) to boot
 pub const BOOT_WAIT_TIME: u64 = 1;
 
@@ -266,11 +269,9 @@ pub trait EventHandler {
 		// Default implementation
 	}
 
-	/// Event that informs the network core that a new peer (with its location details) has just been added to the routing table
-	fn routing_table_updated(
-		&mut self,
-		_peer_id: PeerId,
-	) {
+	/// Event that informs the network core that a new peer (with its location details) has just
+	/// been added to the routing table
+	fn routing_table_updated(&mut self, _peer_id: PeerId) {
 		// Default implementation
 	}
 
@@ -420,9 +421,7 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces the arrival of a gossip message
-	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {
-		// Default implementation
-	}
+	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>);
 }
 
 /// Default network event handler
@@ -436,7 +435,7 @@ impl EventHandler for DefaultHandler {
 	}
 
 	/// Echo the incoming gossip message to the console
-	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {
+	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {
 		// Default implementation
 	}
 }
