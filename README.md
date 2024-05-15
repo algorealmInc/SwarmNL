@@ -22,10 +22,10 @@ All the hassles and fun of networking has been taken care of for you. You only n
     - A simple RPC mechanism to exchange data quickly between peers.
     - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
-- *In Development*:
-    - Node failure handling involving reconnection strategies, failover mechanisms etc.
-    - Scaling involving techniques like sharding, data forwarding etc.
-    - IPFS upload and download interfaces.
+- *In Development 👷*:
+    - *Node failure handling involving reconnection strategies, failover mechanisms etc*.
+    - *Scaling involving techniques like sharding, data forwarding etc*.
+    - *IPFS upload and download interfaces*.
 
 ## License
 
