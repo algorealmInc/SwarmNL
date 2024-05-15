@@ -89,17 +89,6 @@ fn custom_node_setup_works() {
 		.with_idle_connection_timeout(custom_keep_alive_duration.clone())
 		.listen_on(custom_ip_address.clone());
 
-	// TODO: with_ping
-	// e.g. if the node is unreachable after a specific amount of time, it should be
-	// disconnected if 10th inteval is configured, if failed 9th time, test decay as each ping
-	// comes in
-
-	// TODO: with_kademlia
-	// e.g. if a record is not found, it should return a specific message
-
-	// TODO: configure_network_events
-	// test recorded logs. Create a custom handler and test if the logs are recorded.
-
 	// assert that the custom network id is '/custom/protocol/1.0'
 	assert_eq!(custom_node.network_id(), custom_network_id);
 

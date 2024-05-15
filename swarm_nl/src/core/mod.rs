@@ -951,8 +951,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													let peers = explicit_peers.iter().map(|peer_id_string| {
 														PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
 													}).filter_map(Result::ok).collect::<Vec<_>>();
-
-													// TODO: Shouldn't this be set to one?
 													swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
 												}
 											} else {
@@ -1275,7 +1273,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}
 											}
 											kad::QueryResult::GetRecord(Ok(_)) => {
-												// TODO!: How do we track this?
+												// Receive data from out one-way channel
+												if let Some(stream_id) = exec_queue_2.pop().await {
+													// Send the error back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(vec![])))).await;
+												}
 											},
 											kad::QueryResult::GetRecord(Err(e)) => {
 												let key = match e {
