@@ -21,7 +21,7 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
   - Protocol specification and handlers.
   - Event handlers for network events and logging.
 
-  ### Example
+  #### Example
 
   ```rust
         //! Using the default node setup configuration and the default network event handler
@@ -111,7 +111,7 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
   - A simple RPC mechanism to exchange data quickly between peers.
   - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
-  ### Example
+  #### Example
 
   ```rust
         //! Communicate with remote nodes using the simple and familiar async-await paradigm.
