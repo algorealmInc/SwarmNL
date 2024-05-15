@@ -16,7 +16,6 @@ futures-time = "3.0.0"
 serde = "1.0.200"
 base58 = "0.2.0"
 docify = "0.2.8"
-swarmnl-guides = {path = "../guides"}
 
 [dependencies.async-std]
 version = "1.12.0"

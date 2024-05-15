@@ -37,7 +37,7 @@ fn create_test_ini_file(file_path: &str) {
 }
 
 #[test]
-fn default_behavior_works() {
+fn node_default_behavior_works() {
 	// build a node with the default network id
 	let default_node = setup_core_builder();
 
@@ -66,7 +66,7 @@ fn default_behavior_works() {
 }
 
 #[test]
-fn custom_node_setup_works() {
+fn node_custom_setup_works() {
 	// build a node with the default network id
 	let default_node = setup_core_builder();
 
@@ -100,9 +100,9 @@ fn custom_node_setup_works() {
 }
 
 #[test]
-fn network_id_custom_behavior_works_as_expected() {
+fn node_custom_behavior_with_network_id_works() {
 	// setup a node with the default config builder
-	let mut custom_builder = setup_core_builder();
+	let custom_builder = setup_core_builder();
 
 	// configure builder with custom protocol and assert it works as expected
 	let custom_protocol: &str = "/custom-protocol/1.0";
@@ -123,13 +123,12 @@ fn network_id_custom_behavior_works_as_expected() {
 
 #[test]
 #[should_panic(expected = "Could not parse provided network id")]
-fn network_id_custom_behavior_fails() {
+fn node_custom_behavior_with_network_id_fails() {
 	// build a node with the default network id
-	let mut custom_builder = setup_core_builder();
+	let custom_builder = setup_core_builder();
 
 	// pass in an invalid network ID: network ID length is less than MIN_NETWORK_ID_LENGTH
 	let invalid_protocol_1 = "/1.0".to_string();
-	assert!(invalid_protocol_1.len() < MIN_NETWORK_ID_LENGTH.into());
 	let custom_builder = custom_builder.with_network_id(invalid_protocol_1);
 
 	// pass in an invalid network ID: network ID must start with a forward slash
@@ -139,7 +138,7 @@ fn network_id_custom_behavior_fails() {
 
 #[cfg(feature = "tokio-runtime")]
 #[test]
-fn save_keypair_offline_works_tokio() {
+fn node_save_keypair_offline_works_tokio() {
 	// build a node with the default network id
 	let default_node = setup_core_builder();
 
@@ -172,7 +171,7 @@ fn save_keypair_offline_works_tokio() {
 
 #[cfg(feature = "async-std-runtime")]
 #[test]
-fn save_keypair_offline_works_async_std() {
+fn node_save_keypair_offline_works_async_std() {
 	// build a node with the default network id
 	let default_node = setup_core_builder();
 

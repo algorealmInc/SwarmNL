@@ -1,14 +1,24 @@
-//! # Testing guide
+//! A doc-only module explaining how to run core library tests.
 //! 
-//! These guides provide clarity on how to run tests involving synchronization between two nodes.
-//! There are two classes of tests in the core library: [`crate::layer_communication`] and [`crate::node_behaviour`].
+//! There are two classes of tests in the core library:
 //! 
-//! In order to create integration tests, we used the Rust conditional compilation feature to be able to setup different nodes and test their communication.
+//! - `node_behaviour` tests for single node setup and behaviour.
+//! - `layer_communication` tests involving the synchronization between two nodes.
+//! 
+//! # Node behaviour testing
+//! 
+//! These are simple unit tests that check the behaviour of a single node. To run these tests, simply run the following command:
+//! 
+//! ```bash
+//! cargo test node_
+//! ```
+//! 
+//! # Layer communication testing
+//! 
+//! In order to create tests for communication between two nodes, we used the Rust conditional compilation feature to be able to setup different nodes and test their communication.
 //! All commands for running these tests should be run with `-- --nocapture` to verify the expected results.
 //! 
-//! ## Layer communication 
-//! 
-//! For these integration tests, we've created two test nodes: `node1` and `node2`. 
+//! For these tests, we've created two test nodes: `node1` and `node2`. 
 //! 
 //! - Node 1 is setup by calling the `setup_node_1` function which uses a pre-configured cryptographic keypair and the `setup_core_builder_1` function to configure a default node.
 //! This keeps its identity consistent across tests.
@@ -18,13 +28,14 @@
 //! 
 //! ### Peer dialing tests
 //! 
-//! The peer dialing tests checks if a node can dial another node (see the [`dialing_peer_works`] tests). To run these tests, you must first start the listening node by running the following command:
+//! The peer dialing tests checks if a node can dial another node by using a `listening` node and a `dialing` node.
+//! To run these tests, start the listening node by running the following command in one terminal:
 //! 
 //! ```bash
 //! cargo test dialing_peer_works --features=test-listening-node -- --nocapture
 //! ```
 //! 
-//! Then run the dialing node:
+//! Then, in another terminal run the dialing node:
 //! 
 //! ```bash
 //! cargo test dialing_peer_works --features=test-dialling-node -- --nocapture
@@ -32,9 +43,9 @@
 //! 
 //! The application event handler will log the dialing node's peer id and the listening node's peer id.
 //!  
-//! ### Fetching tests
+//! ## Fetching tests
 //! 
-//! The fetching test checks if a node can fetch a value from another node (see the [`rpc_fetch_works`] tests).
+//! The fetching test checks if a node can fetch a value from another node.
 //! These tests use a `server` node and a `client` node.
 //! 
 //! To run these tests first start the server node in one terminal:
@@ -43,15 +54,15 @@
 //! cargo test rpc_fetch_works --features=server-node -- --nocapture
 //! ```
 //! 
-//! Then run the client node in another terminal:
+//! And in another terminal, run the client node:
 //! 
 //! ```bash
 //! cargo test rpc_fetch_works --features=client-node -- --nocapture
 //! ```
 //! 
-//! And then you can check that the server node prints out a _"Recvd incoming RPC:"_ message with the data sent by the client node.
+//! Then you can check that the server node prints out a _"Recvd incoming RPC:"_ message with the data sent by the client node.
 //! 
-//! ### Kademlia integration tests
+//! ## Kademlia tests
 //! 
 //! For Kademlia tests, we have a `reading` node and a `writing` node. 
 //! We use a time delay to simulate the reading node "sleeping" so as to allow the writing node to make changes to the DHT.
@@ -70,7 +81,7 @@
 //! cargo test kademlia_record_store_itest_works --features=test-writing-node -- --nocapture
 //! ```
 //! 
-//! ### Record providers integration tests
+//! ### Record providers tests
 //! 
 //! To run the providers tests, we have a `reading` node and a `writing` node.
 //! 
@@ -90,15 +101,15 @@
 //! cargo test kademlia_provider_records_itest_works --features=test-reading-node -- --nocapture
 //! ```
 //! 
-//! ### Gossipsub integration tests
+//! ### Gossipsub tests
 //! 
 //! **Join/Exit tests**
 //! 
 //! For Gossipsub tests, we have a `subscribe` node and a `query` node.
 //! 
-//! When "subscribe" node is set up, it then joins a mesh network. Then node 2 is setup and connects to node 1, sleeps for a while (to allow propagtion of data from node 1) and then joins the network.
-//! After joining it then queries the network layer for gossipping information. This information contains topics the node is currently subscribed to:
-//! - peers that node 2 knows (which is node 1) and the network they are a part of. The peers that have been blacklisted are also returned.
+//! When the "subscribe" node is set up, it joins a mesh network. Then node 2 is setup and connects to node 1, sleeps for a while (to allow propagtion of data from node 1) and then joins the network.
+//! After joining, it then queries the network layer for gossipping information. This information contains topics the node is currently subscribed to such as the peers that node 2 knows (which is node 1) and the network they are a part of.
+//! The peers that have been blacklisted are also returned.
 //! 
 //! In this test, we test that node 1 is a part of the mesh network that node 2 is subscribed to.
 //! 
@@ -119,7 +130,7 @@
 //! For this test we have a `listening` node and a `broadcast` node. The first node is setup which joins a mesh network. Then, node 2 is setup and connects to node 1, sleeps for a few seconds (to allow propagtion of data from node 1) and then joins the network.
 //! It then joins the network that node 1 was already a part of and sends a broadcast message to every peer in the mesh network.
 //! 
-//! The indicator of the success of this test is revealed in the applications' event handler function ([`EventHandler::gossipsub_handle_incoming_message`]) which logs the message received from node 2.
+//! The indicator of the success of this test is revealed in the applications' event handler function (see: [`crate::core::EventHandler::gossipsub_handle_incoming_message`]) which logs the message received from node 2.
 //! 
 //! To run this test, first run the "listening" node in one terminal:
 //! 

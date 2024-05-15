@@ -149,7 +149,7 @@ pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<
 }
 
 #[test]
-fn echo_for_node_1_query_network() {
+fn echo_for_node1_query_network() {
 	// Prepare an echo request
 	let echo_string = "Sacha rocks!".to_string();
 	let data_request = AppData::Echo(echo_string.clone());
@@ -170,7 +170,7 @@ fn echo_for_node_1_query_network() {
 }
 
 #[test]
-fn echo_for_node_1_send_and_receive() {
+fn echo_for_node1_send_and_receive() {
 	// Prepare an echo request
 	let echo_string = "Sacha rocks!".to_string();
 	let data_request = AppData::Echo(echo_string.clone());
