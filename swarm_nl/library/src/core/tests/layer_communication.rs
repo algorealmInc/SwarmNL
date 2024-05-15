@@ -1,13 +1,4 @@
 //! Tests for the communication between the layers of the application.
-//!
-//! To run the dialing test you need dialing_peer_works with listening_node feature enabled first:
-//! ```bash
-//! cargo test dialing_peer_works --features=tokio-runtime --features=listening-node
-//! ```
-//! Then, you can test that the dialing_peer_works with the dialing-node feature enabled:
-//! ```bash
-//! cargo test dialing_peer_works --features=tokio-runtime --features=dialing-node
-//! ```
 
 use super::*;
 use libp2p::{
