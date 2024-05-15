@@ -1,13 +1,11 @@
 <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNl.png" alt="SwarmNl" style="border-radius: 15px !important;">
 
-SwarmNL is a Rust library that provides a highly configurable P2P networking layer to be used in distributed system architectures that require data transfer solutions.
-It is designed to offer developers a lightweight, scalable and configurable networking stack, easy to integrate with any decentralized application.<br>
-It is built on libp2p.
+SwarmNL is a Rust library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by libp2p, SwarmNL simplifies networking, so you can focus on building.
 
 ## Why SwarmNl?
+SwarmNL makes setting up a peer-to-peer decentralized and distributed networking stack for your application a breeze. With SwarmNL, you can effortlessly configure nodes, tailor network conditions, and fine-tune behaviors specific to your project's needs, allowing you to dive into networking without the usual hassle.
 
-SwarmNl helps you set up a p2p decentralized and distributed networking stack for your application quickly and with great ease. You can easily configure nodes, set custom network conditions and behaviour perculiar to your problem scope, and begin networking!<br>
-All the hassles and fun of networking has been taken care of for you. You only need to worry about simple configurations. That easy!
+Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic. It's that easy!
 
 ## Features
 
@@ -180,6 +178,4 @@ All the hassles and fun of networking has been taken care of for you. You only n
   - _Scaling involving techniques like sharding, data forwarding etc_.
   - _IPFS upload and download interfaces_.
 
-## License
-
-Apache 2.0
+With ❤️ from Deji and Sacha.
