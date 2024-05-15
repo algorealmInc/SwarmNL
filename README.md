@@ -1,4 +1,4 @@
-<!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNl.png" alt="SwarmNl" style="border-radius: 15px !important;"> -->
+<!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNL.png" alt="SwarmNL" style="border-radius: 15px !important;"> -->
 
 # SwarmNL
 **A library to build custom networking layers for decentralized applications**
@@ -93,7 +93,7 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
 
         // Define custom event handler
         let state = ApplicationState {
-            name: String::from("SwarmNl"),
+            name: String::from("SwarmNL"),
             version: 0.1
         }
 
@@ -105,7 +105,7 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
 
   ```
 
-- **Node Communication**: For communication, SwarmNl leverages the powerful capabilities of libp2p. These includes:
+- **Node Communication**: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
 
   - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
   - A simple RPC mechanism to exchange data quickly between peers.
