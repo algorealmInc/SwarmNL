@@ -178,4 +178,6 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
   - _Scaling involving techniques like sharding, data forwarding etc_.
   - _IPFS upload and download interfaces_.
 
+Again, SwarmNL simplifies networking so you can focus on building that world-changing application of yours! Cheers! 🥂 
+
 With ❤️ from Deji and Sacha.
