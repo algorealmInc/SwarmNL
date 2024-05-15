@@ -695,6 +695,54 @@ fn gossipsub_join_exit_itest_works() {
 	});
 }
 
+// GOSSIPSUB INTEGRATION TESTS
+#[cfg(feature = "test-listening-node")]
+#[test]
+fn gossipsub_message_itest_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the node that will be dialled
+		let mut node_1 = setup_node_1((49885, 49889)).await;
+
+		// join a network (subscribe to a topic)
+		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
+
+		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+
+		if let Ok(result) = node_1.recv_from_network(stream_id).await {
+			println!("Subscription successfull");
+			assert_eq!(AppResponse::GossipsubJoinSuccess, result);
+		}
+
+		loop {}
+	});
+}
+
+#[cfg(feature = "test-broadcast-node")]
+#[test]
+fn gossipsub_message_itest_works() {
+	// use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// set up the second node that will dial
+		let (mut node_2, _) = setup_node_2((49885, 49889), (51887, 51887)).await;
+
+		// join a network (subscribe to a topic)
+		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
+
+		if let Ok(_) = node_2.query_network(gossip_request).await {
+			println!("Subscription successfull");
+
+			// prepare broadcast query
+			let gossip_request = AppData::GossipsubBroadcastMessage {
+				topic: GOSSIP_NETWORK.to_string(),
+				message: vec!["Apple".to_string(), "nike".to_string()],
+			};
+
+			if let Ok(result) = node_2.query_network(gossip_request).await {
+				println!("{:?}", result);
+			}
+		}
+	});
+}
 
 // KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
 // The right function to use is sent_to_network() which will not return a Some(StreamId) but will
