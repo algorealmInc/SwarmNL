@@ -1,6 +1,6 @@
 # Network builder
 
-To build a network you first need to create a [`CoreBuilder`] object using the [`CoreBuilder::with_config`] method to create a bootstrap node, then you can simply call [`CoreBuilder::build`] to set up the network. This will create a [`Core`] struct with methods you can use to send and receive data to/from the network.
+To build a network or a node, you first need to create a [`CoreBuilder`] object using the [`CoreBuilder::with_config`] method to create a bootstrap node, then you can simply call [`CoreBuilder::build`] to set up the network. This will create a [`Core`] struct with methods you can use to send and receive data to/from the network.
 
 The [`CoreBuilder::with_config`] method takes two parameters:
 1. [`BootstrapConfig`] to pass in a bootstrap node configuration

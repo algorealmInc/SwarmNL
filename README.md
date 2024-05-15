@@ -104,6 +104,7 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
             .unwrap();
 
   ```
+  Please look at the template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
 - **Node Communication**: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
 

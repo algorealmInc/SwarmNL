@@ -13,7 +13,7 @@ pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
 /// Default amount of time to keep a connection alive.
 pub static DEFAULT_KEEP_ALIVE_DURATION: Seconds = 60;
 
-/// Library error type containing all custom errors that could be encountered
+/// Library error type containing all custom errors that could be encountered.
 #[derive(Error, Debug)]
 pub enum SwarmNlError {
 	#[error("could not read bootstrap config file")]
@@ -54,12 +54,11 @@ pub const MAX_PORT: u16 = 65535;
 
 /// Default network id
 pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
-/// Minimum network (protocol) id. This helps ensure that the protocol id is well formed and
-/// contains a reasonable value because it is what identifies a network, makes it unique and
-/// separates it from others.
+/// This constant sets the shortest acceptable length for a network ID. 
+/// The network ID identifies a network and ensures it's distinct from others.
 pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
-/// An implementation of [`From<&str>`] for [`KeyType`] to read a key type from a file.
+/// An implementation of [`From<&str>`] for [`KeyType`] to read a key type from a bootstrap config file.
 ///
 /// We define a custom trait because of the Rust visibility rule.
 pub trait CustomFrom {
@@ -104,9 +103,3 @@ pub enum TcpConfig {
 		// port_resuse: bool
 	},
 }
-
-/// A unique type that indicates that a struct is not yet initialized to its default state.
-pub struct NotInitialiazed;
-
-/// A unique type that indicates that a struct has been default configured.
-pub struct Initialized;

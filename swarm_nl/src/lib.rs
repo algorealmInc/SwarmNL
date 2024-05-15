@@ -5,10 +5,6 @@
 #![doc = include_str!("../../README.md")]
 
 pub use crate::prelude::*;
-pub use futures::{
-	channel::mpsc::{self, Receiver, Sender},
-	SinkExt, StreamExt,
-};
 pub use libp2p::{
 	core::{transport::ListenerId, ConnectedPoint, Multiaddr},
 	swarm::ConnectionId,

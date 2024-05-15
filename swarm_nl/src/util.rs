@@ -1,7 +1,7 @@
 // Copyright 2024 Algorealm
 // Apache 2.0 License
 
-//! Utility helpers for reading from and writing to `.ini` files.
+//! Utility helper functions for reading from and writing to `.ini` config files.
 
 use crate::{prelude::*, setup::BootstrapConfig};
 use base58::FromBase58;
