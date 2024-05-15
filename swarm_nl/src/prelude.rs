@@ -3,7 +3,7 @@
 
 //! Types and traits that are used throughout SwarmNL.
 
-use libp2p_identity::{KeyType, PeerId};
+use libp2p_identity::KeyType;
 use std::net::Ipv4Addr;
 use thiserror::Error;
 
@@ -60,7 +60,7 @@ pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
 pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
 /// An implementation of [`From<&str>`] for [`KeyType`] to read a key type from a file.
-/// 
+///
 /// We define a custom trait because of the Rust visibility rule.
 pub trait CustomFrom {
 	fn from(string: &str) -> Option<Self>
@@ -83,7 +83,8 @@ impl CustomFrom for KeyType {
 /// Supported transport protocols.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum TransportOpts {
-	/// QUIC transport protocol enabled with TCP/IP as fallback. DNS lookup is also configured by default.
+	/// QUIC transport protocol enabled with TCP/IP as fallback. DNS lookup is also configured by
+	/// default.
 	TcpQuic { tcp_config: TcpConfig },
 }
 

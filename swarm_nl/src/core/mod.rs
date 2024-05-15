@@ -9,7 +9,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	fs,
-	net::{IpAddr, Ipv4Addr},
+	net::{IpAddr},
 	num::NonZeroU32,
 	sync::Arc,
 	time::Duration,
@@ -321,7 +321,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	}
 
 	/// Return the id of the network
-	fn network_id(&self) -> String {
+	pub fn network_id(&self) -> String {
 		self.network_id.to_string()
 	}
 

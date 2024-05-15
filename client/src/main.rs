@@ -264,7 +264,7 @@ mod age_of_empire {
 			}
 		}
 
-		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {}
+		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {}
 	}
 
 	/// Setup game (This is for the persian Empire)
@@ -399,7 +399,7 @@ mod ping_test {
 			data
 		}
 
-		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {}
+		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {}
 	}
 
 	#[cfg(not(feature = "second-node"))]
@@ -516,7 +516,7 @@ mod layer_communication {
 			data
 		}
 
-		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<u8>) {}
+		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {}
 	}
 
 	pub async fn run_comm_example() {
