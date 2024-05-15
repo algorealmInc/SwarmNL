@@ -18,7 +18,7 @@ All the hassles and fun of networking has been taken care of for you. You only n
     - Event handlers for network events and logging.
 
 - **Node Communication** For communication, SwarmNl leverages the powerful capabilities of libp2p. These includes:  
-    - The Kadmlia DHT: Nodes can use the DHT to store infomation in a distributed format and leverage the capabilities of the DHT to build powerful application.
+    - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
     - A simple RPC mechanism to exchange data quickly between peers.
     - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
