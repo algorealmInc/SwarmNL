@@ -55,7 +55,6 @@ You can explicitly change the default values of [`CoreBuilder::with_config`] by 
 - [`CoreBuilder::with_transports`]: a custom transport to use, specified in [`TcpConfig::Custom`].
 - [`CoreBuilder::with_network_id`] : the network ID (e.g. `/your-protocol-name/1.0`).
 - [`CoreBuilder::listen_on`] : the IP address to listen on (e.g. 127.0.0.1).
-- [`CoreBuilder::with_network_read_delay`] : a timeout for requests to read from the network.
 - [`CoreBuilder::with_idle_connection_timeout`]: a timeout for keeping a connection alive.
 
 For example: TODO make it docified.
