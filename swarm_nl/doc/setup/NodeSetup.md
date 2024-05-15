@@ -56,20 +56,15 @@ protobuf_keypair=[]
 
 [bootstrap]
 ; The boostrap nodes to connect to immediately after start up
-boot_nodes=[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509, QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt:/ip4/192.168.1.205/tcp/1509]
+boot_nodes=[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/x.x.x.x/tcp/1509, QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt:/x.x.x.x/tcp/1509]
 
 [blacklist]
 ; The list of blacklisted peers we don't want to have anything to do with
-blacklist=[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq, QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt]
+blacklist=[]
 ```
 
 ## Fallback behaviour
 
 Node setup will fallback to default behavior if: 
 * The `ini` file doesn't contain any `[ports]` section, the fallback ports for TCP is [`MIN_PORT`] and for UDP is [`MAX_PORT`].
-* No key type is specified, the default is will fallback to `Ed25519`
-* No bootnodes are passed in, an empty hashmap is created
-
-## Panics
-* If no `.ini` file is supplied
-* If the `.ini` file does not contain a valid keypair
+* No key type is specified, it will default to `Ed25519`.

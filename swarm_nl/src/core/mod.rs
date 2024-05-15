@@ -45,10 +45,10 @@ use super::*;
 use crate::{setup::BootstrapConfig, util::string_to_peer_id};
 
 #[cfg(feature = "async-std-runtime")]
-pub use async_std::sync::Mutex;
+use async_std::sync::Mutex;
 
 #[cfg(feature = "tokio-runtime")]
-pub use tokio::sync::Mutex;
+use tokio::sync::Mutex;
 
 mod prelude;
 pub use prelude::*;
@@ -145,7 +145,7 @@ pub struct CoreBuilder<T: EventHandler + Clone + Send + Sync + 'static> {
 impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	/// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
 	/// Here, it is certain that [`BootstrapConfig`] contains valid data.
-	/// A type that implements [`EventHandler`] is passed to handle and react to network events.
+	/// A type that implements [`EventHandler`] is passed to handle and responde to network events.
 	pub fn with_config(config: BootstrapConfig, handler: T) -> Self {
 		// The default network id
 		let network_id = DEFAULT_NETWORK_ID;
@@ -243,7 +243,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	}
 
 	/// Configure the size of the stream buffers to use to track application requests to the network
-	/// layer internally. This should be as large an possible to prevent dropping of requests to the
+	/// layer internally. This should be as large an possible to prevent dropping off requests to the
 	/// network layer. Defaults to [`usize::MAX`]
 	pub fn with_stream_size(self, size: usize) -> Self {
 		CoreBuilder {
@@ -269,10 +269,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	}
 
 	/// Configure the RPC protocol for the network.
-	pub fn with_rpc<F>(self, config: RpcConfig) -> Self
-	where
-		F: Fn(Vec<String>) -> Vec<String>,
-	{
+	pub fn with_rpc<F>(self, config: RpcConfig) -> Self {
 		// Set the request-response protocol
 		CoreBuilder {
 			request_response: Behaviour::new(
@@ -285,7 +282,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		}
 	}
 
-	/// TODO! Kademlia Config has to be cutom because of some setting exposed
 	/// Configure the `Kademlia` protocol for the network.
 	pub fn with_kademlia(self, config: kad::Config) -> Self {
 		// PeerId
@@ -299,7 +295,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	/// Configure the `Gossipsub` protocol for the network
 	/// # Panics
 	///
-	/// THis function panics if `Gossipsub` cannot be configured properly
+	/// This function panics if `Gossipsub` cannot be configured properly
 	pub fn with_gossipsub(
 		self,
 		config: gossipsub::Config,
@@ -317,8 +313,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { transport, ..self }
 	}
 
-	/// Configure network event handler.
-	/// This configures the functions to be called when various network events take place.
+	/// Configure a handler to respond to network events.
 	pub fn configure_network_events(self, handler: T) -> Self {
 		CoreBuilder { handler, ..self }
 	}
@@ -688,7 +683,7 @@ pub struct Core<T: EventHandler + Clone + Send + Sync + 'static> {
 
 impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful
-	/// for saving a keypair when going offline for future use.
+	/// for saving a keypair for future use when going offline.
 	///
 	/// It returns a boolean to indicate success of operation. Only key types other than RSA can be
 	/// serialized to protobuf format and only a single keypair can be saved at a time.
@@ -763,11 +758,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		}
 	}
 
-	/// TODO! Buffer cleanup algorithm
-	/// Explicitly rectrieve the reponse to a request sent to the network layer.
-	/// This function is decoupled from the `Core::send_to_network()` function so as to prevent delay
-	/// and read immediately as the response to the request should already be in the stream response
-	/// buffer.
+	/// Explicitly retrieve the reponse to a request sent to the network layer.
+	/// This function is decoupled from the [`Core::send_to_network()`] method so as to prevent 
+	/// blocking until the response is returned.
 	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
 		#[cfg(feature = "async-std-runtime")]
 		{
@@ -836,10 +829,12 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		}
 	}
 
-	/// Perform an atomic `send` and `recieve` from the network layer. This function is atomic and
-	/// blocks until the result of the request is returned from the network layer. This function
-	/// should mostly be used when the result of the request is needed immediately and delay can be
+	/// Perform an atomic `send` and `recieve` to and from the network layer. This function is atomic and
+	/// blocks until the result of the request is returned from the network layer. 
+	/// 
+	/// This function should mostly be used when the result of the request is needed immediately and delay can be
 	/// condoned. It will still timeout if the delay exceeds the configured period.
+	/// 
 	/// If the internal buffer is full, it will return an error.
 	pub async fn query_network(&mut self, request: AppData) -> NetworkResult {
 		// send request

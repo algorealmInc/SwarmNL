@@ -8,25 +8,25 @@ use self::ping_config::PingInfo;
 
 use super::*;
 
-/// Type to indicate the duration (in seconds) to wait for data from the network layer before timing
+/// The duration (in seconds) to wait for response from the network layer before timing
 /// out.
-pub const NETWORK_READ_TIMEOUT: Seconds = 60;
+pub const NETWORK_READ_TIMEOUT: Seconds = 30;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
 /// the repsonse buffer (7 seconds).
 pub const TASK_SLEEP_DURATION: Seconds = 7;
 
-/// Type that represents the response of the network layer to the application layer's event handler
-pub type AppResponseResult = Result<AppResponse, NetworkError>;
+/// Type that represents the response of the network layer to the application layer's event handler.
+type AppResponseResult = Result<AppResponse, NetworkError>;
 
 /// The delimeter that separates the messages to gossip
-pub const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
+pub(super) const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
 
-/// Time to wait (in seconds) for node (network layer) to boot
-pub const BOOT_WAIT_TIME: Seconds = 1;
+/// Time to wait (in seconds) for the node (network layer) to boot.
+pub(super) const BOOT_WAIT_TIME: Seconds = 1;
 
-/// The buffer capacity of an mpsc stream
-pub const STREAM_BUFFER_CAPACITY: usize = 100;
+/// The buffer capacity of an mpsc stream.
+pub(super) const STREAM_BUFFER_CAPACITY: usize = 100;
 
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug, Clone)]
@@ -37,14 +37,14 @@ pub(super) enum StreamData {
 	ToApplication(StreamId, AppResponse),
 }
 
-/// Data sent from the application layer to the networking layer.
+/// Request sent from the application layer to the networking layer.
 #[derive(Debug, Clone)]
 pub enum AppData {
 	/// A simple echo message.
 	Echo(String),
 	/// Dail peer
 	DailPeer(PeerId, MultiaddrString),
-	/// Store a value associated with a given key in the Kademlia DHT
+	/// Store a value associated with a given key in the Kademlia DHT.
 	KademliaStoreRecord {
 		key: Vec<u8>,
 		value: Vec<u8>,
@@ -65,63 +65,63 @@ pub enum AppData {
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network.
 	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
-	/// Get network information about the node
+	/// Get network information about the node.
 	GetNetworkInfo,
-	// Send message to gossip peers in a mesh network
+	/// Send message to gossip peers in a mesh network.
 	GossipsubBroadcastMessage {
 		/// Topic to send messages to
 		topic: String,
 		message: Vec<String>,
 	},
-	/// Join a mesh network
+	/// Join a mesh network.
 	GossipsubJoinNetwork(String),
-	/// Get gossip information about node
+	/// Get gossip information about node.
 	GossipsubGetInfo,
-	/// Leave a network we are a part of
+	/// Leave a network we are a part of.
 	GossipsubExitNetwork(String),
-	/// Blacklist a peer explicitly
+	/// Blacklist a peer explicitly.
 	GossipsubBlacklistPeer(PeerId),
-	/// Remove a peer from the blacklist
+	/// Remove a peer from the blacklist.
 	GossipsubFilterBlacklist(PeerId),
 }
 
-/// Response to requests sent from the aplication to the network layer
+/// Response to requests sent from the application to the network layer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppResponse {
 	/// The value written to the network.
 	Echo(String),
-	/// The peer we dailed
+	/// The peer we dailed.
 	DailPeerSuccess(String),
-	/// Store record success
+	/// Store record success.
 	KademliaStoreRecordSuccess,
-	/// DHT lookup result
+	/// DHT lookup result.
 	KademliaLookupSuccess(Vec<u8>),
-	/// Nodes storing a particular record in the DHT
+	/// Nodes storing a particular record in the DHT.
 	KademliaGetProviders {
 		key: Vec<u8>,
 		providers: Vec<PeerIdString>,
 	},
-	/// No providers found,
+	/// No providers found.
 	KademliaNoProvidersFound,
-	/// Routing table information
+	/// Routing table information.
 	KademliaGetRoutingTableInfo { protocol_id: String },
-	/// RPC result.
+	/// Result of RPC operation.
 	FetchData(Vec<Vec<u8>>),
 	/// A network error occured while executing the request.
 	Error(NetworkError),
-	/// Important information about the node
+	/// Important information about the node.
 	GetNetworkInfo {
 		peer_id: PeerId,
 		connected_peers: Vec<PeerId>,
 		external_addresses: Vec<MultiaddrString>,
 	},
-	/// Successfully broadcast the network
+	/// Successfully broadcast to the network.
 	GossipsubBroadcastSuccess,
-	/// Successfully joined a mesh network
+	/// Successfully joined a mesh network.
 	GossipsubJoinSuccess,
-	/// Successfully exited a mesh network
+	/// Successfully exited a mesh network.
 	GossipsubExitSuccess,
-	/// Get gossip information about node
+	/// Gossipsub information about node.
 	GossipsubGetInfo {
 		/// Topics that the node is currently subscribed to
 		topics: Vec<String>,
@@ -130,11 +130,11 @@ pub enum AppResponse {
 		/// Peers we have blacklisted
 		blacklist: HashSet<PeerId>,
 	},
-	/// Blacklist operation success
+	/// A peer was successfully blacklisted.
 	GossipsubBlacklistSuccess,
 }
 
-/// Network error type containing errors encountered during network operations
+/// Network error type containing errors encountered during network operations.
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum NetworkError {
 	#[error("timeout occured waiting for data from network layer")]
@@ -163,18 +163,18 @@ pub struct StreamId(u32);
 
 impl StreamId {
 	/// Generate a new random stream id.
-	/// Must only be called once
+	/// Must only be called once.
 	pub fn new() -> Self {
 		StreamId(0)
 	}
 
-	/// Generate a new random stream id, using the current as guide.
+	/// Generate a new random stream id, using the current as reference.
 	pub fn next(current_id: StreamId) -> Self {
 		StreamId(current_id.0.wrapping_add(1))
 	}
 }
 
-/// Type that specifies the result of querying the network layer.
+/// Type that contains the result of querying the network layer.
 pub type NetworkResult = Result<AppResponse, NetworkError>;
 
 /// Type that keeps track of the requests from the application layer.
@@ -256,10 +256,9 @@ pub struct RpcConfig {
 	pub max_concurrent_streams: usize,
 }
 
-/// The high level trait that provides default implementations to handle most supported network
-/// swarm events.
+/// The high level trait that provides an interface for the application layer to respond to network events.
 pub trait EventHandler {
-	/// Event that informs the network core that we have started listening on a new multiaddr.
+	/// Event that informs the application that we have started listening on a new multiaddr.
 	fn new_listen_addr(
 		&mut self,
 
@@ -270,13 +269,13 @@ pub trait EventHandler {
 		// Default implementation
 	}
 
-	/// Event that informs the network core that a new peer (with its location details) has just
-	/// been added to the routing table
+	/// Event that informs the application that a new peer (with its location details) has just
+	/// been added to the routing table.
 	fn routing_table_updated(&mut self, _peer_id: PeerId) {
 		// Default implementation
 	}
 
-	/// Event that informs the network core about a newly established connection to a peer.
+	/// Event that informs the application about a newly established connection to a peer.
 	fn connection_established(
 		&mut self,
 
@@ -289,7 +288,7 @@ pub trait EventHandler {
 		// Default implementation
 	}
 
-	/// Event that informs the network core about a closed connection to a peer.
+	/// Event that informs the application about a closed connection to a peer.
 	fn connection_closed(
 		&mut self,
 
@@ -373,55 +372,55 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces the arrival of a pong message from a peer.
-	/// The duration it took for a round trip is also returned
+	/// The duration it took for a round trip is also returned.
 	fn outbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
 		// Default implementation
 	}
 
-	/// Event that announces a `Ping` error
+	/// Event that announces a `Ping` error.
 	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure) {
 		// Default implementation
 	}
 
-	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol
+	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol.
 	fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info) {
 		// Default implementation
 	}
 
-	/// Event that announces the successful write of a record to the DHT
+	/// Event that announces the successful write of a record to the DHT.
 	fn kademlia_put_record_success(&mut self, _key: Vec<u8>) {
 		// Default implementation
 	}
 
-	/// Event that announces the failure of a node to save a record
+	/// Event that announces the failure of a node to save a record.
 	fn kademlia_put_record_error(&mut self) {
 		// Default implementation
 	}
 
-	/// Event that announces a node as a provider of a record in the DHT
+	/// Event that announces a node as a provider of a record in the DHT.
 	fn kademlia_start_providing_success(&mut self, _key: Vec<u8>) {
 		// Default implementation
 	}
 
-	/// Event that announces the failure of a node to become a provider of a record in the DHT
+	/// Event that announces the failure of a node to become a provider of a record in the DHT.
 	fn kademlia_start_providing_error(&mut self) {
 		// Default implementation
 	}
 
-	/// Event that announces the arrival of an RPC message
+	/// Event that announces the arrival of an RPC message.
 	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
 
-	/// Event that announces that a peer has just left a network
+	/// Event that announces that a peer has just left a network.
 	fn gossipsub_unsubscribe_message_recieved(&mut self, _peer_id: PeerId, _topic: String) {
 		// Default implementation
 	}
 
-	/// Event that announces that a peer has just joined a network
+	/// Event that announces that a peer has just joined a network.
 	fn gossipsub_subscribe_message_recieved(&mut self, _peer_id: PeerId, _topic: String) {
 		// Default implementation
 	}
 
-	/// Event that announces the arrival of a gossip message
+	/// Event that announces the arrival of a gossip message.
 	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>);
 }
 

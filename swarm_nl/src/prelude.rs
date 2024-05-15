@@ -42,9 +42,9 @@ pub type SwarmNlResult<T> = Result<T, SwarmNlError>;
 pub type Port = u16;
 /// Seconds type.
 pub type Seconds = u64;
-/// The stringified PeerId type.
+/// The stringified `PeerId` type.
 pub type PeerIdString = String;
-/// The stringified Multiaddr type.
+/// The stringified `Multiaddr` type.
 pub type MultiaddrString = String;
 
 /// Lower bound port range (u16::MIN).

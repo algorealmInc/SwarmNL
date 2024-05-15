@@ -1,7 +1,7 @@
 // Copyright 2024 Algorealm
 // Apache 2.0 License
 
-//! Data structures and functions to setup a node identity and configure it for networking.
+//! Data structures and functions to setup a node and configure it for networking.
 
 #![doc = include_str!("../doc/setup/NodeSetup.md")]
 
@@ -71,7 +71,7 @@ impl BootstrapConfig {
 		self
 	}
 	
-	/// Configure the TCP/IP port
+	/// Configure the TCP/IP port.
 	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
 	pub fn with_tcp(self, tcp_port: Port) -> Self {
 		if tcp_port > MIN_PORT && tcp_port < MAX_PORT {
@@ -92,10 +92,10 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Generate a Cryptographic Keypair.
+	/// Generate a Cryptographic Keypair for node identity creation and message signing.
 	/// 
 	/// An RSA keypair cannot be generated on-the-fly. It has to be generated from a `.pk8` file.
-	/// Hence the `Option` parameter is always `None` except in the case of RSA.
+	/// Hence the `rsa_pk8_filepath` parameter must always be set to `None` except in the case of RSA.
 	/// Please note that calling this function overrides whatever might have been read from the
 	/// `.ini` file
 	///
@@ -131,7 +131,7 @@ impl BootstrapConfig {
 	/// # Panics
 	///
 	/// This function will panic if the `u8` buffer is not parsable into the specified key type.
-	/// This could be for one of two reasons:
+	/// This could be because one of two reasons:
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
@@ -176,7 +176,7 @@ impl BootstrapConfig {
 		self.boot_nodes.clone()
 	}
 
-	/// Return the peer id's of nodes that are to be blacklisted
+	/// Return the 	`PeerId`'s of nodes that are to be blacklisted
 	pub fn blacklist(&self) -> Blacklist {
 		self.blacklist.clone()
 	}
