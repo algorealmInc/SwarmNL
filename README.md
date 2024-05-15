@@ -17,27 +17,15 @@ All the hassles and fun of networking has been taken care of for you. You only n
     - Protocol specification and handlers.
     - Event handlers for network events and logging.
 
-- **Node Communication** For communication, SwarmNl leverages the powerful capabilities of libp2p. These includes:  
+- **Node Communication**: For communication, SwarmNl leverages the powerful capabilities of libp2p. These includes:  
     - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
     - A simple RPC mechanism to exchange data quickly between peers.
     - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
-**Node Failure Handling**
-
-SwarmNL provides customizable options for developers to define reconnection strategies, automatic peer discovery, and failover mechanisms. This ensures that the network can gracefully adapt to failures without compromising overall system performance.
-
-**Scaling**
-
-Here's how SwarmNL handles a growing (or shrinking) number of nodes while maintaining performance and reliability (_note: this is currently under development👷_):
-
-- *Sharding* -- a flexible generic sharding protocol that allows application specify configurations like sharding hash functions and locations for shards.
-- *Data Forwarding* -- definition of a protocol for forwarding messages between nodes in different shards and establishment of efficient routing mechanisms for inter-shard communication.
-- *Fault Tolerance* -- implementation of fault-tolerant mechanisms for detecting (and recovering from) node failures. This might involve redundancy, node replication, erasure encoding/decoding or re-routing strategies.
-
-**IPFS**
-
-- *Upload* -- provision of interfaces to upload to IPFS, pin on current node and post arbitrary data to remote servers. Encryption is also easily pluggable and will be provided.
-- *Download* -- retrieval and possible decryption of data from the IPFS network.
+- *In Development*:
+    - Node failure handling involving reconnection strategies, failover mechanisms etc.
+    - Scaling involving techniques like sharding, data forwarding etc.
+    - IPFS upload and download interfaces.
 
 ## License
 
