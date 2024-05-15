@@ -1,4 +1,4 @@
-<div style="text-align: center;" align="center">
+<div >
 
 <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNl.png" alt="SwarmNl" style="border-radius: 15px !important;">
 
