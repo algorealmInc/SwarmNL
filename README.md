@@ -17,6 +17,23 @@ All the hassles and fun of networking has been taken care of for you. You only n
     - Protocol specification and handlers.
     - Event handlers for network events and logging.
 
+    # Example
+    ```rust
+        /// Using the default node setup configuration and the default network event handler
+
+        // Default config
+        let config = BootstrapConfig::default();
+        // Default network handler
+        let handler = DefaultHandler;
+        // Build node or network core
+        let node = CoreBuilder::with_config(config, handler)
+            .build()
+            .await
+            .unwrap();
+
+        /// Simple as ABC!
+    ```
+
 - **Node Communication**: For communication, SwarmNl leverages the powerful capabilities of libp2p. These includes:  
     - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
     - A simple RPC mechanism to exchange data quickly between peers.
