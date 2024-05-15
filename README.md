@@ -17,9 +17,9 @@ All the hassles and fun of networking has been taken care of for you. You only n
     - Protocol specification and handlers.
     - Event handlers for network events and logging.
 
-    # Example
+    ### Example
     ```rust
-        /// Using the default node setup configuration and the default network event handler
+        //! Using the default node setup configuration and the default network event handler
 
         // Default config
         let config = BootstrapConfig::default();
@@ -30,6 +30,27 @@ All the hassles and fun of networking has been taken care of for you. You only n
             .build()
             .await
             .unwrap();
+
+
+        //! Using a custom node setup configuration and a custom network event handler
+        
+        // Custom configuration:
+        // a. Using config from an `.ini` file
+        let config = BootstrapConfig::from_file("bootstrap_config.ini");
+        
+        // b. Using config methods
+        let mut bootnode = HashMap::new();  // Bootnodes
+        let ports = (1509, 2710);  // TCP, UDP ports
+
+        bootnode.insert(
+            PeerId::random(),
+            "/ip4/x.x.x.x/tcp/1509".to_string()
+        );
+
+        let config = BootstrapConfig::new()
+            .with_bootnodes(bootnode)
+            .with_tcp(ports.0)
+            .with_udp(ports.1);
 
         /// Simple as ABC!
     ```
