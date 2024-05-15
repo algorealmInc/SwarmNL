@@ -1,9 +1,9 @@
 // Copyright 2024 Algorealm
 // Apache 2.0 License
+// This file is a part of SwarmNL
 
 #![doc = include_str!("../../README.md")]
 
-/// Re-exports
 pub use crate::prelude::*;
 pub use futures::{
 	channel::mpsc::{self, Receiver, Sender},

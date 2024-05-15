@@ -1,5 +1,8 @@
 // Copyright 2024 Algorealm
 // Apache 2.0 License
+// 
+// This file is a part of SwarmNL
+
 
 //! Core data structures and protocol implementations for building a swarm.
 
@@ -762,7 +765,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 
 	/// TODO! Buffer cleanup algorithm
 	/// Explicitly rectrieve the reponse to a request sent to the network layer.
-	/// This function is decoupled from the [`send_to_network()`] function so as to prevent delay
+	/// This function is decoupled from the `Core::send_to_network()` function so as to prevent delay
 	/// and read immediately as the response to the request should already be in the stream response
 	/// buffer.
 	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {

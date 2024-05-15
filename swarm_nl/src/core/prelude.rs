@@ -1,4 +1,5 @@
 /// Copyright (c) 2024 Algorealm
+/// 
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, time::Instant};
 use thiserror::Error;
