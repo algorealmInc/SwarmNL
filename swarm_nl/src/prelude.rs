@@ -11,7 +11,7 @@ use thiserror::Error;
 pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
 
 /// Default amount of time to keep a connection alive.
-pub static DEFAULT_KEEP_ALIVE_DURATION: u64 = 60;
+pub static DEFAULT_KEEP_ALIVE_DURATION: Seconds = 60;
 
 /// Library error type containing all custom errors that could be encountered
 #[derive(Error, Debug)]

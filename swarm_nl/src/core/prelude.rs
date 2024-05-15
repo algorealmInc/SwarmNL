@@ -9,11 +9,11 @@ use super::*;
 
 /// Type to indicate the duration (in seconds) to wait for data from the network layer before timing
 /// out.
-pub const NETWORK_READ_TIMEOUT: u64 = 60;
+pub const NETWORK_READ_TIMEOUT: Seconds = 60;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
 /// the repsonse buffer (7 seconds).
-pub const TASK_SLEEP_DURATION: u64 = 7;
+pub const TASK_SLEEP_DURATION: Seconds = 7;
 
 /// Type that represents the response of the network layer to the application layer's event handler
 pub type AppResponseResult = Result<AppResponse, NetworkError>;
@@ -22,7 +22,7 @@ pub type AppResponseResult = Result<AppResponse, NetworkError>;
 pub const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
 
 /// Time to wait (in seconds) for node (network layer) to boot
-pub const BOOT_WAIT_TIME: u64 = 1;
+pub const BOOT_WAIT_TIME: Seconds = 1;
 
 /// The buffer capacity of an mpsc stream
 pub const STREAM_BUFFER_CAPACITY: usize = 100;
