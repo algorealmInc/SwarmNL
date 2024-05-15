@@ -9,5 +9,5 @@ resolver = "2"
 
 members = [
     "library",
-    "guides",
+    "tutorials/simple_game",
 ]
