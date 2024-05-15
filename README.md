@@ -11,15 +11,16 @@ All the hassles and fun of networking has been taken care of for you. You only n
 ## Features
 - **Node Configuration**: SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
     - Selection and configuration of the transport layers to be supported by the node.
-    - Selection of the cryptographic keypairs (ed25519, RSA, secp256k1, ecdsa)
+    - Selection of cryptographic keypairs (ed25519, RSA, secp256k1, ecdsa)
     - Storage and retrieval of keypair locally.
     - PeerID and multiaddress generation.
     - Protocol specification and handlers.
     - Event handlers for network events and logging.
 
-**Node Communication**
-
-SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
+- **Node Communication** For communication, SwarmNl leverages the powerful capabilities of libp2p. These includes:  
+    - The Kadmlia DHT: Nodes can use the DHT to store infomation in a distributed format and leverage the capabilities of the DHT to build powerful application.
+    - A simple RPC mechanism to exchange data quickly between peers.
+    - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
 **Node Failure Handling**
 
