@@ -1,8 +1,7 @@
 // Copyright 2024 Algorealm
 // Apache 2.0 License
-// 
+//
 // This file is a part of SwarmNL
-
 
 //! Core data structures and protocol implementations for building a swarm.
 
@@ -12,7 +11,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	fs,
-	net::{IpAddr},
+	net::IpAddr,
 	num::NonZeroU32,
 	sync::Arc,
 	time::Duration,
@@ -243,8 +242,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 	}
 
 	/// Configure the size of the stream buffers to use to track application requests to the network
-	/// layer internally. This should be as large an possible to prevent dropping off requests to the
-	/// network layer. Defaults to [`usize::MAX`]
+	/// layer internally. This should be as large an possible to prevent dropping off requests to
+	/// the network layer. Defaults to [`usize::MAX`]
 	pub fn with_stream_size(self, size: usize) -> Self {
 		CoreBuilder {
 			stream_size: size,
@@ -759,7 +758,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	}
 
 	/// Explicitly retrieve the reponse to a request sent to the network layer.
-	/// This function is decoupled from the [`Core::send_to_network()`] method so as to prevent 
+	/// This function is decoupled from the [`Core::send_to_network()`] method so as to prevent
 	/// blocking until the response is returned.
 	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
 		#[cfg(feature = "async-std-runtime")]
@@ -829,12 +828,12 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		}
 	}
 
-	/// Perform an atomic `send` and `recieve` to and from the network layer. This function is atomic and
-	/// blocks until the result of the request is returned from the network layer. 
-	/// 
-	/// This function should mostly be used when the result of the request is needed immediately and delay can be
-	/// condoned. It will still timeout if the delay exceeds the configured period.
-	/// 
+	/// Perform an atomic `send` and `recieve` to and from the network layer. This function is
+	/// atomic and blocks until the result of the request is returned from the network layer.
+	///
+	/// This function should mostly be used when the result of the request is needed immediately and
+	/// delay can be condoned. It will still timeout if the delay exceeds the configured period.
+	///
 	/// If the internal buffer is full, it will return an error.
 	pub async fn query_network(&mut self, request: AppData) -> NetworkResult {
 		// send request

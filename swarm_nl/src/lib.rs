@@ -7,9 +7,8 @@
 pub use crate::prelude::*;
 pub use libp2p::{
 	core::{transport::ListenerId, ConnectedPoint, Multiaddr},
-	swarm::ConnectionId,
 	ping::Failure,
-
+	swarm::ConnectionId,
 };
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 

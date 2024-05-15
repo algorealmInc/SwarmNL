@@ -340,7 +340,10 @@ mod tests {
 		let ini_file_result: BootstrapConfig = read_ini_file(file_path).unwrap();
 
 		assert_eq!(ini_file_result.blacklist().list.len(), 1);
-		assert!(ini_file_result.blacklist().list.contains(&blacklist_peer_id));
+		assert!(ini_file_result
+			.blacklist()
+			.list
+			.contains(&blacklist_peer_id));
 
 		fs::remove_file(file_path).unwrap_or_default();
 	}

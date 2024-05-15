@@ -1,5 +1,4 @@
 /// Copyright (c) 2024 Algorealm
-/// 
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, time::Instant};
 use thiserror::Error;
@@ -256,7 +255,8 @@ pub struct RpcConfig {
 	pub max_concurrent_streams: usize,
 }
 
-/// The high level trait that provides an interface for the application layer to respond to network events.
+/// The high level trait that provides an interface for the application layer to respond to network
+/// events.
 pub trait EventHandler {
 	/// Event that informs the application that we have started listening on a new multiaddr.
 	fn new_listen_addr(

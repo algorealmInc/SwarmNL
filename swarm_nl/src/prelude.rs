@@ -54,11 +54,12 @@ pub const MAX_PORT: u16 = 65535;
 
 /// Default network id
 pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
-/// This constant sets the shortest acceptable length for a network ID. 
+/// This constant sets the shortest acceptable length for a network ID.
 /// The network ID identifies a network and ensures it's distinct from others.
 pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
-/// An implementation of [`From<&str>`] for [`KeyType`] to read a key type from a bootstrap config file.
+/// An implementation of [`From<&str>`] for [`KeyType`] to read a key type from a bootstrap config
+/// file.
 ///
 /// We define a custom trait because of the Rust visibility rule.
 pub trait CustomFrom {

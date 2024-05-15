@@ -11,7 +11,6 @@ use crate::core::gossipsub_cfg::Blacklist;
 pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 
-
 /// Import the contents of the exported modules into this module
 use super::*;
 
@@ -27,7 +26,7 @@ pub struct BootstrapConfig {
 	/// Bootstrap peers.
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
 	/// Blacklisted peers
-	blacklist: Blacklist
+	blacklist: Blacklist,
 }
 
 impl BootstrapConfig {
@@ -53,7 +52,7 @@ impl BootstrapConfig {
 			// Default node keypair type i.e Ed25519.
 			keypair: Keypair::generate_ed25519(),
 			boot_nodes: Default::default(),
-			blacklist: Default::default()
+			blacklist: Default::default(),
 		}
 	}
 
@@ -70,7 +69,7 @@ impl BootstrapConfig {
 		self.blacklist.list.extend(list.into_iter());
 		self
 	}
-	
+
 	/// Configure the TCP/IP port.
 	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
 	pub fn with_tcp(self, tcp_port: Port) -> Self {
@@ -82,7 +81,7 @@ impl BootstrapConfig {
 	}
 
 	/// Configure the UDP port.
-	/// 
+	///
 	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
 	pub fn with_udp(self, udp_port: Port) -> Self {
 		if udp_port > MIN_PORT && udp_port < MAX_PORT {
@@ -93,10 +92,10 @@ impl BootstrapConfig {
 	}
 
 	/// Generate a Cryptographic Keypair for node identity creation and message signing.
-	/// 
+	///
 	/// An RSA keypair cannot be generated on-the-fly. It has to be generated from a `.pk8` file.
-	/// Hence the `rsa_pk8_filepath` parameter must always be set to `None` except in the case of RSA.
-	/// Please note that calling this function overrides whatever might have been read from the
+	/// Hence the `rsa_pk8_filepath` parameter must always be set to `None` except in the case of
+	/// RSA. Please note that calling this function overrides whatever might have been read from the
 	/// `.ini` file
 	///
 	/// # Panics
