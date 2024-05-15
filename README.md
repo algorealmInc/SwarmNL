@@ -98,13 +98,74 @@ All the hassles and fun of networking has been taken care of for you. You only n
             .await
             .unwrap();
 
-        /// Simple as ABC!
     ```
 
 - **Node Communication**: For communication, SwarmNl leverages the powerful capabilities of libp2p. These includes:  
     - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
     - A simple RPC mechanism to exchange data quickly between peers.
     - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
+
+    ### Example
+    ```rust
+        // Build node or network core
+        let node = CoreBuilder::with_config(config, state)
+            .build()
+            .await
+            .unwrap();
+
+        // Communication interfaces
+        // a. Kademlia DHT e.g 
+
+        // Prepare an kademlia `store_record` request to send to the network layer
+        let (key, value, expiration_time, explicit_peers) = (
+            KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+            KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
+            None,
+            None,
+        );
+
+        let kad_request = AppData::KademliaStoreRecord {
+            key: key.clone(),
+            value,
+            expiration_time,
+            explicit_peers,
+        };
+
+        // Send request
+        if let Ok(result) = node.query_network(kad_request).await {
+            assert_eq!(KademliaStoreRecordSuccess,result);
+		}
+
+        // b. RPC (request-response) e.g
+
+        // Prepare a RPC fetch request
+		let fetch_key = vec!["SomeFetchKey".as_bytes().to_vec()];
+
+		let fetch_request = AppData::FetchData {
+			keys: fetch_key.clone(),
+			peer: node4_peer_id,
+		};
+
+		let stream_id = node.send_to_network(fetch_request).await.unwrap();
+
+		if let Ok(result) = node.recv_from_network(stream_id).await {
+            // Here, the request data was simply echoed by the remote peer
+			assert_eq!(AppResponse::FetchData(fetch_key), result);
+		}
+
+        // c. Gossiping e.g
+
+        // Prepare gossip request
+        let gossip_request = AppData::GossipsubBroadcastMessage {
+            topic: GOSSIP_NETWORK.to_string(),
+            message: vec!["Daniel".to_string(), "Deborah".to_string()],
+        };
+
+        if let Ok(result) = node.query_network(gossip_request).await {
+            assert_eq!(AppResponse::GossipsubBroadcastSuccess, result);
+        }
+
+    ```    
 
 - *In Development 👷*:
     - *Node failure handling involving reconnection strategies, failover mechanisms etc*.
