@@ -34,10 +34,10 @@ All the hassles and fun of networking has been taken care of for you. You only n
 
         //! Using a custom node setup configuration and a custom network event handler
         
-        // Custom configuration:
+        // Custom configuration
         // a. Using config from an `.ini` file
         let config = BootstrapConfig::from_file("bootstrap_config.ini");
-        
+
         // b. Using config methods
         let mut bootnode = HashMap::new();  // Bootnodes
         let ports = (1509, 2710);  // TCP, UDP ports
@@ -51,6 +51,52 @@ All the hassles and fun of networking has been taken care of for you. You only n
             .with_bootnodes(bootnode)
             .with_tcp(ports.0)
             .with_udp(ports.1);
+
+        // Custom event handler
+        use swarm_nl::core::EventHandler;
+
+        #[derive(Clone)]
+        struct ApplicationState{
+            name: String,
+            version: i8,
+        }
+
+        // Define custom behaviour to respond to network events
+        impl EventHandler for AppState {
+            fn new_listen_addr(
+                &mut self,
+                local_peer_id: PeerId,
+                listener_id: ListenerId,
+                addr: Multiaddr,
+            ) {
+                // Announce interfaces we're listening on
+                println!("Peer id: {}", local_peer_id);
+                println!("We're listening on the {}", addr);
+            }
+
+            // Echo data recieved from a RPC
+            fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+                println!("Recvd incoming RPC: {:?}", data);
+                data
+            }
+
+            // Handle the incoming gossip message
+            fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<String>) {
+                println!("Recvd incoming gossip: {:?}", data);
+            }
+	    }
+
+        // Define custom event handler
+        let state = ApplicationState {
+            name: String::from("SwarmNl"),
+            version: 0.1
+        }
+
+        // Build node or network core
+        let node = CoreBuilder::with_config(config, state)
+            .build()
+            .await
+            .unwrap();
 
         /// Simple as ABC!
     ```
