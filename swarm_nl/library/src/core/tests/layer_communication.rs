@@ -16,7 +16,7 @@ use libp2p::{
 };
 
 /// Time to wait for the other peer to act, during integration tests (in seconds)
-pub const ITEST_WAIT_TIME: u64 = 15;
+pub const ITEST_WAIT_TIME: u64 = 7;
 /// The key to test the Kademlia DHT
 pub const KADEMLIA_TEST_KEY: &str = "GOAT";
 /// The value to test the Kademlia DHT
@@ -362,13 +362,6 @@ fn kademlia_get_routing_table_info_works() {
 }
 
 // -- For fetch tests --
-
-// To run these test you will need to execute the following commands in separate terminals (in this
-// order): cargo test rpc --features=tokio-runtime --features=server-node -- --nocapture
-// cargo test rpc  --features=tokio-runtime --features=client-node -- --nocapture
-// And then you can check that the server node prints out a "Recvd incoming RPC:" message with the
-// data sent by the client node.
-
 #[cfg(feature = "server-node")]
 #[test]
 fn rpc_fetch_works() {
@@ -537,7 +530,7 @@ fn gossipsub_info_works() {
 // TWO NODES WILL INTERACT WITH EACH OTHER USING THE COMMANDS TO THE DHT
 #[cfg(feature = "test-reading-node")]
 #[test]
-fn test_kademlia_record_store_itest_works() {
+fn kademlia_record_store_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the node that will be dialled
 		let mut node_1 = setup_node_1((51666, 51606)).await;
@@ -562,7 +555,7 @@ fn test_kademlia_record_store_itest_works() {
 
 #[cfg(feature = "test-writing-node")]
 #[test]
-fn test_kademlia_record_store_itest_works() {
+fn kademlia_record_store_itest_works() {
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the second node that will dial
@@ -590,13 +583,14 @@ fn test_kademlia_record_store_itest_works() {
 }
 
 // TEST FOR PROVIDERS
-#[cfg(feature = "test-reading-node")]
+#[cfg(feature = "test-writing-node")]
 #[test]
-fn test_kademlia_provider_records_itest_works() {
+fn kademlia_provider_records_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the node that will be dialled
 		let mut node_1 = setup_node_1((51066, 51006)).await;
 
+		// create a Kademlia request
 		let (key, value, expiration_time, explicit_peers) = (
 			KADEMLIA_TEST_KEY.as_bytes().to_vec(),
 			KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
@@ -611,6 +605,7 @@ fn test_kademlia_provider_records_itest_works() {
 			explicit_peers,
 		};
 
+		// submit request
 		let res = node_1.query_network(kad_request).await;
 
 		loop {}
@@ -618,22 +613,23 @@ fn test_kademlia_provider_records_itest_works() {
 }
 
 // TEST FOR PROVIDERS
-#[cfg(feature = "test-writing-node")]
+#[cfg(feature = "test-reading-node")]
 #[test]
-fn test_kademlia_provider_records_itest_works() {
+fn kademlia_provider_records_itest_works() {
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((51066, 51006), (51067, 51007)).await;
 
-		// Wait for a few seconds before trying to read the DHT
+		// wait for a few seconds before trying to read the DHT
 		#[cfg(feature = "tokio-runtime")]
 		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
 
-		// now poll for the kademlia provider
+		// now poll for the kademlia record provider
 		let kad_request = AppData::KademliaGetProviders {
 			key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
 		};
+		// submit query and assert that the provider is the node 1
 		if let Ok(result) = node_2.query_network(kad_request).await {
 			if let AppResponse::KademliaGetProviders { key, providers } = result {
 				assert_eq!(providers[0], node_1_peer_id.to_base58());
@@ -696,7 +692,6 @@ fn gossipsub_join_exit_itest_works() {
 }
 
 // GOSSIPSUB INTEGRATION TESTS
-#[docify::export]
 #[cfg(feature = "test-listening-node")]
 #[test]
 fn gossipsub_message_itest_works() {

@@ -16,4 +16,4 @@ pub mod core;
 mod prelude;
 pub mod setup;
 pub mod util;
-pub use swarmnl_guides::*;
+pub mod testing_guide;
