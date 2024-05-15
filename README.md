@@ -1,4 +1,7 @@
-<img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNl.png" alt="SwarmNl" style="border-radius: 15px !important;">
+<!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNl.png" alt="SwarmNl" style="border-radius: 15px !important;"> -->
+
+# SwarmNL
+## a library to build custom networking layers for decentralized applications
 
 SwarmNL is a Rust library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by libp2p, SwarmNL simplifies networking, so you can focus on building.
 
