@@ -152,8 +152,10 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
             peer: node4_peer_id,
         };
 
+        // Get a stream id to track the request
         let stream_id = node.send_to_network(fetch_request).await.unwrap();
 
+        // Poll for the result
         if let Ok(result) = node.recv_from_network(stream_id).await {
             // Here, the request data was simply echoed by the remote peer
             assert_eq!(AppResponse::FetchData(fetch_key), result);
