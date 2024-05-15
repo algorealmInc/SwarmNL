@@ -107,6 +107,8 @@ All the hassles and fun of networking has been taken care of for you. You only n
 
     ### Example
     ```rust
+        //! Communicate with remote nodes using the simple and familiar async-await paradigm.
+
         // Build node or network core
         let node = CoreBuilder::with_config(config, state)
             .build()
