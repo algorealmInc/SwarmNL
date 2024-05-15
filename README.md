@@ -9,7 +9,7 @@ SwarmNl helps you set up a p2p decentralized and distributed networking stack fo
 All the hassles and fun of networking has been taken care of for you. You only need to worry about simple configurations. That easy!
 
 ## Features
-- Node Configuration: SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
+- **Node Configuration**: SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
     - Selection and configuration of the transport layers to be supported by the node.
     - Selection of the cryptographic keypairs (ed25519, RSA, secp256k1, ecdsa)
     - Storage and retrieval of keypair locally.
