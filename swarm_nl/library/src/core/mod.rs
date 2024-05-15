@@ -5,8 +5,8 @@
 
 //! Core data structures and protocol implementations for building a swarm.
 
-#![doc = include_str!("../../doc/core/NetworkBuilder.md")]
-#![doc = include_str!("../../doc/core/ApplicationInteraction.md")]
+#![doc = include_str!("../../../doc/core/NetworkBuilder.md")]
+#![doc = include_str!("../../../doc/core/ApplicationInteraction.md")]
 
 use std::{
 	collections::{HashMap, HashSet},

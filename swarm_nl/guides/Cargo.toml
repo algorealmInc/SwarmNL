@@ -1,0 +1,13 @@
+[package]
+name = "swarmnl-guides"
+description = "A doc only crate containg guides for using different features of the Swarm Networking Library."
+license = "Apache-2.0"
+repository.workspace = true
+edition.workspace = true
+
+# This crate is not publish-able to crates.io for now because of docify.
+publish = false
+version = "0.0.1"
+
+[dependencies]
+docify = "0.2.8"

@@ -3,7 +3,7 @@
 
 //! Data structures and functions to setup a node and configure it for networking.
 
-#![doc = include_str!("../doc/setup/NodeSetup.md")]
+#![doc = include_str!("../../doc/setup/NodeSetup.md")]
 
 use std::collections::HashMap;
 
@@ -250,6 +250,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[docify::export]
 	#[test]
 	fn default_config_works() {
 		let bootstrap_config = BootstrapConfig::default();

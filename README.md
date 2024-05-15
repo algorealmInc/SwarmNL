@@ -10,6 +10,8 @@ SwarmNL makes buiding a peer-to-peer decentralized and distributed networking st
 
 Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic. It's that easy!
 
+Have a look at the [`swarmnl_guides::guides`] to get started.
+
 ## Features
 
 - **Node Configuration**: SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:

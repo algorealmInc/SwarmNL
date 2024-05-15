@@ -696,6 +696,7 @@ fn gossipsub_join_exit_itest_works() {
 }
 
 // GOSSIPSUB INTEGRATION TESTS
+#[docify::export]
 #[cfg(feature = "test-listening-node")]
 #[test]
 fn gossipsub_message_itest_works() {
