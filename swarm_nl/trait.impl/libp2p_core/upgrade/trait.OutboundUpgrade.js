@@ -1,0 +1,5 @@
+(function() {var implementors = {
+"libp2p":[],
+"libp2p_core":[],
+"libp2p_swarm":[["impl&lt;T: <a class=\"trait\" href=\"libp2p_swarm/handler/trait.OutboundUpgradeSend.html\" title=\"trait libp2p_swarm::handler::OutboundUpgradeSend\">OutboundUpgradeSend</a>&gt; <a class=\"trait\" href=\"libp2p_core/upgrade/trait.OutboundUpgrade.html\" title=\"trait libp2p_core::upgrade::OutboundUpgrade\">OutboundUpgrade</a>&lt;<a class=\"struct\" href=\"libp2p_swarm/struct.Stream.html\" title=\"struct libp2p_swarm::Stream\">Stream</a>&gt; for <a class=\"struct\" href=\"libp2p_swarm/handler/struct.SendWrapper.html\" title=\"struct libp2p_swarm::handler::SendWrapper\">SendWrapper</a>&lt;T&gt;"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

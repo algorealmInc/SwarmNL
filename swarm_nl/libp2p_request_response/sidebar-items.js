@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Event","InboundFailure","Message","OutboundFailure","ProtocolSupport"],"mod":["cbor"],"struct":["Behaviour","Config","InboundRequestId","OutboundRequestId","ResponseChannel"],"trait":["Codec"]};

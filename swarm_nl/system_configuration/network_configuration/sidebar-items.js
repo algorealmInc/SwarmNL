@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SCNetworkInterfaceType"],"fn":["get_interfaces"],"struct":["SCNetworkInterface","SCNetworkService","SCNetworkSet"]};

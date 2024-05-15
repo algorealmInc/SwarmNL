@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Reference"],"fn":["if_major","is_break"],"struct":["ArrayStart","IgnoredAny"],"trait":["Decode","Read"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["IfAddr"],"fn":["get_if_addrs"],"struct":["Ifv4Addr","Ifv6Addr","Interface"]};

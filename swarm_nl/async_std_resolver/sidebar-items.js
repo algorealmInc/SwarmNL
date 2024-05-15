@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["resolver","resolver_from_system_conf"],"mod":["config","lookup","lookup_ip"],"struct":["ResolveError"],"type":["AsyncStdResolver"]};

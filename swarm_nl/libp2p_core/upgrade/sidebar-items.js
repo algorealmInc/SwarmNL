@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["NegotiationError","ProtocolError","Version"],"struct":["DeniedUpgrade","NegotiatedComplete","PendingUpgrade","ReadyUpgrade","SelectUpgrade"],"trait":["InboundConnectionUpgrade","InboundUpgrade","OutboundConnectionUpgrade","OutboundUpgrade","UpgradeInfo"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ArithmeticOverflow","DecodeError","EncodeError","Len"],"type":["Never","StaticStr"]};

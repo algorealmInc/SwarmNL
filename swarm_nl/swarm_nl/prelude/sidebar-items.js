@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_PORT","MIN_PORT"],"enum":["SwarmNlError","TcpConfig","TransportOpts"],"static":["DEFAULT_IP_ADDRESS","DEFAULT_KEEP_ALIVE_DURATION","DEFAULT_NETWORK_ID","MIN_NETWORK_ID_LENGTH"],"trait":["CustomFrom"],"type":["MultiaddrString","PeerIdString","Port","Seconds","SwarmNlResult"]};

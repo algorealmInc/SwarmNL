@@ -1,0 +1,92 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="License: MIT Apache License 2.0 docs.rs crates.io Download numbers Github CI Minimum rustc version"><title>x509_parser - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="x509_parser" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-4c98445ec4002617.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../x509_parser/index.html">x509_parser</a><span class="version">0.15.1</span></h2></div><div class="sidebar-elems"><ul class="block">
+            <li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#reexports">Re-exports</a></li><li><a href="#modules">Modules</a></li><li><a href="#functions">Functions</a></li></ul></section></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../x509_parser/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">x509_parser</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/x509_parser/lib.rs.html#1-213">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><a href="./LICENSE-MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+<a href="./LICENSE-APACHE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="Apache License 2.0" /></a>
+<a href="https://docs.rs/x509-parser"><img src="https://docs.rs/x509-parser/badge.svg" alt="docs.rs" /></a>
+<a href="https://crates.io/crates/x509-parser"><img src="https://img.shields.io/crates/v/x509-parser.svg" alt="crates.io" /></a>
+<a href="https://crates.io/crates/x509-parser"><img src="https://img.shields.io/crates/d/x509-parser.svg" alt="Download numbers" /></a>
+<a href="https://github.com/rusticata/x509-parser/actions"><img src="https://github.com/rusticata/x509-parser/workflows/Continuous%20integration/badge.svg" alt="Github CI" /></a>
+<a href="#rust-version-requirements"><img src="https://img.shields.io/badge/rustc-1.57.0+-lightgray.svg" alt="Minimum rustc version" /></a></p>
+<h2 id="x509-parser"><a class="doc-anchor" href="#x509-parser">§</a>X.509 Parser</h2>
+<p>A X.509 v3 (<a href="https://tools.ietf.org/html/rfc5280">RFC5280</a>) parser, implemented with the <a href="https://github.com/Geal/nom">nom</a>
+parser combinator framework.</p>
+<p>It is written in pure Rust, fast, and makes extensive use of zero-copy. A lot of care is taken
+to ensure security and safety of this crate, including design (recursion limit, defensive
+programming), tests, and fuzzing. It also aims to be panic-free.</p>
+<p>The code is available on <a href="https://github.com/rusticata/x509-parser">Github</a>
+and is part of the <a href="https://github.com/rusticata">Rusticata</a> project.</p>
+<p>Certificates are usually encoded in two main formats: PEM (usually the most common format) or
+DER.  A PEM-encoded certificate is a container, storing a DER object. See the
+<a href="pem/index.html"><code>pem</code></a> module for more documentation.</p>
+<p>To decode a DER-encoded certificate, the main parsing method is
+<code>X509Certificate::from_der</code> (
+part of the <a href="prelude/trait.FromDer.html"><code>FromDer</code></a> trait
+), which builds a
+<a href="certificate/struct.X509Certificate.html"><code>X509Certificate</code></a> object.</p>
+<p>An alternative method is to use <a href="certificate/struct.X509CertificateParser.html"><code>X509CertificateParser</code></a>,
+which allows specifying parsing options (for example, not automatically parsing option contents).</p>
+<p>The returned objects for parsers follow the definitions of the RFC. This means that accessing
+fields is done by accessing struct members recursively. Some helper functions are provided, for
+example <a href="certificate/struct.X509Certificate.html#method.issuer"><code>X509Certificate::issuer()</code></a> returns the
+same as accessing <code>&lt;object&gt;.tbs_certificate.issuer</code>.</p>
+<p>For PEM-encoded certificates, use the <a href="pem/index.html"><code>pem</code></a> module.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2>
+<p>Parsing a certificate in DER format:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>x509_parser::prelude::<span class="kw-2">*</span>;
+
+<span class="kw">static </span>IGCA_DER: <span class="kw-2">&amp;</span>[u8] = <span class="macro">include_bytes!</span>(<span class="string">"../assets/IGC_A.der"</span>);
+
+<span class="kw">let </span>res = X509Certificate::from_der(IGCA_DER);
+<span class="kw">match </span>res {
+    <span class="prelude-val">Ok</span>((rem, cert)) =&gt; {
+        <span class="macro">assert!</span>(rem.is_empty());
+        <span class="comment">//
+        </span><span class="macro">assert_eq!</span>(cert.version(), X509Version::V3);
+    },
+    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(<span class="string">"x509 parsing failed: {:?}"</span>, res),
+}</code></pre></div>
+<p>To parse a CRL and print information about revoked certificates:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">let </span>res = CertificateRevocationList::from_der(DER);
+<span class="kw">match </span>res {
+    <span class="prelude-val">Ok</span>((_rem, crl)) =&gt; {
+        <span class="kw">for </span>revoked <span class="kw">in </span>crl.iter_revoked_certificates() {
+            <span class="macro">println!</span>(<span class="string">"Revoked certificate serial: {}"</span>, revoked.raw_serial_as_string());
+            <span class="macro">println!</span>(<span class="string">"  Reason: {}"</span>, revoked.reason_code().unwrap_or_default().<span class="number">1</span>);
+        }
+    },
+    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(<span class="string">"CRL parsing failed: {:?}"</span>, res),
+}</code></pre></div>
+<p>See also <code>examples/print-cert.rs</code>.</p>
+<h2 id="features"><a class="doc-anchor" href="#features">§</a>Features</h2>
+<ul>
+<li>The <code>verify</code> feature adds support for (cryptographic) signature verification, based on <code>ring</code>.
+It adds the
+<a href="certificate/struct.X509Certificate.html#method.verify_signature"><code>X509Certificate::verify_signature()</code></a>
+to <code>X509Certificate</code>.</li>
+</ul>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="doccomment">/// Cryptographic signature verification: returns true if certificate was signed by issuer
+</span><span class="attr">#[cfg(feature = <span class="string">"verify"</span>)]
+</span><span class="kw">pub fn </span>check_signature(cert: <span class="kw-2">&amp;</span>X509Certificate&lt;<span class="lifetime">'_</span>&gt;, issuer: <span class="kw-2">&amp;</span>X509Certificate&lt;<span class="lifetime">'_</span>&gt;) -&gt; bool {
+    <span class="kw">let </span>issuer_public_key = issuer.public_key();
+    cert
+        .verify_signature(<span class="prelude-val">Some</span>(issuer_public_key))
+        .is_ok()
+}</code></pre></div>
+<ul>
+<li>The <code>validate</code> features add methods to run more validation functions on the certificate structure
+and values using the <a href="validate/trait.Validate.html"><code>Validate</code></a> trait.
+It does not validate any cryptographic parameter (see <code>verify</code> above).</li>
+</ul>
+<h3 id="rust-version-requirements"><a class="doc-anchor" href="#rust-version-requirements">§</a>Rust version requirements</h3>
+<p><code>x509-parser</code> requires <strong>Rustc version 1.57 or greater</strong>, based on der-parser
+dependencies and for proc-macro attributes support.</p>
+<p>Note that due to breaking changes in the <code>time</code> crate, a specific version of this
+crate must be specified for compiler versions &lt;= 1.57:
+<code>cargo update -p time --precise 0.3.9</code></p>
+</div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name" id="reexport.der_parser"><code>pub use <a class="mod" href="../der_parser/index.html" title="mod der_parser">der_parser</a>;</code></div></li><li><div class="item-name" id="reexport.num_bigint"><code>pub use der_parser::<a class="mod" href="../num_bigint/index.html" title="mod num_bigint">num_bigint</a>;</code></div></li><li><div class="item-name" id="reexport.nom"><code>pub use <a class="mod" href="../nom/index.html" title="mod nom">nom</a>;</code></div></li><li><div class="item-name" id="reexport.oid_registry"><code>pub use <a class="mod" href="../oid_registry/index.html" title="mod oid_registry">oid_registry</a>;</code></div></li></ul><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="certificate/index.html" title="mod x509_parser::certificate">certificate</a></div><div class="desc docblock-short">X.509 Certificate object definitions and operations</div></li><li><div class="item-name"><a class="mod" href="certification_request/index.html" title="mod x509_parser::certification_request">certification_request</a></div></li><li><div class="item-name"><a class="mod" href="cri_attributes/index.html" title="mod x509_parser::cri_attributes">cri_attributes</a></div></li><li><div class="item-name"><a class="mod" href="error/index.html" title="mod x509_parser::error">error</a></div><div class="desc docblock-short">X.509 errors</div></li><li><div class="item-name"><a class="mod" href="extensions/index.html" title="mod x509_parser::extensions">extensions</a></div><div class="desc docblock-short">X.509 Extensions objects and types</div></li><li><div class="item-name"><a class="mod" href="objects/index.html" title="mod x509_parser::objects">objects</a></div><div class="desc docblock-short">X.509 helper objects definitions and registry</div></li><li><div class="item-name"><a class="mod" href="pem/index.html" title="mod x509_parser::pem">pem</a></div><div class="desc docblock-short">Decoding functions for PEM-encoded data</div></li><li><div class="item-name"><a class="mod" href="prelude/index.html" title="mod x509_parser::prelude">prelude</a></div><div class="desc docblock-short">A “prelude” for users of the x509-parser crate.</div></li><li><div class="item-name"><a class="mod" href="public_key/index.html" title="mod x509_parser::public_key">public_key</a></div></li><li><div class="item-name"><a class="mod" href="revocation_list/index.html" title="mod x509_parser::revocation_list">revocation_list</a></div></li><li><div class="item-name"><a class="mod" href="signature_algorithm/index.html" title="mod x509_parser::signature_algorithm">signature_algorithm</a></div></li><li><div class="item-name"><a class="mod" href="signature_value/index.html" title="mod x509_parser::signature_value">signature_value</a></div></li><li><div class="item-name"><a class="mod" href="time/index.html" title="mod x509_parser::time">time</a></div></li><li><div class="item-name"><a class="mod" href="utils/index.html" title="mod x509_parser::utils">utils</a></div></li><li><div class="item-name"><a class="mod" href="x509/index.html" title="mod x509_parser::x509">x509</a></div><div class="desc docblock-short">X.509 objects and types</div></li></ul><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="fn" href="fn.parse_crl_der.html" title="fn x509_parser::parse_crl_der">parse_crl_der</a><span class="stab deprecated" title="">Deprecated</span></div><div class="desc docblock-short">Parse a DER-encoded X.509 v2 CRL, and return the remaining of the input and the built
+object.</div></li><li><div class="item-name"><a class="fn" href="fn.parse_x509_certificate.html" title="fn x509_parser::parse_x509_certificate">parse_x509_certificate</a></div><div class="desc docblock-short">Parse a <strong>DER-encoded</strong> X.509 Certificate, and return the remaining of the input and the built
+object.</div></li><li><div class="item-name"><a class="fn" href="fn.parse_x509_crl.html" title="fn x509_parser::parse_x509_crl">parse_x509_crl</a></div><div class="desc docblock-short">Parse a DER-encoded X.509 v2 CRL, and return the remaining of the input and the built
+object.</div></li><li><div class="item-name"><a class="fn" href="fn.parse_x509_der.html" title="fn x509_parser::parse_x509_der">parse_x509_der</a><span class="stab deprecated" title="">Deprecated</span></div><div class="desc docblock-short">Parse a DER-encoded X.509 Certificate, and return the remaining of the input and the built</div></li></ul></section></div></main></body></html>

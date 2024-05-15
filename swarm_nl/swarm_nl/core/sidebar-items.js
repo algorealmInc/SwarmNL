@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["NETWORK_READ_TIMEOUT","TASK_SLEEP_DURATION"],"enum":["AppData","AppResponse","CoreEvent","NetworkError"],"mod":["ping_config","prelude","tests"],"struct":["Core","CoreBehaviour","CoreBuilder","DefaultHandler","RpcConfig","StreamId"],"trait":["EventHandler"],"type":["NetworkResult"]};

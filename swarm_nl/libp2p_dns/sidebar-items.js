@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Error","ResolveErrorKind"],"mod":["async_std","tokio"],"struct":["ResolveError","ResolverConfig","ResolverOpts","Transport"]};

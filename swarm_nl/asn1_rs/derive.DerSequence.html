@@ -1,0 +1,56 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="DerSequence custom derive"><title>DerSequence in asn1_rs - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="asn1_rs" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-4c98445ec4002617.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc derive"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../asn1_rs/index.html">asn1_rs</a><span class="version">0.5.2</span></h2></div><div class="sidebar-elems"></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../asn1_rs/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Derive Macro <a href="index.html">asn1_rs</a>::<wbr><a class="derive" href="#">DerSequence</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/asn1_rs_derive/Users/salansky/.cargo/registry/src/index.crates.io-6f17d22bba15001f/synstructure-0.12.6/src/macros.rs.html#94-96">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><pre class="rust item-decl"><code>#[derive(DerSequence)]
+{
+    <span class="comment">// Attributes available to this derive:</span>
+    #[debug_derive]
+    #[default]
+    #[optional]
+    #[tag_explicit]
+    #[tag_implicit]
+    #[error]
+    #[map_err]
+}
+</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="dersequence-custom-derive"><a class="doc-anchor" href="#dersequence-custom-derive">§</a>DerSequence custom derive</h2>
+<p><code>DerSequence</code> is a custom derive attribute, to derive both BER and DER <a href="struct.Sequence.html" title="struct asn1_rs::Sequence"><code>Sequence</code></a> parsers automatically from the structure definition.
+This attribute will automatically derive implementations for the following traits:</p>
+<ul>
+<li><a href="struct.Any.html" title="struct asn1_rs::Any"><code>TryFrom&lt;Any&gt;</code></a>, also providing <a href="trait.FromBer.html" title="trait asn1_rs::FromBer"><code>FromBer</code></a></li>
+<li><a href="trait.Tagged.html" title="trait asn1_rs::Tagged"><code>Tagged</code></a></li>
+<li><a href="trait.CheckDerConstraints.html" title="trait asn1_rs::CheckDerConstraints"><code>CheckDerConstraints</code></a></li>
+<li><a href="trait.FromDer.html" title="trait asn1_rs::FromDer"><code>FromDer</code></a></li>
+</ul>
+<p><code>DerSequence</code> implies <code>BerSequence</code>, and will conflict with this custom derive.</p>
+<p>Parsers will be automatically derived from struct fields. Every field type must implement the <a href="trait.FromDer.html" title="trait asn1_rs::FromDer"><code>FromDer</code></a> trait.</p>
+<p>See <a href="doc/derive/index.html" title="mod asn1_rs::doc::derive"><code>derive</code></a> documentation for more examples and documentation.</p>
+<h3 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h3>
+<p>To parse the following ASN.1 structure:</p>
+<pre>
+S ::= SEQUENCE {
+    a INTEGER(0..2^32),
+    b INTEGER(0..2^16),
+    c INTEGER(0..2^16),
+}
+</pre>
+<p>Define a structure and add the <code>DerSequence</code> derive:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>asn1_rs::<span class="kw-2">*</span>;
+
+<span class="attr">#[derive(DerSequence)]
+</span><span class="kw">struct </span>S {
+  a: u32,
+  b: u16,
+  c: u16
+}</code></pre></div>
+<h3 id="debugging"><a class="doc-anchor" href="#debugging">§</a>Debugging</h3>
+<p>To help debugging the generated code, the <code>#[debug_derive]</code> attribute has been added.</p>
+<p>When this attribute is specified, the generated code will be printed to <code>stderr</code> during compilation.</p>
+<p>Example:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>asn1_rs::<span class="kw-2">*</span>;
+
+<span class="attr">#[derive(DerSequence)]
+#[debug_derive]
+</span><span class="kw">struct </span>S {
+  a: u32,
+}</code></pre></div>
+</div></details></section></div></main></body></html>

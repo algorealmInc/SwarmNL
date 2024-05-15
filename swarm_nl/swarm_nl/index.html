@@ -1,0 +1,189 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="SwarmNL"><title>swarm_nl - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="swarm_nl" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-4c98445ec4002617.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../swarm_nl/index.html">swarm_nl</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><ul class="block">
+            <li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#constants">Constants</a></li><li><a href="#statics">Statics</a></li><li><a href="#traits">Traits</a></li><li><a href="#types">Type Aliases</a></li></ul></section></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../swarm_nl/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">swarm_nl</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/swarm_nl/lib.rs.html#5-19">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNL.png" alt="SwarmNL" style="border-radius: 15px !important;"> -->
+<h2 id="swarmnl"><a class="doc-anchor" href="#swarmnl">§</a>SwarmNL</h2>
+<p><strong>A library to build custom networking layers for decentralized applications</strong></p>
+<p>SwarmNL is a library designed for P2P networking in distributed systems. It’s lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by libp2p, SwarmNL simplifies networking, so you can focus on building.</p>
+<h3 id="why-swarmnl"><a class="doc-anchor" href="#why-swarmnl">§</a>Why SwarmNL?</h3>
+<p>SwarmNL makes buiding a peer-to-peer decentralized and distributed networking stack for your application a breeze. With SwarmNL, you can effortlessly configure nodes, tailor network conditions, and fine-tune behaviors specific to your project’s needs, allowing you to dive into networking without the usual hassle.</p>
+<p>Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic. It’s that easy!</p>
+<p>Have a look at the [<code>swarmnl_guides::guides</code>] to get started.</p>
+<h3 id="features"><a class="doc-anchor" href="#features">§</a>Features</h3>
+<ul>
+<li>
+<p><strong>Node Configuration</strong>: SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:</p>
+<ul>
+<li>Selection and configuration of the transport layers to be supported by the node.</li>
+<li>Selection of cryptographic keypairs (ed25519, RSA, secp256k1, ecdsa)</li>
+<li>Storage and retrieval of keypair locally.</li>
+<li>PeerID and multiaddress generation.</li>
+<li>Protocol specification and handlers.</li>
+<li>Event handlers for network events and logging.</li>
+</ul>
+<h5 id="example"><a class="doc-anchor" href="#example">§</a>Example</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>      <span class="doccomment">//! Using the default node setup configuration and the default network event handler
+
+      </span><span class="comment">// Default config
+      </span><span class="kw">let </span>config = BootstrapConfig::default();
+      <span class="comment">// Default network handler
+      </span><span class="kw">let </span>handler = DefaultHandler;
+      <span class="comment">// Build node or network core
+      </span><span class="kw">let </span>node = CoreBuilder::with_config(config, handler)
+          .build()
+          .<span class="kw">await
+          </span>.unwrap();
+
+
+      <span class="doccomment">//! Using a custom node setup configuration and a custom network event handler
+
+      </span><span class="comment">// Custom configuration
+      // a. Using config from an `.ini` file
+      </span><span class="kw">let </span>config = BootstrapConfig::from_file(<span class="string">"bootstrap_config.ini"</span>);
+
+      <span class="comment">// b. Using config methods
+      </span><span class="kw">let </span><span class="kw-2">mut </span>bootnode = HashMap::new();  <span class="comment">// Bootnodes
+      </span><span class="kw">let </span>ports = (<span class="number">1509</span>, <span class="number">2710</span>);  <span class="comment">// TCP, UDP ports
+
+      </span>bootnode.insert(
+          PeerId::random(),
+          <span class="string">"/ip4/x.x.x.x/tcp/1509"</span>.to_string()
+      );
+
+      <span class="kw">let </span>config = BootstrapConfig::new()
+          .with_bootnodes(bootnode)
+          .with_tcp(ports.<span class="number">0</span>)
+          .with_udp(ports.<span class="number">1</span>);
+
+      <span class="comment">// Custom event handler
+      </span><span class="kw">use </span>swarm_nl::core::EventHandler;
+
+      <span class="attr">#[derive(Clone)]
+      </span><span class="kw">struct </span>ApplicationState{
+          name: String,
+          version: i8,
+      }
+
+      <span class="comment">// Define custom behaviour to respond to network events
+      </span><span class="kw">impl </span>EventHandler <span class="kw">for </span>AppState {
+          <span class="kw">fn </span>new_listen_addr(
+              <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+              local_peer_id: PeerId,
+              listener_id: ListenerId,
+              addr: Multiaddr,
+          ) {
+              <span class="comment">// Announce interfaces we're listening on
+              </span><span class="macro">println!</span>(<span class="string">"Peer id: {}"</span>, local_peer_id);
+              <span class="macro">println!</span>(<span class="string">"We're listening on the {}"</span>, addr);
+          }
+
+          <span class="comment">// Echo data recieved from a RPC
+          </span><span class="kw">fn </span>rpc_handle_incoming_message(<span class="kw-2">&amp;mut </span><span class="self">self</span>, data: Vec&lt;Vec&lt;u8&gt;&gt;) -&gt; Vec&lt;Vec&lt;u8&gt;&gt; {
+              <span class="macro">println!</span>(<span class="string">"Recvd incoming RPC: {:?}"</span>, data);
+              data
+          }
+
+          <span class="comment">// Handle the incoming gossip message
+          </span><span class="kw">fn </span>gossipsub_handle_incoming_message(<span class="kw-2">&amp;mut </span><span class="self">self</span>, source: PeerId, data: Vec&lt;String&gt;) {
+              <span class="macro">println!</span>(<span class="string">"Recvd incoming gossip: {:?}"</span>, data);
+          }
+      }
+
+      <span class="comment">// Define custom event handler
+      </span><span class="kw">let </span>state = ApplicationState {
+          name: String::from(<span class="string">"SwarmNL"</span>),
+          version: <span class="number">0.1
+      </span>}
+
+      <span class="comment">// Build node or network core
+      </span><span class="kw">let </span>node = CoreBuilder::with_config(config, state)
+          .build()
+          .<span class="kw">await
+          </span>.unwrap();
+</code></pre></div>
+<p>Please look at a template <code>.ini</code> file <a href="https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini">here</a> for configuring a node in the network.<br><br></p>
+</li>
+<li>
+<p><strong>Node Communication</strong>: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:</p>
+<ul>
+<li>The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.</li>
+<li>A simple RPC mechanism to exchange data quickly between peers.</li>
+<li>Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the <a href="https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md">libp2p spec</a>.</li>
+</ul>
+<h5 id="example-1"><a class="doc-anchor" href="#example-1">§</a>Example</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>      <span class="doccomment">//! Communicate with remote nodes using the simple and familiar async-await paradigm.
+
+      </span><span class="comment">// Build node or network core
+      </span><span class="kw">let </span>node = CoreBuilder::with_config(config, state)
+          .build()
+          .<span class="kw">await
+          </span>.unwrap();
+
+      <span class="comment">// Communication interfaces
+      // a. Kademlia DHT e.g
+
+      // Prepare an kademlia `store_record` request to send to the network layer
+      </span><span class="kw">let </span>(key, value, expiration_time, explicit_peers) = (
+          KADEMLIA_TEST_KEY.as_bytes().to_vec(),
+          KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
+          <span class="prelude-val">None</span>,
+          <span class="prelude-val">None</span>,
+      );
+
+      <span class="kw">let </span>kad_request = AppData::KademliaStoreRecord {
+          key: key.clone(),
+          value,
+          expiration_time,
+          explicit_peers,
+      };
+
+      <span class="comment">// Send request
+      </span><span class="kw">if let </span><span class="prelude-val">Ok</span>(result) = node.query_network(kad_request).<span class="kw">await </span>{
+          <span class="macro">assert_eq!</span>(KademliaStoreRecordSuccess,result);
+	    }
+
+      <span class="comment">// b. RPC (request-response) e.g
+
+      // Prepare a RPC fetch request
+      </span><span class="kw">let </span>fetch_key = <span class="macro">vec!</span>[<span class="string">"SomeFetchKey"</span>.as_bytes().to_vec()];
+
+      <span class="kw">let </span>fetch_request = AppData::FetchData {
+          keys: fetch_key.clone(),
+          peer: node4_peer_id,
+      };
+
+      <span class="comment">// Get a stream id to track the request
+      </span><span class="kw">let </span>stream_id = node.send_to_network(fetch_request).<span class="kw">await</span>.unwrap();
+
+      <span class="comment">// Poll for the result
+      </span><span class="kw">if let </span><span class="prelude-val">Ok</span>(result) = node.recv_from_network(stream_id).<span class="kw">await </span>{
+          <span class="comment">// Here, the request data was simply echoed by the remote peer
+          </span><span class="macro">assert_eq!</span>(AppResponse::FetchData(fetch_key), result);
+      }
+
+      <span class="comment">// c. Gossiping e.g
+
+      // Prepare gossip request
+      </span><span class="kw">let </span>gossip_request = AppData::GossipsubBroadcastMessage {
+          topic: GOSSIP_NETWORK.to_string(),
+          message: <span class="macro">vec!</span>[<span class="string">"Daniel"</span>.to_string(), <span class="string">"Deborah"</span>.to_string()],
+      };
+
+      <span class="kw">if let </span><span class="prelude-val">Ok</span>(result) = node.query_network(gossip_request).<span class="kw">await </span>{
+          <span class="macro">assert_eq!</span>(AppResponse::GossipsubBroadcastSuccess, result);
+      }
+</code></pre></div>
+</li>
+<li>
+<p><em>In Development 👷</em>:</p>
+<ul>
+<li><em>Node failure handling involving reconnection strategies, failover mechanisms etc</em>.</li>
+<li><em>Scaling involving techniques like sharding, data forwarding etc</em>.</li>
+<li><em>IPFS upload and download interfaces</em>.</li>
+</ul>
+</li>
+</ul>
+<p>Again, SwarmNL simplifies networking so you can focus on building that world-changing application of yours! Cheers! 🥂 </p>
+<p>With ❤️ from Deji and Sacha.</p>
+</div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="core/index.html" title="mod swarm_nl::core">core</a></div><div class="desc docblock-short">Core data structures and protocol implementations for building a swarm.</div></li><li><div class="item-name"><a class="mod" href="prelude/index.html" title="mod swarm_nl::prelude">prelude</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="desc docblock-short">Types and traits that are used throughout SwarmNL.</div></li><li><div class="item-name"><a class="mod" href="setup/index.html" title="mod swarm_nl::setup">setup</a></div><div class="desc docblock-short">Data structures and functions to setup a node and configure it for networking.</div></li><li><div class="item-name"><a class="mod" href="testing_guide/index.html" title="mod swarm_nl::testing_guide">testing_guide</a></div><div class="desc docblock-short">A doc-only module explaining how to run core library tests.</div></li><li><div class="item-name"><a class="mod" href="util/index.html" title="mod swarm_nl::util">util</a></div><div class="desc docblock-short">Utility helper functions for reading from and writing to <code>.ini</code> config files.</div></li></ul><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="struct" href="struct.ConnectionId.html" title="struct swarm_nl::ConnectionId">ConnectionId</a></div><div class="desc docblock-short">Connection identifier.</div></li><li><div class="item-name"><a class="struct" href="struct.Keypair.html" title="struct swarm_nl::Keypair">Keypair</a></div><div class="desc docblock-short">Identity keypair of a node.</div></li><li><div class="item-name"><a class="struct" href="struct.ListenerId.html" title="struct swarm_nl::ListenerId">ListenerId</a></div><div class="desc docblock-short">The ID of a single listener.</div></li><li><div class="item-name"><a class="struct" href="struct.Multiaddr.html" title="struct swarm_nl::Multiaddr">Multiaddr</a></div><div class="desc docblock-short">Representation of a Multiaddr.</div></li><li><div class="item-name"><a class="struct" href="struct.PeerId.html" title="struct swarm_nl::PeerId">PeerId</a></div><div class="desc docblock-short">Identifier of a peer of the network.</div></li><li><div class="item-name"><a class="struct" href="struct.RsaKeypair.html" title="struct swarm_nl::RsaKeypair">RsaKeypair</a></div><div class="desc docblock-short">An RSA keypair.</div></li></ul><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="enum" href="enum.ConnectedPoint.html" title="enum swarm_nl::ConnectedPoint">ConnectedPoint</a></div><div class="desc docblock-short">The endpoint roles associated with an established peer-to-peer connection.</div></li><li><div class="item-name"><a class="enum" href="enum.Failure.html" title="enum swarm_nl::Failure">Failure</a></div><div class="desc docblock-short">An outbound ping failure.</div></li><li><div class="item-name"><a class="enum" href="enum.KeyType.html" title="enum swarm_nl::KeyType">KeyType</a></div><div class="desc docblock-short">The type of key a <code>KeyPair</code> is holding.</div></li><li><div class="item-name"><a class="enum" href="enum.SwarmNlError.html" title="enum swarm_nl::SwarmNlError">SwarmNlError</a></div><div class="desc docblock-short">Library error type containing all custom errors that could be encountered.</div></li><li><div class="item-name"><a class="enum" href="enum.TcpConfig.html" title="enum swarm_nl::TcpConfig">TcpConfig</a></div><div class="desc docblock-short">TCP setup configuration.</div></li><li><div class="item-name"><a class="enum" href="enum.TransportOpts.html" title="enum swarm_nl::TransportOpts">TransportOpts</a></div><div class="desc docblock-short">Supported transport protocols.</div></li></ul><h2 id="constants" class="section-header">Constants<a href="#constants" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="constant" href="constant.MAX_PORT.html" title="constant swarm_nl::MAX_PORT">MAX_PORT</a></div><div class="desc docblock-short">Upper bound port range (u16::MAX).</div></li><li><div class="item-name"><a class="constant" href="constant.MIN_PORT.html" title="constant swarm_nl::MIN_PORT">MIN_PORT</a></div><div class="desc docblock-short">Lower bound port range (u16::MIN).</div></li></ul><h2 id="statics" class="section-header">Statics<a href="#statics" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="static" href="static.DEFAULT_IP_ADDRESS.html" title="static swarm_nl::DEFAULT_IP_ADDRESS">DEFAULT_IP_ADDRESS</a></div><div class="desc docblock-short">Default IP address when no address is specified.</div></li><li><div class="item-name"><a class="static" href="static.DEFAULT_KEEP_ALIVE_DURATION.html" title="static swarm_nl::DEFAULT_KEEP_ALIVE_DURATION">DEFAULT_KEEP_ALIVE_DURATION</a></div><div class="desc docblock-short">Default amount of time to keep a connection alive.</div></li><li><div class="item-name"><a class="static" href="static.DEFAULT_NETWORK_ID.html" title="static swarm_nl::DEFAULT_NETWORK_ID">DEFAULT_NETWORK_ID</a></div><div class="desc docblock-short">Default network id</div></li><li><div class="item-name"><a class="static" href="static.MIN_NETWORK_ID_LENGTH.html" title="static swarm_nl::MIN_NETWORK_ID_LENGTH">MIN_NETWORK_ID_LENGTH</a></div><div class="desc docblock-short">This constant sets the shortest acceptable length for a network ID.
+The network ID identifies a network and ensures it’s distinct from others.</div></li></ul><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="trait" href="trait.CustomFrom.html" title="trait swarm_nl::CustomFrom">CustomFrom</a></div><div class="desc docblock-short">An implementation of <a href="https://doc.rust-lang.org/1.77.0/core/convert/trait.From.html" title="trait core::convert::From"><code>From&lt;&amp;str&gt;</code></a> for <a href="enum.KeyType.html" title="enum swarm_nl::KeyType"><code>KeyType</code></a> to read a key type from a bootstrap config
+file.</div></li></ul><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="type" href="type.MultiaddrString.html" title="type swarm_nl::MultiaddrString">MultiaddrString</a></div><div class="desc docblock-short">The stringified <code>Multiaddr</code> type.</div></li><li><div class="item-name"><a class="type" href="type.PeerIdString.html" title="type swarm_nl::PeerIdString">PeerIdString</a></div><div class="desc docblock-short">The stringified <code>PeerId</code> type.</div></li><li><div class="item-name"><a class="type" href="type.Port.html" title="type swarm_nl::Port">Port</a></div><div class="desc docblock-short">Port type.</div></li><li><div class="item-name"><a class="type" href="type.Seconds.html" title="type swarm_nl::Seconds">Seconds</a></div><div class="desc docblock-short">Seconds type.</div></li><li><div class="item-name"><a class="type" href="type.SwarmNlResult.html" title="type swarm_nl::SwarmNlResult">SwarmNlResult</a></div><div class="desc docblock-short">Generic SwarmNl result type.</div></li></ul></section></div></main></body></html>

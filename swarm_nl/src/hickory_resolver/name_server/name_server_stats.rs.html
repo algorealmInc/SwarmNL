@@ -1,0 +1,711 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/Users/salansky/.cargo/registry/src/index.crates.io-6f17d22bba15001f/hickory-resolver-0.24.1/src/name_server/name_server_stats.rs`."><title>name_server_stats.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="hickory_resolver" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-4c98445ec4002617.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title">
+            <h2>Files</h2></div></nav><div class="sidebar-resizer"></div>
+    <main><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../../hickory_resolver/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<a href="#2" id="2">2</a>
+<a href="#3" id="3">3</a>
+<a href="#4" id="4">4</a>
+<a href="#5" id="5">5</a>
+<a href="#6" id="6">6</a>
+<a href="#7" id="7">7</a>
+<a href="#8" id="8">8</a>
+<a href="#9" id="9">9</a>
+<a href="#10" id="10">10</a>
+<a href="#11" id="11">11</a>
+<a href="#12" id="12">12</a>
+<a href="#13" id="13">13</a>
+<a href="#14" id="14">14</a>
+<a href="#15" id="15">15</a>
+<a href="#16" id="16">16</a>
+<a href="#17" id="17">17</a>
+<a href="#18" id="18">18</a>
+<a href="#19" id="19">19</a>
+<a href="#20" id="20">20</a>
+<a href="#21" id="21">21</a>
+<a href="#22" id="22">22</a>
+<a href="#23" id="23">23</a>
+<a href="#24" id="24">24</a>
+<a href="#25" id="25">25</a>
+<a href="#26" id="26">26</a>
+<a href="#27" id="27">27</a>
+<a href="#28" id="28">28</a>
+<a href="#29" id="29">29</a>
+<a href="#30" id="30">30</a>
+<a href="#31" id="31">31</a>
+<a href="#32" id="32">32</a>
+<a href="#33" id="33">33</a>
+<a href="#34" id="34">34</a>
+<a href="#35" id="35">35</a>
+<a href="#36" id="36">36</a>
+<a href="#37" id="37">37</a>
+<a href="#38" id="38">38</a>
+<a href="#39" id="39">39</a>
+<a href="#40" id="40">40</a>
+<a href="#41" id="41">41</a>
+<a href="#42" id="42">42</a>
+<a href="#43" id="43">43</a>
+<a href="#44" id="44">44</a>
+<a href="#45" id="45">45</a>
+<a href="#46" id="46">46</a>
+<a href="#47" id="47">47</a>
+<a href="#48" id="48">48</a>
+<a href="#49" id="49">49</a>
+<a href="#50" id="50">50</a>
+<a href="#51" id="51">51</a>
+<a href="#52" id="52">52</a>
+<a href="#53" id="53">53</a>
+<a href="#54" id="54">54</a>
+<a href="#55" id="55">55</a>
+<a href="#56" id="56">56</a>
+<a href="#57" id="57">57</a>
+<a href="#58" id="58">58</a>
+<a href="#59" id="59">59</a>
+<a href="#60" id="60">60</a>
+<a href="#61" id="61">61</a>
+<a href="#62" id="62">62</a>
+<a href="#63" id="63">63</a>
+<a href="#64" id="64">64</a>
+<a href="#65" id="65">65</a>
+<a href="#66" id="66">66</a>
+<a href="#67" id="67">67</a>
+<a href="#68" id="68">68</a>
+<a href="#69" id="69">69</a>
+<a href="#70" id="70">70</a>
+<a href="#71" id="71">71</a>
+<a href="#72" id="72">72</a>
+<a href="#73" id="73">73</a>
+<a href="#74" id="74">74</a>
+<a href="#75" id="75">75</a>
+<a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
+<a href="#79" id="79">79</a>
+<a href="#80" id="80">80</a>
+<a href="#81" id="81">81</a>
+<a href="#82" id="82">82</a>
+<a href="#83" id="83">83</a>
+<a href="#84" id="84">84</a>
+<a href="#85" id="85">85</a>
+<a href="#86" id="86">86</a>
+<a href="#87" id="87">87</a>
+<a href="#88" id="88">88</a>
+<a href="#89" id="89">89</a>
+<a href="#90" id="90">90</a>
+<a href="#91" id="91">91</a>
+<a href="#92" id="92">92</a>
+<a href="#93" id="93">93</a>
+<a href="#94" id="94">94</a>
+<a href="#95" id="95">95</a>
+<a href="#96" id="96">96</a>
+<a href="#97" id="97">97</a>
+<a href="#98" id="98">98</a>
+<a href="#99" id="99">99</a>
+<a href="#100" id="100">100</a>
+<a href="#101" id="101">101</a>
+<a href="#102" id="102">102</a>
+<a href="#103" id="103">103</a>
+<a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a>
+<a href="#193" id="193">193</a>
+<a href="#194" id="194">194</a>
+<a href="#195" id="195">195</a>
+<a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
+<a href="#207" id="207">207</a>
+<a href="#208" id="208">208</a>
+<a href="#209" id="209">209</a>
+<a href="#210" id="210">210</a>
+<a href="#211" id="211">211</a>
+<a href="#212" id="212">212</a>
+<a href="#213" id="213">213</a>
+<a href="#214" id="214">214</a>
+<a href="#215" id="215">215</a>
+<a href="#216" id="216">216</a>
+<a href="#217" id="217">217</a>
+<a href="#218" id="218">218</a>
+<a href="#219" id="219">219</a>
+<a href="#220" id="220">220</a>
+<a href="#221" id="221">221</a>
+<a href="#222" id="222">222</a>
+<a href="#223" id="223">223</a>
+<a href="#224" id="224">224</a>
+<a href="#225" id="225">225</a>
+<a href="#226" id="226">226</a>
+<a href="#227" id="227">227</a>
+<a href="#228" id="228">228</a>
+<a href="#229" id="229">229</a>
+<a href="#230" id="230">230</a>
+<a href="#231" id="231">231</a>
+<a href="#232" id="232">232</a>
+<a href="#233" id="233">233</a>
+<a href="#234" id="234">234</a>
+<a href="#235" id="235">235</a>
+<a href="#236" id="236">236</a>
+<a href="#237" id="237">237</a>
+<a href="#238" id="238">238</a>
+<a href="#239" id="239">239</a>
+<a href="#240" id="240">240</a>
+<a href="#241" id="241">241</a>
+<a href="#242" id="242">242</a>
+<a href="#243" id="243">243</a>
+<a href="#244" id="244">244</a>
+<a href="#245" id="245">245</a>
+<a href="#246" id="246">246</a>
+<a href="#247" id="247">247</a>
+<a href="#248" id="248">248</a>
+<a href="#249" id="249">249</a>
+<a href="#250" id="250">250</a>
+<a href="#251" id="251">251</a>
+<a href="#252" id="252">252</a>
+<a href="#253" id="253">253</a>
+<a href="#254" id="254">254</a>
+<a href="#255" id="255">255</a>
+<a href="#256" id="256">256</a>
+<a href="#257" id="257">257</a>
+<a href="#258" id="258">258</a>
+<a href="#259" id="259">259</a>
+<a href="#260" id="260">260</a>
+<a href="#261" id="261">261</a>
+<a href="#262" id="262">262</a>
+<a href="#263" id="263">263</a>
+<a href="#264" id="264">264</a>
+<a href="#265" id="265">265</a>
+<a href="#266" id="266">266</a>
+<a href="#267" id="267">267</a>
+<a href="#268" id="268">268</a>
+<a href="#269" id="269">269</a>
+<a href="#270" id="270">270</a>
+<a href="#271" id="271">271</a>
+<a href="#272" id="272">272</a>
+<a href="#273" id="273">273</a>
+<a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
+<a href="#277" id="277">277</a>
+<a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
+<a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
+<a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
+<a href="#291" id="291">291</a>
+<a href="#292" id="292">292</a>
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a>
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a>
+<a href="#297" id="297">297</a>
+<a href="#298" id="298">298</a>
+<a href="#299" id="299">299</a>
+<a href="#300" id="300">300</a>
+<a href="#301" id="301">301</a>
+<a href="#302" id="302">302</a>
+<a href="#303" id="303">303</a>
+<a href="#304" id="304">304</a>
+<a href="#305" id="305">305</a>
+<a href="#306" id="306">306</a>
+<a href="#307" id="307">307</a>
+<a href="#308" id="308">308</a>
+<a href="#309" id="309">309</a>
+<a href="#310" id="310">310</a>
+<a href="#311" id="311">311</a>
+<a href="#312" id="312">312</a>
+<a href="#313" id="313">313</a>
+<a href="#314" id="314">314</a>
+<a href="#315" id="315">315</a>
+<a href="#316" id="316">316</a>
+<a href="#317" id="317">317</a>
+<a href="#318" id="318">318</a>
+<a href="#319" id="319">319</a>
+<a href="#320" id="320">320</a>
+<a href="#321" id="321">321</a>
+<a href="#322" id="322">322</a>
+<a href="#323" id="323">323</a>
+<a href="#324" id="324">324</a>
+<a href="#325" id="325">325</a>
+<a href="#326" id="326">326</a>
+<a href="#327" id="327">327</a>
+<a href="#328" id="328">328</a>
+<a href="#329" id="329">329</a>
+<a href="#330" id="330">330</a>
+<a href="#331" id="331">331</a>
+<a href="#332" id="332">332</a>
+<a href="#333" id="333">333</a>
+<a href="#334" id="334">334</a>
+<a href="#335" id="335">335</a>
+<a href="#336" id="336">336</a>
+<a href="#337" id="337">337</a>
+<a href="#338" id="338">338</a>
+<a href="#339" id="339">339</a>
+<a href="#340" id="340">340</a>
+<a href="#341" id="341">341</a>
+<a href="#342" id="342">342</a>
+<a href="#343" id="343">343</a>
+<a href="#344" id="344">344</a>
+<a href="#345" id="345">345</a>
+<a href="#346" id="346">346</a>
+<a href="#347" id="347">347</a>
+<a href="#348" id="348">348</a>
+<a href="#349" id="349">349</a>
+<a href="#350" id="350">350</a>
+<a href="#351" id="351">351</a>
+<a href="#352" id="352">352</a>
+<a href="#353" id="353">353</a>
+<a href="#354" id="354">354</a>
+</pre></div><pre class="rust"><code><span class="comment">// Copyright 2015-2019 Benjamin Fry &lt;benjaminfry@me.com&gt;
+//
+// Licensed under the Apache License, Version 2.0, &lt;LICENSE-APACHE or
+// https://apache.org/licenses/LICENSE-2.0&gt; or the MIT license &lt;LICENSE-MIT or
+// https://opensource.org/licenses/MIT&gt;, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
+</span><span class="kw">use </span>std::cmp::Ordering;
+<span class="kw">use </span>std::sync::{
+    atomic::{<span class="self">self</span>, AtomicU32},
+    Arc,
+};
+
+<span class="kw">use </span>parking_lot::Mutex;
+<span class="kw">use </span>rand::Rng <span class="kw">as _</span>;
+
+<span class="attr">#[cfg(not(test))]
+</span><span class="kw">use </span>std::time::{Duration, Instant};
+<span class="attr">#[cfg(test)]
+</span><span class="kw">use </span>tokio::time::{Duration, Instant};
+
+<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>NameServerStats {
+    <span class="doccomment">/// The smoothed round-trip time (SRTT).
+    ///
+    /// This value represents an exponentially weighted moving average (EWMA) of
+    /// recorded latencies. The algorithm for computing this value is based on
+    /// the following:
+    ///
+    /// https://en.wikipedia.org/wiki/Moving_average#Application_to_measuring_computer_performance
+    ///
+    /// It is also partially inspired by the BIND and PowerDNS implementations:
+    ///
+    /// - https://github.com/isc-projects/bind9/blob/7bf8a7ab1b280c1021bf1e762a239b07aac3c591/lib/dns/adb.c#L3487
+    /// - https://github.com/PowerDNS/pdns/blob/7c5f9ae6ae4fb17302d933eaeebc8d6f0249aab2/pdns/syncres.cc#L123
+    ///
+    /// The algorithm for computing and using this value can be summarized as
+    /// follows:
+    ///
+    /// 1. The value is initialized to a random value that represents a very low
+    ///    latency.
+    /// 2. If the round-trip time (RTT) was successfully measured for a query,
+    ///    then it is incorporated into the EWMA using the formula linked above.
+    /// 3. If the RTT could not be measured (i.e. due to a connection failure),
+    ///    then a constant penalty factor is applied to the EWMA.
+    /// 4. When comparing EWMA values, a time-based decay is applied to each
+    ///    value. Note that this decay is only applied at read time.
+    ///
+    /// For the original discussion regarding this algorithm, see
+    /// https://github.com/hickory-dns/hickory-dns/issues/1702.
+    </span>srtt_microseconds: AtomicU32,
+
+    <span class="doccomment">/// The last time the `srtt_microseconds` value was updated.
+    </span>last_update: Arc&lt;Mutex&lt;<span class="prelude-ty">Option</span>&lt;Instant&gt;&gt;&gt;,
+}
+
+<span class="kw">impl </span>Default <span class="kw">for </span>NameServerStats {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="comment">// Initialize the SRTT to a randomly generated value that represents a
+        // very low RTT. Such a value helps ensure that each server is attempted
+        // early.
+        </span><span class="self">Self</span>::new(Duration::from_micros(rand::thread_rng().gen_range(<span class="number">1</span>..<span class="number">32</span>)))
+    }
+}
+
+<span class="doccomment">/// Returns an exponentially weighted value in the range of 0.0 &lt; x &lt; 1.0
+///
+/// Computes the value using the following formula:
+///
+/// e&lt;sup&gt;(-t&lt;sub&gt;now&lt;/sub&gt; - t&lt;sub&gt;last&lt;/sub&gt;) / weight&lt;/sup&gt;
+///
+/// As the duration since the `last_update` approaches the provided `weight`,
+/// the returned value decreases.
+</span><span class="kw">fn </span>compute_srtt_factor(last_update: Instant, weight: u32) -&gt; f64 {
+    <span class="kw">let </span>exponent = (-last_update.elapsed().as_secs_f64().max(<span class="number">1.0</span>)) / f64::from(weight);
+    exponent.exp()
+}
+
+<span class="kw">impl </span>NameServerStats {
+    <span class="kw">const </span>CONNECTION_FAILURE_PENALTY: u32 = Duration::from_millis(<span class="number">150</span>).as_micros() <span class="kw">as </span>u32;
+    <span class="kw">const </span>MAX_SRTT_MICROS: u32 = Duration::from_secs(<span class="number">5</span>).as_micros() <span class="kw">as </span>u32;
+
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>new(initial_srtt: Duration) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            srtt_microseconds: AtomicU32::new(initial_srtt.as_micros() <span class="kw">as </span>u32),
+            last_update: Arc::new(Mutex::new(<span class="prelude-val">None</span>)),
+        }
+    }
+
+    <span class="doccomment">/// Records the measured `rtt` for a particular query.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>record_rtt(<span class="kw-2">&amp;</span><span class="self">self</span>, rtt: Duration) {
+        <span class="comment">// If the cast on the result does overflow (it shouldn't), then the
+        // value is saturated to u32::MAX, which is above the `MAX_SRTT_MICROS`
+        // limit (meaning that any potential overflow is inconsequential).
+        // See https://github.com/rust-lang/rust/issues/10184.
+        </span><span class="self">self</span>.update_srtt(
+            rtt.as_micros() <span class="kw">as </span>u32,
+            |cur_srtt_microseconds, last_update| {
+                <span class="comment">// An arbitrarily low weight is used when computing the factor
+                // to ensure that recent RTT measurements are weighted more
+                // heavily.
+                </span><span class="kw">let </span>factor = compute_srtt_factor(last_update, <span class="number">3</span>);
+                <span class="kw">let </span>new_srtt = (<span class="number">1.0 </span>- factor) * (rtt.as_micros() <span class="kw">as </span>f64)
+                    + factor * f64::from(cur_srtt_microseconds);
+                new_srtt.round() <span class="kw">as </span>u32
+            },
+        );
+    }
+
+    <span class="doccomment">/// Records a connection failure for a particular query.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>record_connection_failure(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+        <span class="self">self</span>.update_srtt(
+            <span class="self">Self</span>::CONNECTION_FAILURE_PENALTY,
+            |cur_srtt_microseconds, _last_update| {
+                cur_srtt_microseconds.saturating_add(<span class="self">Self</span>::CONNECTION_FAILURE_PENALTY)
+            },
+        );
+    }
+
+    <span class="doccomment">/// Returns the raw SRTT value.
+    ///
+    /// Prefer to use `decayed_srtt` when ordering name servers.
+    </span><span class="kw">fn </span>srtt(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Duration {
+        Duration::from_micros(u64::from(
+            <span class="self">self</span>.srtt_microseconds.load(atomic::Ordering::Acquire),
+        ))
+    }
+
+    <span class="doccomment">/// Returns the SRTT value after applying a time based decay.
+    ///
+    /// The decay exponentially decreases the SRTT value. The primary reasons
+    /// for applying a downwards decay are twofold:
+    ///
+    /// 1. It helps distribute query load.
+    /// 2. It helps detect positive network changes. For example, decreases in
+    ///    latency or a server that has recovered from a failure.
+    </span><span class="kw">fn </span>decayed_srtt(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; f64 {
+        <span class="kw">let </span>srtt = f64::from(<span class="self">self</span>.srtt_microseconds.load(atomic::Ordering::Acquire));
+        <span class="self">self</span>.last_update.lock().map_or(srtt, |last_update| {
+            <span class="comment">// In general, if the time between queries is relatively short, then
+            // the server ordering algorithm will approximate a spike
+            // distribution where the servers with the lowest latencies are
+            // chosen much more frequently. Conversely, if the time between
+            // queries is relatively long, then the query distribution will be
+            // more uniform. A larger weight widens the window in which servers
+            // with historically lower latencies will be heavily preferred. On
+            // the other hand, a larger weight may also increase the time it
+            // takes to recover from a failure or to observe positive changes in
+            // latency.
+            </span>srtt * compute_srtt_factor(last_update, <span class="number">180</span>)
+        })
+    }
+
+    <span class="doccomment">/// Updates the SRTT value.
+    ///
+    /// If the `last_update` value has not been set, then uses the `default`
+    /// value to update the SRTT. Otherwise, invokes the `update_fn` with the
+    /// current SRTT value and the `last_update` timestamp.
+    </span><span class="kw">fn </span>update_srtt(<span class="kw-2">&amp;</span><span class="self">self</span>, default: u32, update_fn: <span class="kw">impl </span>Fn(u32, Instant) -&gt; u32) {
+        <span class="kw">let </span>last_update = <span class="self">self</span>.last_update.lock().replace(Instant::now());
+        <span class="kw">let _ </span>= <span class="self">self</span>.srtt_microseconds.fetch_update(
+            atomic::Ordering::SeqCst,
+            atomic::Ordering::SeqCst,
+            <span class="kw">move </span>|cur_srtt_microseconds| {
+                <span class="prelude-val">Some</span>(
+                    last_update
+                        .map_or(default, |last_update| {
+                            update_fn(cur_srtt_microseconds, last_update)
+                        })
+                        .min(<span class="self">Self</span>::MAX_SRTT_MICROS),
+                )
+            },
+        );
+    }
+}
+
+<span class="kw">impl </span>PartialEq <span class="kw">for </span>NameServerStats {
+    <span class="kw">fn </span>eq(<span class="kw-2">&amp;</span><span class="self">self</span>, other: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; bool {
+        <span class="self">self</span>.srtt() == other.srtt()
+    }
+}
+
+<span class="kw">impl </span>Eq <span class="kw">for </span>NameServerStats {}
+
+<span class="comment">// TODO: Replace this with `f64::total_cmp` once the Rust version is bumped to
+// 1.62.0 (the method is stable beyond that version). In the meantime, the
+// implementation is copied from here:
+// https://github.com/rust-lang/rust/blob/master/library/core/src/num/f64.rs#L1336
+</span><span class="kw">fn </span>total_cmp(x: f64, y: f64) -&gt; Ordering {
+    <span class="kw">let </span><span class="kw-2">mut </span>left = x.to_bits() <span class="kw">as </span>i64;
+    <span class="kw">let </span><span class="kw-2">mut </span>right = y.to_bits() <span class="kw">as </span>i64;
+
+    left ^= (((left &gt;&gt; <span class="number">63</span>) <span class="kw">as </span>u64) &gt;&gt; <span class="number">1</span>) <span class="kw">as </span>i64;
+    right ^= (((right &gt;&gt; <span class="number">63</span>) <span class="kw">as </span>u64) &gt;&gt; <span class="number">1</span>) <span class="kw">as </span>i64;
+
+    left.cmp(<span class="kw-2">&amp;</span>right)
+}
+
+<span class="kw">impl </span>Ord <span class="kw">for </span>NameServerStats {
+    <span class="doccomment">/// Custom implementation of Ord for NameServer which incorporates the
+    /// performance of the connection into it's ranking.
+    </span><span class="kw">fn </span>cmp(<span class="kw-2">&amp;</span><span class="self">self</span>, other: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; Ordering {
+        total_cmp(<span class="self">self</span>.decayed_srtt(), other.decayed_srtt())
+    }
+}
+
+<span class="kw">impl </span>PartialOrd <span class="kw">for </span>NameServerStats {
+    <span class="kw">fn </span>partial_cmp(<span class="kw-2">&amp;</span><span class="self">self</span>, other: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Ordering&gt; {
+        <span class="prelude-val">Some</span>(<span class="self">self</span>.cmp(other))
+    }
+}
+
+<span class="attr">#[cfg(test)]
+#[allow(clippy::extra_unused_type_parameters)]
+</span><span class="kw">mod </span>tests {
+    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+
+    <span class="kw">fn </span>is_send_sync&lt;S: Sync + Send&gt;() -&gt; bool {
+        <span class="bool-val">true
+    </span>}
+
+    <span class="attr">#[test]
+    </span><span class="kw">fn </span>stats_are_sync() {
+        <span class="macro">assert!</span>(is_send_sync::&lt;NameServerStats&gt;());
+    }
+
+    <span class="attr">#[tokio::test(start_paused = <span class="bool-val">true</span>)]
+    </span><span class="kw">async fn </span>test_stats_cmp() {
+        <span class="kw">let </span>server_a = NameServerStats::new(Duration::from_micros(<span class="number">10</span>));
+        <span class="kw">let </span>server_b = NameServerStats::new(Duration::from_micros(<span class="number">20</span>));
+
+        <span class="comment">// No RTTs or failures have been recorded. The initial SRTTs should be
+        // compared.
+        </span><span class="macro">assert_eq!</span>(server_a.cmp(<span class="kw-2">&amp;</span>server_b), Ordering::Less);
+
+        <span class="comment">// Server A was used. Unused server B should now be preferred.
+        </span>server_a.record_rtt(Duration::from_millis(<span class="number">30</span>));
+        tokio::time::advance(Duration::from_secs(<span class="number">5</span>)).<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(server_a.cmp(<span class="kw-2">&amp;</span>server_b), Ordering::Greater);
+
+        <span class="comment">// Both servers have been used. Server A has a lower SRTT and should be
+        // preferred.
+        </span>server_b.record_rtt(Duration::from_millis(<span class="number">50</span>));
+        tokio::time::advance(Duration::from_secs(<span class="number">5</span>)).<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(server_a.cmp(<span class="kw-2">&amp;</span>server_b), Ordering::Less);
+
+        <span class="comment">// Server A experiences a connection failure, which results in Server B
+        // being preferred.
+        </span>server_a.record_connection_failure();
+        tokio::time::advance(Duration::from_secs(<span class="number">5</span>)).<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(server_a.cmp(<span class="kw-2">&amp;</span>server_b), Ordering::Greater);
+
+        <span class="comment">// Server A should eventually recover and once again be preferred.
+        </span><span class="kw">while </span>server_a.cmp(<span class="kw-2">&amp;</span>server_b) != Ordering::Less {
+            server_b.record_rtt(Duration::from_millis(<span class="number">50</span>));
+            tokio::time::advance(Duration::from_secs(<span class="number">5</span>)).<span class="kw">await</span>;
+        }
+
+        server_a.record_rtt(Duration::from_millis(<span class="number">30</span>));
+        tokio::time::advance(Duration::from_secs(<span class="number">3</span>)).<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(server_a.cmp(<span class="kw-2">&amp;</span>server_b), Ordering::Less);
+    }
+
+    <span class="attr">#[tokio::test(start_paused = <span class="bool-val">true</span>)]
+    </span><span class="kw">async fn </span>test_record_rtt() {
+        <span class="kw">let </span>server = NameServerStats::new(Duration::from_micros(<span class="number">10</span>));
+
+        <span class="kw">let </span>first_rtt = Duration::from_millis(<span class="number">50</span>);
+        server.record_rtt(first_rtt);
+
+        <span class="comment">// The first recorded RTT should replace the initial value.
+        </span><span class="macro">assert_eq!</span>(server.srtt(), first_rtt);
+
+        tokio::time::advance(Duration::from_secs(<span class="number">3</span>)).<span class="kw">await</span>;
+
+        <span class="comment">// Subsequent RTTs should factor in previously recorded values.
+        </span>server.record_rtt(Duration::from_millis(<span class="number">100</span>));
+        <span class="macro">assert_eq!</span>(server.srtt(), Duration::from_micros(<span class="number">81606</span>));
+    }
+
+    <span class="attr">#[test]
+    </span><span class="kw">fn </span>test_record_rtt_maximum_value() {
+        <span class="kw">let </span>server = NameServerStats::new(Duration::from_micros(<span class="number">10</span>));
+
+        server.record_rtt(Duration::MAX);
+        <span class="comment">// Updates to the SRTT are capped at a maximum value.
+        </span><span class="macro">assert_eq!</span>(
+            server.srtt(),
+            Duration::from_micros(NameServerStats::MAX_SRTT_MICROS.into())
+        );
+    }
+
+    <span class="attr">#[tokio::test(start_paused = <span class="bool-val">true</span>)]
+    </span><span class="kw">async fn </span>test_record_connection_failure() {
+        <span class="kw">let </span>server = NameServerStats::new(Duration::from_micros(<span class="number">10</span>));
+
+        <span class="comment">// Verify that the SRTT value is initially replaced with the penalty and
+        // subsequent failures result in the penalty being added.
+        </span><span class="kw">for </span>failure_count <span class="kw">in </span><span class="number">1</span>..<span class="number">4 </span>{
+            server.record_connection_failure();
+            <span class="macro">assert_eq!</span>(
+                server.srtt(),
+                Duration::from_micros(
+                    NameServerStats::CONNECTION_FAILURE_PENALTY
+                        .checked_mul(failure_count)
+                        .expect(<span class="string">"checked_mul overflow"</span>)
+                        .into()
+                )
+            );
+            tokio::time::advance(Duration::from_secs(<span class="number">3</span>)).<span class="kw">await</span>;
+        }
+
+        <span class="comment">// Verify that the `last_update` timestamp was updated for a connection
+        // failure and is used in subsequent calculations.
+        </span>server.record_rtt(Duration::from_millis(<span class="number">50</span>));
+        <span class="macro">assert_eq!</span>(server.srtt(), Duration::from_micros(<span class="number">197152</span>));
+    }
+
+    <span class="attr">#[test]
+    </span><span class="kw">fn </span>test_record_connection_failure_maximum_value() {
+        <span class="kw">let </span>server = NameServerStats::new(Duration::from_micros(<span class="number">10</span>));
+
+        <span class="kw">let </span>num_failures =
+            (NameServerStats::MAX_SRTT_MICROS / NameServerStats::CONNECTION_FAILURE_PENALTY) + <span class="number">1</span>;
+        <span class="kw">for _ in </span><span class="number">0</span>..num_failures {
+            server.record_connection_failure();
+        }
+
+        <span class="comment">// Updates to the SRTT are capped at a maximum value.
+        </span><span class="macro">assert_eq!</span>(
+            server.srtt(),
+            Duration::from_micros(NameServerStats::MAX_SRTT_MICROS.into())
+        );
+    }
+
+    <span class="attr">#[tokio::test(start_paused = <span class="bool-val">true</span>)]
+    </span><span class="kw">async fn </span>test_decayed_srtt() {
+        <span class="kw">let </span>initial_srtt = <span class="number">10</span>;
+        <span class="kw">let </span>server = NameServerStats::new(Duration::from_micros(initial_srtt));
+
+        <span class="comment">// No decay should be applied to the initial value.
+        </span><span class="macro">assert_eq!</span>(server.decayed_srtt() <span class="kw">as </span>u32, initial_srtt <span class="kw">as </span>u32);
+
+        tokio::time::advance(Duration::from_secs(<span class="number">5</span>)).<span class="kw">await</span>;
+        server.record_rtt(Duration::from_millis(<span class="number">100</span>));
+
+        <span class="comment">// The decay function should assume a minimum of one second has elapsed
+        // since the last update.
+        </span>tokio::time::advance(Duration::from_millis(<span class="number">500</span>)).<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(server.decayed_srtt() <span class="kw">as </span>u32, <span class="number">99445</span>);
+
+        tokio::time::advance(Duration::from_secs(<span class="number">5</span>)).<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(server.decayed_srtt() <span class="kw">as </span>u32, <span class="number">96990</span>);
+    }
+}
+</code></pre></div></section></main></body></html>

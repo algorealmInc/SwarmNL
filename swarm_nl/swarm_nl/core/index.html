@@ -1,0 +1,162 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Core data structures and protocol implementations for building a swarm."><title>swarm_nl::core - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="swarm_nl" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-4c98445ec4002617.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../swarm_nl/index.html">swarm_nl</a><span class="version">0.1.0</span></h2></div><h2 class="location"><a href="#">Module core</a></h2><div class="sidebar-elems"><section><ul class="block"><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#constants">Constants</a></li><li><a href="#traits">Traits</a></li><li><a href="#types">Type Aliases</a></li></ul></section><h2><a href="../index.html">In crate swarm_nl</a></h2></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../swarm_nl/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Module <a href="../index.html">swarm_nl</a>::<wbr><a class="mod" href="#">core</a><button id="copy-path" title="Copy item path to clipboard"><img src="../../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../../src/swarm_nl/core/mod.rs.html#6-1541">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Core data structures and protocol implementations for building a swarm.</p>
+<h2 id="network-builder"><a class="doc-anchor" href="#network-builder">§</a>Network builder</h2>
+<p>To build a network or a node, you first need to create a <a href="struct.CoreBuilder.html" title="struct swarm_nl::core::CoreBuilder"><code>CoreBuilder</code></a> object using the <a href="struct.CoreBuilder.html#method.with_config" title="associated function swarm_nl::core::CoreBuilder::with_config"><code>CoreBuilder::with_config</code></a> method to create a bootstrap node, then you can simply call <a href="struct.CoreBuilder.html#method.build" title="method swarm_nl::core::CoreBuilder::build"><code>CoreBuilder::build</code></a> to set up the network. This will create a <a href="struct.Core.html" title="struct swarm_nl::core::Core"><code>Core</code></a> struct with methods you can use to send and receive data to/from the network.</p>
+<p>The <a href="struct.CoreBuilder.html#method.with_config" title="associated function swarm_nl::core::CoreBuilder::with_config"><code>CoreBuilder::with_config</code></a> method takes two parameters:</p>
+<ol>
+<li><a href="../setup/struct.BootstrapConfig.html" title="struct swarm_nl::setup::BootstrapConfig"><code>BootstrapConfig</code></a> to pass in a bootstrap node configuration.</li>
+<li><a href="prelude/trait.EventHandler.html" title="trait swarm_nl::core::prelude::EventHandler"><code>EventHandler</code></a> to respond to network events.</li>
+</ol>
+<h4 id="default-setup"><a class="doc-anchor" href="#default-setup">§</a>Default setup</h4>
+<p>Here’s how you would build a bootstrap node with the default library settings, using a <a href="prelude/struct.DefaultHandler.html" title="struct swarm_nl::core::prelude::DefaultHandler"><code>DefaultHandler</code></a> struct to respond to network events:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="comment">// Default config
+</span><span class="kw">let </span>config = BootstrapConfig::default();
+<span class="comment">// Default Handler
+</span><span class="kw">let </span>handler = DefaultHandler;
+<span class="kw">let </span><span class="kw-2">mut </span>network = CoreBuilder::with_config(config, handler)
+	.build()
+	.<span class="kw">await
+	</span>.unwrap();</code></pre></div>
+<h4 id="custom-event-handler"><a class="doc-anchor" href="#custom-event-handler">§</a>Custom event handler</h4>
+<p>To customize how your application handles network events, you’ll need to implement the methods from <a href="prelude/trait.EventHandler.html" title="trait swarm_nl::core::prelude::EventHandler"><code>EventHandler</code></a>. It’s best to implement <a href="prelude/trait.EventHandler.html" title="trait swarm_nl::core::prelude::EventHandler"><code>EventHandler</code></a> on your application’s state. This allows you to:</p>
+<ul>
+<li>make critical state changes in response to network events.</li>
+<li>log state data at different point during network event changes.</li>
+</ul>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>swarm_nl::core::EventHandler;
+
+<span class="attr">#[derive(Clone)]
+</span><span class="kw">struct </span>ApplicationState {
+	name: String,
+	version: u8,
+}
+
+<span class="kw">impl </span>EventHandler <span class="kw">for </span>ApplicationState {
+	<span class="kw">async fn </span>new_listen_addr(
+		<span class="kw-2">&amp;mut </span><span class="self">self</span>,
+		local_peer_id: PeerId,
+		listener_id: swarm_nl::ListenerId,
+		addr: swarm_nl::Multiaddr,
+	) {
+		<span class="comment">// Announce interfaces we're listening on
+		</span><span class="macro">println!</span>(<span class="string">"Peer id: {}"</span>, local_peer_id);
+		<span class="macro">println!</span>(<span class="string">"We're listening on the {}"</span>, addr);
+		<span class="macro">println!</span>(
+			<span class="string">"Connected to {}, current version: {} "</span>,
+			<span class="self">self</span>.name, <span class="self">self</span>.version
+		);
+	}
+
+	<span class="comment">// Echo data recieved from a RPC
+	</span><span class="kw">fn </span>rpc_handle_incoming_message(<span class="kw-2">&amp;mut </span><span class="self">self</span>, data: Vec&lt;Vec&lt;u8&gt;&gt;) -&gt; Vec&lt;Vec&lt;u8&gt;&gt; {
+		<span class="macro">println!</span>(<span class="string">"Recvd incoming RPC: {:?}"</span>, data);
+		data
+	}
+
+	<span class="comment">// Handle the incoming gossip message
+	</span><span class="kw">fn </span>gossipsub_handle_incoming_message(<span class="kw-2">&amp;mut </span><span class="self">self</span>, source: PeerId, data: Vec&lt;String&gt;) {
+		<span class="macro">println!</span>(<span class="string">"Recvd incoming gossip: {:?}"</span>, data);
+	}
+}</code></pre></div>
+<h3 id="overriding-the-default-network-configuration"><a class="doc-anchor" href="#overriding-the-default-network-configuration">§</a>Overriding the default network configuration</h3>
+<p>You can explicitly overrride the default values of <a href="struct.CoreBuilder.html#method.with_config" title="associated function swarm_nl::core::CoreBuilder::with_config"><code>CoreBuilder::with_config</code></a> by calling the methods like the following before building the network:</p>
+<ul>
+<li><a href="struct.CoreBuilder.html#method.with_transports" title="method swarm_nl::core::CoreBuilder::with_transports"><code>CoreBuilder::with_transports</code></a>: Configures a custom transport to use, specified in <a href="../prelude/enum.TransportOpts.html" title="enum swarm_nl::prelude::TransportOpts"><code>TransportOpts</code></a>.</li>
+<li><a href="struct.CoreBuilder.html#method.with_network_id" title="method swarm_nl::core::CoreBuilder::with_network_id"><code>CoreBuilder::with_network_id</code></a> : Configures the network ID or name e.g. <code>/your-protocol-name/1.0</code>.</li>
+<li><a href="struct.CoreBuilder.html#method.listen_on" title="method swarm_nl::core::CoreBuilder::listen_on"><code>CoreBuilder::listen_on</code></a> : Configures the IP address to listen on e.g. IPv4(127.0.0.1).</li>
+<li><a href="struct.CoreBuilder.html#method.with_idle_connection_timeout" title="method swarm_nl::core::CoreBuilder::with_idle_connection_timeout"><code>CoreBuilder::with_idle_connection_timeout</code></a>: Configures a timeout for keeping a connection alive.</li>
+<li>etc.</li>
+</ul>
+<p>For example: </p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>		<span class="comment">// Default config
+		</span><span class="kw">let </span>config = BootstrapConfig::default();
+		<span class="comment">// Default handler
+		</span><span class="kw">let </span>handler = DefaultHandler;
+
+		<span class="comment">// Create a default network core builder
+		</span><span class="kw">let </span>default_node = CoreBuilder::with_config(config, handler);
+
+		<span class="comment">// Override default with custom configurations
+		// Network Id
+		</span><span class="kw">let </span><span class="kw-2">mut </span>custom_network_id = <span class="string">"/custom-protocol/1.0"</span>.to_string();		
+		<span class="comment">// Transport
+		</span><span class="kw">let </span><span class="kw-2">mut </span>custom_transport = TransportOpts::TcpQuic {		
+			tcp_config: TcpConfig::Custom {
+				ttl: <span class="number">10</span>,
+				nodelay: <span class="bool-val">true</span>,
+				backlog: <span class="number">10</span>,
+			},
+		};
+		<span class="comment">// Keep-alive	
+		</span><span class="kw">let </span><span class="kw-2">mut </span>custom_keep_alive_duration = <span class="number">20</span>;	
+		<span class="comment">// IP address
+		</span><span class="kw">let </span><span class="kw-2">mut </span>custom_ip_address = IpAddr::V6(Ipv6Addr::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">1</span>));	
+
+		<span class="comment">// Build a custom configured node
+		</span><span class="kw">let </span>custom_node = default_node
+			.with_network_id(custom_network_id.clone())
+			.with_transports(custom_transport.clone())
+			.with_idle_connection_timeout(custom_keep_alive_duration.clone())
+			.listen_on(custom_ip_address.clone())
+			.build()
+			.<span class="kw">await</span>.
+			.unwrap();</code></pre></div>
+<h2 id="application-interaction"><a class="doc-anchor" href="#application-interaction">§</a>Application Interaction</h2>
+<p>The core library provides very simple interfaces to communicate with the network layer to trigger and drive network behaviour or to make enquiries about internal network state.
+This is achieved by constructing a request with the <a href="prelude/enum.AppData.html" title="enum swarm_nl::core::prelude::AppData"><code>AppData</code></a> struct and passing it to the network. An <a href="prelude/enum.AppResponse.html" title="enum swarm_nl::core::prelude::AppResponse"><code>AppResponse</code></a> structure is returned, containing the network’s response to the applications request.<br>
+There are two ways of querying the network layer with each having its own peculiarities and use-cases:</p>
+<ul>
+<li>Using the <a href="struct.Core.html#method.query_network" title="method swarm_nl::core::Core::query_network"><code>Core::query_network()</code></a> method: This method aims to complete its operations atomically and blocks until the network returns a reponse or if the request times out. It is useful when the response from the network is important for the application logic to continue.</li>
+</ul>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>    <span class="comment">// Default config
+    </span><span class="kw">let </span>config = BootstrapConfig::default();
+    <span class="comment">// Default handler
+    </span><span class="kw">let </span>handler = DefaultHandler;
+
+    <span class="comment">// Create a default network core builder
+    </span><span class="kw">let </span>node = CoreBuilder::with_config(config, handler);
+
+    <span class="comment">// Join a network (subscribe to a topic)
+    </span><span class="kw">let </span>gossip_request = AppData::GossipsubJoinNetwork(MY_NETWORK.to_string());
+
+    <span class="comment">// Blocks until response is returned from the network layer
+    </span><span class="kw">if let </span><span class="prelude-val">Ok</span>(<span class="kw">_</span>) = node.query_network(gossip_request).<span class="kw">await </span>{
+        <span class="macro">println!</span>(<span class="string">"Subscription successfull"</span>);
+    }</code></pre></div>
+<ul>
+<li>Using the <a href="struct.Core.html#method.send_to_network" title="method swarm_nl::core::Core::send_to_network"><code>Core::send_to_network()</code></a> and <a href="struct.Core.html#method.recv_from_network" title="method swarm_nl::core::Core::recv_from_network"><code>Core::recv_from_network()</code></a> method: This method does not block and is split into two parts - sending and recieving. When the request is recieved by the network layer through the <a href="struct.Core.html#method.send_to_network" title="method swarm_nl::core::Core::send_to_network"><code>Core::send_to_network()</code></a> method, a <a href="prelude/struct.StreamId.html" title="struct swarm_nl::core::prelude::StreamId"><code>StreamId</code></a> is immediately returned and the request is handled. When there is a response (or a timeout), it is stored internally in a response buffer until it is returned by explicitly polling the network through the <a href="struct.Core.html#method.recv_from_network" title="method swarm_nl::core::Core::recv_from_network"><code>Core::recv_from_network()</code></a> method which takes in the <a href="prelude/struct.StreamId.html" title="struct swarm_nl::core::prelude::StreamId"><code>StreamId</code></a> returned earlier. The <a href="prelude/struct.StreamId.html" title="struct swarm_nl::core::prelude::StreamId"><code>StreamId</code></a> helps to track the requests and their corresponding responses internally in the network layer. </li>
+</ul>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>    <span class="comment">// Default config
+    </span><span class="kw">let </span>config = BootstrapConfig::default();
+    <span class="comment">// Default handler
+    </span><span class="kw">let </span>handler = DefaultHandler;
+
+    <span class="comment">// Create a default network core builder
+    </span><span class="kw">let </span>node = CoreBuilder::with_config(config, handler);
+
+    <span class="comment">// Join a network (subscribe to a topic)
+    </span><span class="kw">let </span>gossip_request = AppData::GossipsubJoinNetwork(MY_NETWORK.to_string());
+
+    <span class="comment">// Send request to the application layer
+    </span><span class="kw">let </span>stream_id = node.send_to_network(gossip_request).<span class="kw">await</span>.unwrap();
+
+    <span class="comment">// ...
+    // Run other application logic
+    //...
+
+    // Explicitly retrieve the response of our request
+    </span><span class="kw">if let </span><span class="prelude-val">Ok</span>(result) = node.recv_from_network(stream_id).<span class="kw">await </span>{
+        <span class="macro">println!</span>(<span class="string">"Subscription successfull"</span>);
+        <span class="macro">assert_eq!</span>(AppResponse::GossipsubJoinSuccess, result);
+    }</code></pre></div>
+<p>Note: The internal buffer is limited in capacity and pending responses should be removed as soon as possibe. A full buffer will prevent the network from recieving more requests.</p>
+</div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="ping_config/index.html" title="mod swarm_nl::core::ping_config">ping_config</a></div><div class="desc docblock-short">Module that contains important data structures to manage <code>Ping</code> operations on the network</div></li><li><div class="item-name"><a class="mod" href="prelude/index.html" title="mod swarm_nl::core::prelude">prelude</a><span title="Restricted Visibility">&nbsp;🔒</span> </div></li><li><div class="item-name"><a class="mod" href="tests/index.html" title="mod swarm_nl::core::tests">tests</a><span title="Restricted Visibility">&nbsp;🔒</span> </div></li></ul><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="struct" href="struct.Core.html" title="struct swarm_nl::core::Core">Core</a></div><div class="desc docblock-short">The core interface for the application layer to interface with the networking layer.</div></li><li><div class="item-name"><a class="struct" href="struct.CoreBehaviour.html" title="struct swarm_nl::core::CoreBehaviour">CoreBehaviour</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="desc docblock-short">The Core Behaviour implemented which highlights the various protocols
+we’ll be adding support for.</div></li><li><div class="item-name"><a class="struct" href="struct.CoreBuilder.html" title="struct swarm_nl::core::CoreBuilder">CoreBuilder</a></div><div class="desc docblock-short">Structure containing necessary data to build <a href="struct.Core.html" title="struct swarm_nl::core::Core"><code>Core</code></a>.</div></li><li><div class="item-name"><a class="struct" href="struct.DefaultHandler.html" title="struct swarm_nl::core::DefaultHandler">DefaultHandler</a></div><div class="desc docblock-short">Default network event handler</div></li><li><div class="item-name"><a class="struct" href="struct.RpcConfig.html" title="struct swarm_nl::core::RpcConfig">RpcConfig</a></div><div class="desc docblock-short">The configuration for the RPC protocol.</div></li><li><div class="item-name"><a class="struct" href="struct.StreamId.html" title="struct swarm_nl::core::StreamId">StreamId</a></div><div class="desc docblock-short">A simple struct used to track requests sent from the application layer to the network layer.</div></li></ul><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="enum" href="enum.AppData.html" title="enum swarm_nl::core::AppData">AppData</a></div><div class="desc docblock-short">Request sent from the application layer to the networking layer.</div></li><li><div class="item-name"><a class="enum" href="enum.AppResponse.html" title="enum swarm_nl::core::AppResponse">AppResponse</a></div><div class="desc docblock-short">Response to requests sent from the application to the network layer.</div></li><li><div class="item-name"><a class="enum" href="enum.CoreEvent.html" title="enum swarm_nl::core::CoreEvent">CoreEvent</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="desc docblock-short">Network events generated as a result of supported and configured <a href="../../libp2p_swarm/behaviour/trait.NetworkBehaviour.html" title="trait libp2p_swarm::behaviour::NetworkBehaviour"><code>NetworkBehaviour</code></a>’s</div></li><li><div class="item-name"><a class="enum" href="enum.NetworkError.html" title="enum swarm_nl::core::NetworkError">NetworkError</a></div><div class="desc docblock-short">Network error type containing errors encountered during network operations.</div></li></ul><h2 id="constants" class="section-header">Constants<a href="#constants" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="constant" href="constant.NETWORK_READ_TIMEOUT.html" title="constant swarm_nl::core::NETWORK_READ_TIMEOUT">NETWORK_READ_TIMEOUT</a></div><div class="desc docblock-short">The duration (in seconds) to wait for response from the network layer before timing
+out.</div></li><li><div class="item-name"><a class="constant" href="constant.TASK_SLEEP_DURATION.html" title="constant swarm_nl::core::TASK_SLEEP_DURATION">TASK_SLEEP_DURATION</a></div><div class="desc docblock-short">The time it takes for the task to sleep before it can recheck if an output has been placed in
+the repsonse buffer (7 seconds).</div></li></ul><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="trait" href="trait.EventHandler.html" title="trait swarm_nl::core::EventHandler">EventHandler</a></div><div class="desc docblock-short">The high level trait that provides an interface for the application layer to respond to network
+events.</div></li></ul><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="type" href="type.NetworkResult.html" title="type swarm_nl::core::NetworkResult">NetworkResult</a></div><div class="desc docblock-short">Type that contains the result of querying the network layer.</div></li></ul></section></div></main></body></html>

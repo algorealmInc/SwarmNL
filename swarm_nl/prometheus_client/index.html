@@ -1,0 +1,70 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Client library implementation of the Open Metrics specification. Allows developers to instrument applications and thus enables operators to monitor said applications with monitoring systems like Prometheus."><title>prometheus_client - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="prometheus_client" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-4c98445ec4002617.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../prometheus_client/index.html">prometheus_client</a><span class="version">0.22.2</span></h2></div><div class="sidebar-elems"><ul class="block">
+            <li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#modules">Modules</a></li></ul></section></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../prometheus_client/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">prometheus_client</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/prometheus_client/lib.rs.html#1-84">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Client library implementation of the <a href="https://github.com/OpenObservability/OpenMetrics">Open Metrics
+specification</a>. Allows
+developers to instrument applications and thus enables operators to monitor
+said applications with monitoring systems like
+<a href="https://prometheus.io/">Prometheus</a>.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>prometheus_client::encoding::{EncodeLabelSet, EncodeLabelValue};
+<span class="kw">use </span>prometheus_client::encoding::text::encode;
+<span class="kw">use </span>prometheus_client::metrics::counter::{Atomic, Counter};
+<span class="kw">use </span>prometheus_client::metrics::family::Family;
+<span class="kw">use </span>prometheus_client::registry::Registry;
+<span class="kw">use </span>std::io::Write;
+
+<span class="comment">// Create a metric registry.
+//
+// Note the angle brackets to make sure to use the default (dynamic
+// dispatched boxed metric) for the generic type parameter.
+</span><span class="kw">let </span><span class="kw-2">mut </span>registry = &lt;Registry&gt;::default();
+
+<span class="comment">// Define a type representing a metric label set, i.e. a key value pair.
+//
+// You could as well use `(String, String)` to represent a label set,
+// instead of the custom type below.
+</span><span class="attr">#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+</span><span class="kw">struct </span>Labels {
+  <span class="comment">// Use your own enum types to represent label values.
+  </span>method: Method,
+  <span class="comment">// Or just a plain string.
+  </span>path: String,
+};
+
+<span class="attr">#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelValue)]
+</span><span class="kw">enum </span>Method {
+  GET,
+  PUT,
+};
+
+<span class="comment">// Create a sample counter metric family utilizing the above custom label
+// type, representing the number of HTTP requests received.
+</span><span class="kw">let </span>http_requests = Family::&lt;Labels, Counter&gt;::default();
+
+<span class="comment">// Register the metric family with the registry.
+</span>registry.register(
+  <span class="comment">// With the metric name.
+  </span><span class="string">"http_requests"</span>,
+  <span class="comment">// And the metric help text.
+  </span><span class="string">"Number of HTTP requests received"</span>,
+  http_requests.clone(),
+);
+
+<span class="comment">// Somewhere in your business logic record a single HTTP GET request.
+</span>http_requests.get_or_create(
+    <span class="kw-2">&amp;</span>Labels { method: Method::GET, path: <span class="string">"/metrics"</span>.to_string() }
+).inc();
+
+<span class="comment">// When a monitoring system like Prometheus scrapes the local node, encode
+// all metrics in the registry in the text format, and send the encoded
+// metrics back.
+</span><span class="kw">let </span><span class="kw-2">mut </span>buffer = String::new();
+encode(<span class="kw-2">&amp;mut </span>buffer, <span class="kw-2">&amp;</span>registry).unwrap();
+
+<span class="kw">let </span>expected = <span class="string">"# HELP http_requests Number of HTTP requests received.\n"</span>.to_owned() +
+               <span class="string">"# TYPE http_requests counter\n" </span>+
+               <span class="string">"http_requests_total{method=\"GET\",path=\"/metrics\"} 1\n" </span>+
+               <span class="string">"# EOF\n"</span>;
+<span class="macro">assert_eq!</span>(expected, buffer);</code></pre></div>
+<p>See <a href="https://github.com/prometheus/client_rust/tree/master/examples">examples</a> directory for more.</p>
+</div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="collector/index.html" title="mod prometheus_client::collector">collector</a></div><div class="desc docblock-short">Metric collector implementation.</div></li><li><div class="item-name"><a class="mod" href="encoding/index.html" title="mod prometheus_client::encoding">encoding</a></div><div class="desc docblock-short">Exposition format implementations.</div></li><li><div class="item-name"><a class="mod" href="metrics/index.html" title="mod prometheus_client::metrics">metrics</a></div><div class="desc docblock-short">Metric type implementations.</div></li><li><div class="item-name"><a class="mod" href="registry/index.html" title="mod prometheus_client::registry">registry</a></div><div class="desc docblock-short">Metric registry implementation.</div></li></ul></section></div></main></body></html>

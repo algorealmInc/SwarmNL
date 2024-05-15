@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Connection","KeyChange","Version"],"struct":["ClientConnection","ConnectionCommon","DirectionalKeys","HeaderProtectionKey","Keys","PacketKey","PacketKeySet","Secrets","ServerConnection","Tag"]};

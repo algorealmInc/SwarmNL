@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["TlsStream","UpgradeError"],"fn":["make_client_config","make_server_config"],"mod":["certificate"],"struct":["Config"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["symlink"],"trait":["DirBuilderExt","DirEntryExt","FileTypeExt","MetadataExt","OpenOptionsExt","PermissionsExt"]};

@@ -1,0 +1,122 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Async time operators."><title>futures_time - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="futures_time" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-4c98445ec4002617.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../futures_time/index.html">futures_time</a><span class="version">3.0.0</span></h2></div><div class="sidebar-elems"><ul class="block">
+            <li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#modules">Modules</a></li></ul></section></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../futures_time/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">futures_time</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/futures_time/lib.rs.html#1-177">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="async-time-operators"><a class="doc-anchor" href="#async-time-operators">§</a>Async time operators.</h2>
+<p>This crate provides ergonomic, async time-based operations. It serves as an
+experimental playground to experiment with how we could potentially add
+time-based operations to <code>async-std</code>, and subsequently the stdlib.</p>
+<p>The goal is to make working with time and other events feel natural. A major
+source of inspiration for this has been RxJS, which uses events (including
+time) to trigger operations. This crate takes that principle, inverts the
+model to make it evaluate lazily, and wraps it in an ergnomic Rust
+interface.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2>
+<p><strong>Delay a future’s execution by 100ms</strong></p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::Duration;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span>res = <span class="kw">async </span>{ <span class="string">"meow" </span>}
+            .delay(Duration::from_millis(<span class="number">100</span>))
+            .<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(res, <span class="string">"meow"</span>);
+    })
+}</code></pre></div>
+<p><strong>Error if a future takes longer than 200ms</strong></p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::Duration;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span>res = <span class="kw">async </span>{ <span class="string">"meow" </span>}
+            .delay(Duration::from_millis(<span class="number">100</span>))
+            .timeout(Duration::from_millis(<span class="number">200</span>))
+            .<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(res.unwrap(), <span class="string">"meow"</span>);
+    })
+}</code></pre></div>
+<p><strong>Throttle a stream</strong></p>
+<p>This lets two items through in total: one <code>100ms</code> after the program has
+started, and one <code>300ms</code> after the program has started.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::Duration;
+<span class="kw">use </span>futures_time::stream;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span><span class="kw-2">mut </span>counter = <span class="number">0</span>;
+        stream::interval(Duration::from_millis(<span class="number">100</span>))  <span class="comment">// Yield an item every 100ms
+            </span>.take(<span class="number">4</span>)                                  <span class="comment">// Stop after 4 items
+            </span>.throttle(Duration::from_millis(<span class="number">300</span>))     <span class="comment">// Only let an item through every 300ms
+            </span>.for_each(|<span class="kw">_</span>| counter += <span class="number">1</span>)               <span class="comment">// Increment a counter for each item
+            </span>.<span class="kw">await</span>;
+
+        <span class="macro">assert_eq!</span>(counter, <span class="number">2</span>);
+    })
+}</code></pre></div>
+<h2 id="the-timer-trait"><a class="doc-anchor" href="#the-timer-trait">§</a>The <code>Timer</code> trait</h2>
+<p>The future returned by <a href="task/fn.sleep.html" title="fn futures_time::task::sleep"><code>task::sleep</code></a> implements the <a href="future/trait.Timer.html" title="trait futures_time::future::Timer"><code>future::Timer</code></a>
+trait. This represents a future whose deadline can be moved forward into the
+future.</p>
+<p>For example, say we have a deadline of <code>Duration::from_secs(10)</code>. By calling
+<code>Timer::reset_timer</code> the timer can be reschedule to trigger at a later time.
+This functionality is required for methods such as <code>debounce</code> and
+<code>Stream::timeout</code>, which will regularly want to reschedule their timers to trigger
+the future.</p>
+<p>Currently the only type implementing the <code>Timer</code> trait is
+<a href="task/struct.Sleep.html" title="struct futures_time::task::Sleep"><code>task::Sleep</code></a>, which is created from a <code>Duration.</code> This is in contrast
+with <a href="task/fn.sleep_until.html" title="fn futures_time::task::sleep_until"><code>task::sleep_until</code></a>, which takes an <code>Instant</code>, and cannot be reset.</p>
+<h2 id="cancellation"><a class="doc-anchor" href="#cancellation">§</a>Cancellation</h2>
+<p>You can use <a href="channel/fn.bounded.html" title="fn futures_time::channel::bounded"><code>channel::bounded</code></a> to create a <a href="channel/struct.Sender.html" title="struct futures_time::channel::Sender"><code>channel::Sender</code></a> and <a href="channel/struct.Receiver.html" title="struct futures_time::channel::Receiver"><code>channel::Receiver</code></a> pair.
+When the “sender” sends a message, all “receivers” will halt execution of the future the next time they are
+<code>.await</code>ed. This will cause the future to stop executing, and all
+destructors to be run.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::channel;
+<span class="kw">use </span>futures_time::time::Duration;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span>(send, <span class="kw-2">mut </span>recv) = channel::bounded::&lt;()&gt;(<span class="number">1</span>); <span class="comment">// create a new send/receive pair
+        </span><span class="kw">let </span><span class="kw-2">mut </span>counter = <span class="number">0</span>;
+        <span class="kw">let </span>value = <span class="kw">async </span>{ <span class="string">"meow" </span>}
+            .delay(Duration::from_millis(<span class="number">100</span>))
+            .timeout(recv.next()) <span class="comment">// time-out when the sender emits a message
+            </span>.<span class="kw">await</span>;
+
+        <span class="macro">assert_eq!</span>(value.unwrap(), <span class="string">"meow"</span>);
+    })
+}</code></pre></div>
+<h2 id="futures"><a class="doc-anchor" href="#futures">§</a>Futures</h2>
+<ul>
+<li><a href="future/trait.FutureExt.html#method.delay" title="method futures_time::future::FutureExt::delay"><code>Future::delay</code></a> Delay execution for a specified time.</li>
+<li><a href="future/trait.FutureExt.html#method.timeout" title="method futures_time::future::FutureExt::timeout"><code>Future::timeout</code></a> Cancel the future if the execution takes longer than the specified time.</li>
+<li><a href="future/trait.FutureExt.html#method.park" title="method futures_time::future::FutureExt::park"><code>Future::park</code></a> Suspend or resume the execution of a future.</li>
+</ul>
+<h2 id="tasks"><a class="doc-anchor" href="#tasks">§</a>Tasks</h2>
+<ul>
+<li><a href="task/fn.sleep_until.html" title="fn futures_time::task::sleep_until"><code>task::sleep_until</code></a> Sleeps until the specified deadline.</li>
+<li><a href="task/fn.sleep.html" title="fn futures_time::task::sleep"><code>task::sleep</code></a> Sleeps for the specified amount of time.</li>
+</ul>
+<h2 id="streams"><a class="doc-anchor" href="#streams">§</a>Streams</h2>
+<ul>
+<li><a href="stream/trait.StreamExt.html#method.buffer" title="method futures_time::stream::StreamExt::buffer"><code>Stream::buffer</code></a> Returns a stream which buffers items and flushes them at each interval.</li>
+<li><a href="stream/trait.StreamExt.html#method.debounce" title="method futures_time::stream::StreamExt::debounce"><code>Stream::debounce</code></a> Returns a stream that debounces for the given duration.</li>
+<li><a href="stream/trait.StreamExt.html#method.delay" title="method futures_time::stream::StreamExt::delay"><code>Stream::delay</code></a> Delay execution for a specified time.</li>
+<li><a href="%60future::StreamExt::park%60"><code>Future::park</code></a> Suspend or resume the execution of a stream.</li>
+<li><a href="stream/trait.StreamExt.html#method.sample" title="method futures_time::stream::StreamExt::sample"><code>Stream::sample</code></a> Yield the last value received, if any, at each interval.</li>
+<li><a href="stream/trait.StreamExt.html#method.throttle" title="method futures_time::stream::StreamExt::throttle"><code>Stream::throttle</code></a> Filter out all items after the first for a specified time.</li>
+<li><a href="stream/trait.StreamExt.html#method.timeout" title="method futures_time::stream::StreamExt::timeout"><code>Stream::timeout</code></a> Cancel the stream if the execution takes longer than the specified time.</li>
+<li><a href="stream/fn.interval.html" title="fn futures_time::stream::interval"><code>stream::interval</code></a> Creates a new stream that yields at a set interval.</li>
+</ul>
+<h2 id="re-exports"><a class="doc-anchor" href="#re-exports">§</a>Re-exports</h2>
+<ul>
+<li><code>channel</code> is a re-export of the <a href="https://docs.rs/async-channel/latest/async_channel"><code>async-channel</code></a> crate, exposed for convenience</li>
+</ul>
+</div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="channel/index.html" title="mod futures_time::channel">channel</a></div><div class="desc docblock-short">An async multi-producer multi-consumer channel.</div></li><li><div class="item-name"><a class="mod" href="future/index.html" title="mod futures_time::future">future</a></div><div class="desc docblock-short">Asynchronous values.</div></li><li><div class="item-name"><a class="mod" href="prelude/index.html" title="mod futures_time::prelude">prelude</a></div><div class="desc docblock-short">The <code>futures-time</code> prelude.</div></li><li><div class="item-name"><a class="mod" href="stream/index.html" title="mod futures_time::stream">stream</a></div><div class="desc docblock-short">Composable asynchronous iteration.</div></li><li><div class="item-name"><a class="mod" href="task/index.html" title="mod futures_time::task">task</a></div><div class="desc docblock-short">Types and Traits for working with asynchronous tasks.</div></li><li><div class="item-name"><a class="mod" href="time/index.html" title="mod futures_time::time">time</a></div><div class="desc docblock-short">Temporal quantification.</div></li></ul></section></div></main></body></html>

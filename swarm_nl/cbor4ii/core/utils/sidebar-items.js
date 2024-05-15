@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["BufWriter","IoReader","IoWriter","SliceReader"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["exponential_buckets","linear_buckets"],"struct":["Histogram"]};

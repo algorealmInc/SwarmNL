@@ -1,0 +1,220 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Extend `Stream` with time-based operations."><title>StreamExt in futures_time::stream - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="futures_time" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-4c98445ec4002617.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc trait"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../futures_time/index.html">futures_time</a><span class="version">3.0.0</span></h2></div><h2 class="location"><a href="#">StreamExt</a></h2><div class="sidebar-elems"><section><h3><a href="#provided-methods">Provided Methods</a></h3><ul class="block"><li><a href="#method.buffer">buffer</a></li><li><a href="#method.debounce">debounce</a></li><li><a href="#method.delay">delay</a></li><li><a href="#method.park">park</a></li><li><a href="#method.sample">sample</a></li><li><a href="#method.throttle">throttle</a></li><li><a href="#method.timeout">timeout</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><h2><a href="index.html">In futures_time::stream</a></h2></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../futures_time/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Trait <a href="../index.html">futures_time</a>::<wbr><a href="index.html">stream</a>::<wbr><a class="trait" href="#">StreamExt</a><button id="copy-path" title="Copy item path to clipboard"><img src="../../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../../src/futures_time/stream/stream_ext.rs.html#9-291">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><pre class="rust item-decl"><code>pub trait StreamExt: <a class="trait" href="../../futures_core/stream/trait.Stream.html" title="trait futures_core::stream::Stream">Stream</a> {
+    // Provided methods
+    fn <a href="#method.sample" class="fn">sample</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Sample.html" title="struct futures_time::stream::Sample">Sample</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;
+       <span class="where">where Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+             I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a></span> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.buffer" class="fn">buffer</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Buffer.html" title="struct futures_time::stream::Buffer">Buffer</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;
+       <span class="where">where Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+             I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a></span> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.debounce" class="fn">debounce</a>&lt;D&gt;(self, window: D) -&gt; <a class="struct" href="struct.Debounce.html" title="struct futures_time::stream::Debounce">Debounce</a>&lt;Self, D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>&gt;
+       <span class="where">where Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+             D: <a class="trait" href="../future/trait.IntoFuture.html" title="trait futures_time::future::IntoFuture">IntoFuture</a>,
+             D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>: <a class="trait" href="../future/trait.Timer.html" title="trait futures_time::future::Timer">Timer</a></span> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.delay" class="fn">delay</a>&lt;D&gt;(self, deadline: D) -&gt; <a class="struct" href="struct.Delay.html" title="struct futures_time::stream::Delay">Delay</a>&lt;Self, D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>&gt;
+       <span class="where">where Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+             D: <a class="trait" href="../future/trait.IntoFuture.html" title="trait futures_time::future::IntoFuture">IntoFuture</a></span> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.park" class="fn">park</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Park.html" title="struct futures_time::stream::Park">Park</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;
+       <span class="where">where Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+             I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a>&lt;Item = <a class="enum" href="../channel/enum.Parker.html" title="enum futures_time::channel::Parker">Parker</a>&gt;</span> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.throttle" class="fn">throttle</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Throttle.html" title="struct futures_time::stream::Throttle">Throttle</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;
+       <span class="where">where Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+             I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a></span> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.timeout" class="fn">timeout</a>&lt;D&gt;(self, deadline: D) -&gt; <a class="struct" href="struct.Timeout.html" title="struct futures_time::stream::Timeout">Timeout</a>&lt;Self, D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>&gt;
+       <span class="where">where Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+             D: <a class="trait" href="../future/trait.IntoFuture.html" title="trait futures_time::future::IntoFuture">IntoFuture</a>,
+             D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>: <a class="trait" href="../future/trait.Timer.html" title="trait futures_time::future::Timer">Timer</a></span> { ... }
+}</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Extend <code>Stream</code> with time-based operations.</p>
+</div></details><h2 id="provided-methods" class="section-header">Provided Methods<a href="#provided-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="method.sample" class="method"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#53-59">source</a><h4 class="code-header">fn <a href="#method.sample" class="fn">sample</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Sample.html" title="struct futures_time::stream::Sample">Sample</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;<div class="where">where
+    Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+    I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a>,</div></h4></section></summary><div class="docblock"><p>Yield the last item received at the end of each interval.</p>
+<p>If no items have been received during an interval, the stream will not
+yield any items. In addition to using a time-based interval, this method can take any
+stream as a source. This enables throttling based on alternative event
+sources, such as variable-rate timers.</p>
+<p>See also <a href="trait.StreamExt.html#method.throttle" title="method futures_time::stream::StreamExt::throttle"><code>throttle()</code></a> and <a href="trait.StreamExt.html#method.debounce" title="method futures_time::stream::StreamExt::debounce"><code>debounce()</code></a>.</p>
+<h5 id="data-loss"><a class="doc-anchor" href="#data-loss">§</a>Data Loss</h5>
+<p>This method will discard data between intervals. Though the
+discarded items will have their destuctors run, <strong>using this method
+incorrectly may lead to unintended data loss</strong>. This method is best used
+to reduce the number of <em>duplicate</em> items after the first has been
+received, such as repeated mouse clicks or key presses. This method may
+lead to unintended data loss when used to discard <em>unique</em> items, such
+as network request.</p>
+<h5 id="example"><a class="doc-anchor" href="#example">§</a>Example</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::{Instant, Duration};
+<span class="kw">use </span>futures_time::stream;
+
+<span class="kw">fn </span>main() {
+   async_io::block_on(<span class="kw">async </span>{
+       <span class="kw">let </span><span class="kw-2">mut </span>counter = <span class="number">0</span>;
+       stream::interval(Duration::from_millis(<span class="number">100</span>))
+           .take(<span class="number">4</span>)
+           .sample(Duration::from_millis(<span class="number">200</span>))
+           .for_each(|<span class="kw">_</span>| counter += <span class="number">1</span>)
+           .<span class="kw">await</span>;
+
+       <span class="macro">assert_eq!</span>(counter, <span class="number">2</span>);
+   })
+}</code></pre></div>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.buffer" class="method"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#94-100">source</a><h4 class="code-header">fn <a href="#method.buffer" class="fn">buffer</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Buffer.html" title="struct futures_time::stream::Buffer">Buffer</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;<div class="where">where
+    Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+    I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a>,</div></h4></section></summary><div class="docblock"><p>Group items into vectors which are yielded at every interval.</p>
+<p>In addition to using a time source as a deadline, any stream can be used as a
+deadline too. This enables more interesting buffer strategies to be
+built on top of this primitive.</p>
+<h5 id="future-improvements"><a class="doc-anchor" href="#future-improvements">§</a>Future Improvements</h5>
+<ul>
+<li>Lending iterators would allow for internal reusing of the buffer.
+Though different from <code>Iterator::windows</code>, it could be more efficient.</li>
+<li>Contexts/capabilities would enable custom allocators to be used.</li>
+</ul>
+<h5 id="example-1"><a class="doc-anchor" href="#example-1">§</a>Example</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::{Instant, Duration};
+<span class="kw">use </span>futures_time::stream;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span><span class="kw-2">mut </span>counter = <span class="number">0</span>;
+        stream::interval(Duration::from_millis(<span class="number">5</span>))
+            .take(<span class="number">10</span>)
+            .buffer(Duration::from_millis(<span class="number">20</span>))
+            .for_each(|buf| counter += buf.len())
+            .<span class="kw">await</span>;
+
+        <span class="macro">assert_eq!</span>(counter, <span class="number">10</span>);
+    })
+}</code></pre></div>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.debounce" class="method"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#140-147">source</a><h4 class="code-header">fn <a href="#method.debounce" class="fn">debounce</a>&lt;D&gt;(self, window: D) -&gt; <a class="struct" href="struct.Debounce.html" title="struct futures_time::stream::Debounce">Debounce</a>&lt;Self, D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>&gt;<div class="where">where
+    Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+    D: <a class="trait" href="../future/trait.IntoFuture.html" title="trait futures_time::future::IntoFuture">IntoFuture</a>,
+    D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>: <a class="trait" href="../future/trait.Timer.html" title="trait futures_time::future::Timer">Timer</a>,</div></h4></section></summary><div class="docblock"><p>Yield the last item received at the end of a window which resets with
+each item received.</p>
+<p>Every time an item is yielded by the underlying stream, the window is
+reset. Once the window expires, the last item seen will be yielded. This
+means that in order to yield an item, no items must be received for the
+entire window, or else the window will reset.</p>
+<p>This method is useful to perform actions at the end of bursts of events,
+where performing that same action on <em>every</em> event might not be
+economical.</p>
+<p>See also <a href="trait.StreamExt.html#method.sample" title="method futures_time::stream::StreamExt::sample"><code>sample()</code></a> and <a href="trait.StreamExt.html#method.throttle" title="method futures_time::stream::StreamExt::throttle"><code>throttle()</code></a>.</p>
+<h5 id="example-2"><a class="doc-anchor" href="#example-2">§</a>Example</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::{Instant, Duration};
+<span class="kw">use </span>futures_time::stream;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span><span class="kw-2">mut </span>counter = <span class="number">0</span>;
+        stream::interval(Duration::from_millis(<span class="number">10</span>))
+            .take(<span class="number">10</span>)
+            .debounce(Duration::from_millis(<span class="number">20</span>)) <span class="comment">// the window is greater than the interval
+            </span>.for_each(|<span class="kw">_</span>| counter += <span class="number">1</span>)
+            .<span class="kw">await</span>;
+
+        <span class="macro">assert_eq!</span>(counter, <span class="number">1</span>); <span class="comment">// so only the last item is received
+    </span>})
+}</code></pre></div>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.delay" class="method"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#173-179">source</a><h4 class="code-header">fn <a href="#method.delay" class="fn">delay</a>&lt;D&gt;(self, deadline: D) -&gt; <a class="struct" href="struct.Delay.html" title="struct futures_time::stream::Delay">Delay</a>&lt;Self, D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>&gt;<div class="where">where
+    Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+    D: <a class="trait" href="../future/trait.IntoFuture.html" title="trait futures_time::future::IntoFuture">IntoFuture</a>,</div></h4></section></summary><div class="docblock"><p>Delay the yielding of items from the stream until the given deadline.</p>
+<p>The underlying stream will not be polled until the deadline has expired. In addition
+to using a time source as a deadline, any future can be used as a
+deadline too. When used in combination with a multi-consumer channel,
+this method can be used to synchronize the start of multiple streams and futures.</p>
+<h5 id="example-3"><a class="doc-anchor" href="#example-3">§</a>Example</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::{Instant, Duration};
+<span class="kw">use </span>futures_lite::stream;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span>now = Instant::now();
+        <span class="kw">let </span>delay = Duration::from_millis(<span class="number">100</span>);
+        <span class="kw">let _ </span>= stream::once(<span class="string">"meow"</span>).delay(delay).next().<span class="kw">await</span>;
+        <span class="macro">assert!</span>(now.elapsed() &gt;= <span class="kw-2">*</span>delay);
+    });
+}</code></pre></div>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.park" class="method"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#187-193">source</a><h4 class="code-header">fn <a href="#method.park" class="fn">park</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Park.html" title="struct futures_time::stream::Park">Park</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;<div class="where">where
+    Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+    I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a>&lt;Item = <a class="enum" href="../channel/enum.Parker.html" title="enum futures_time::channel::Parker">Parker</a>&gt;,</div></h4></section></summary><div class="docblock"><p>Suspend or resume execution of a stream.</p>
+<p>When this method is called the execution of the stream will be put into
+a suspended state until the channel returns <code>Parker::Unpark</code> or the
+channel’s senders are dropped. The underlying stream will not be polled
+while the it is paused.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.throttle" class="method"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#237-243">source</a><h4 class="code-header">fn <a href="#method.throttle" class="fn">throttle</a>&lt;I&gt;(self, interval: I) -&gt; <a class="struct" href="struct.Throttle.html" title="struct futures_time::stream::Throttle">Throttle</a>&lt;Self, I::<a class="associatedtype" href="trait.IntoStream.html#associatedtype.IntoStream" title="type futures_time::stream::IntoStream::IntoStream">IntoStream</a>&gt;<div class="where">where
+    Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+    I: <a class="trait" href="trait.IntoStream.html" title="trait futures_time::stream::IntoStream">IntoStream</a>,</div></h4></section></summary><div class="docblock"><p>Yield an item, then ignore subsequent items for a duration.</p>
+<p>In addition to using a time-based interval, this method can take any
+stream as a source. This enables throttling based on alternative event
+sources, such as variable-rate timers.</p>
+<p>See also <a href="trait.StreamExt.html#method.sample" title="method futures_time::stream::StreamExt::sample"><code>sample()</code></a> and <a href="trait.StreamExt.html#method.debounce" title="method futures_time::stream::StreamExt::debounce"><code>debounce()</code></a>.</p>
+<h5 id="data-loss-1"><a class="doc-anchor" href="#data-loss-1">§</a>Data Loss</h5>
+<p>This method will discard data between intervals. Though the
+discarded items will have their destuctors run, <strong>using this method
+incorrectly may lead to unintended data loss</strong>. This method is best used
+to reduce the number of <em>duplicate</em> items after the first has been
+received, such as repeated mouse clicks or key presses. This method may
+lead to unintended data loss when used to discard <em>unique</em> items, such
+as network request.</p>
+<h5 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::Duration;
+<span class="kw">use </span>futures_time::stream;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span><span class="kw-2">mut </span>counter = <span class="number">0</span>;
+        stream::interval(Duration::from_millis(<span class="number">100</span>))  <span class="comment">// Yield an item every 100ms
+            </span>.take(<span class="number">4</span>)                                  <span class="comment">// Stop after 4 items
+            </span>.throttle(Duration::from_millis(<span class="number">300</span>))     <span class="comment">// Only let an item through every 300ms
+            </span>.for_each(|<span class="kw">_</span>| counter += <span class="number">1</span>)               <span class="comment">// Increment a counter for each item
+            </span>.<span class="kw">await</span>;
+
+        <span class="macro">assert_eq!</span>(counter, <span class="number">2</span>);
+    })
+}</code></pre></div>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.timeout" class="method"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#283-290">source</a><h4 class="code-header">fn <a href="#method.timeout" class="fn">timeout</a>&lt;D&gt;(self, deadline: D) -&gt; <a class="struct" href="struct.Timeout.html" title="struct futures_time::stream::Timeout">Timeout</a>&lt;Self, D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>&gt;<div class="where">where
+    Self: <a class="trait" href="https://doc.rust-lang.org/1.77.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,
+    D: <a class="trait" href="../future/trait.IntoFuture.html" title="trait futures_time::future::IntoFuture">IntoFuture</a>,
+    D::<a class="associatedtype" href="../future/trait.IntoFuture.html#associatedtype.IntoFuture" title="type futures_time::future::IntoFuture::IntoFuture">IntoFuture</a>: <a class="trait" href="../future/trait.Timer.html" title="trait futures_time::future::Timer">Timer</a>,</div></h4></section></summary><div class="docblock"><p>Return an error if a stream does not yield an item within a given time
+span.</p>
+<p>Typically timeouts are, as the name implies, based on <em>time</em>. However
+this method can time out based on any future. This can be useful in
+combination with channels, as it allows (long-lived) streams to be
+cancelled based on some external event.</p>
+<p>When a timeout is returned, the stream will be dropped and destructors
+will be run.</p>
+<h5 id="example-4"><a class="doc-anchor" href="#example-4">§</a>Example</h5>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>futures_lite::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>futures_time::time::{Instant, Duration};
+<span class="kw">use </span>futures_lite::stream;
+<span class="kw">use </span>std::io;
+
+<span class="kw">fn </span>main() {
+    async_io::block_on(<span class="kw">async </span>{
+        <span class="kw">let </span>res = stream::once(<span class="string">"meow"</span>)
+            .delay(Duration::from_millis(<span class="number">100</span>))  <span class="comment">// longer delay
+            </span>.timeout(Duration::from_millis(<span class="number">50</span>)) <span class="comment">// shorter timeout
+            </span>.next()
+            .<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(res.unwrap().unwrap_err().kind(), io::ErrorKind::TimedOut); <span class="comment">// error
+
+        </span><span class="kw">let </span>res = stream::once(<span class="string">"meow"</span>)
+            .delay(Duration::from_millis(<span class="number">50</span>))    <span class="comment">// shorter delay
+            </span>.timeout(Duration::from_millis(<span class="number">100</span>)) <span class="comment">// longer timeout
+            </span>.next()
+            .<span class="kw">await</span>;
+        <span class="macro">assert_eq!</span>(res.unwrap().unwrap(), <span class="string">"meow"</span>); <span class="comment">// success
+    </span>});
+}</code></pre></div>
+</div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"><section id="impl-StreamExt-for-S" class="impl"><a class="src rightside" href="../../src/futures_time/stream/stream_ext.rs.html#293">source</a><a href="#impl-StreamExt-for-S" class="anchor">§</a><h3 class="code-header">impl&lt;S&gt; <a class="trait" href="trait.StreamExt.html" title="trait futures_time::stream::StreamExt">StreamExt</a> for S<div class="where">where
+    S: <a class="trait" href="../../futures_core/stream/trait.Stream.html" title="trait futures_core::stream::Stream">Stream</a>,</div></h3></section></div><script src="../../trait.impl/futures_time/stream/stream_ext/trait.StreamExt.js" async></script></section></div></main></body></html>

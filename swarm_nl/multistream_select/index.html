@@ -1,0 +1,64 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Multistream-select Protocol Negotiation"><title>multistream_select - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-5bc39a1768837dd0.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="multistream_select" data-themes="" data-resource-suffix="" data-rustdoc-version="1.77.0 (aedd173a2 2024-03-17)" data-channel="1.77.0" data-search-js="search-dd67cee4cfa65049.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-4c98445ec4002617.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-48f368f3872407c8.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../multistream_select/index.html">multistream_select</a><span class="version">0.13.0</span></h2></div><div class="sidebar-elems"><ul class="block">
+            <li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#functions">Functions</a></li></ul></section></div></nav><div class="sidebar-resizer"></div>
+    <main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../multistream_select/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">multistream_select</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/multistream_select/lib.rs.html#21-144">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="multistream-select-protocol-negotiation"><a class="doc-anchor" href="#multistream-select-protocol-negotiation">§</a>Multistream-select Protocol Negotiation</h2>
+<p>This crate implements the <code>multistream-select</code> protocol, which is the protocol
+used by libp2p to negotiate which application-layer protocol to use with the
+remote on a connection or substream.</p>
+<blockquote>
+<p><strong>Note</strong>: This crate is used primarily by core components of <em>libp2p</em> and it
+is usually not used directly on its own.</p>
+</blockquote>
+<h3 id="roles"><a class="doc-anchor" href="#roles">§</a>Roles</h3>
+<p>Two peers using the multistream-select negotiation protocol on an I/O stream
+are distinguished by their role as a <em>dialer</em> (or <em>initiator</em>) or as a <em>listener</em>
+(or <em>responder</em>). Thereby the dialer plays the active part, driving the protocol,
+whereas the listener reacts to the messages received.</p>
+<p>The dialer has two options: it can either pick a protocol from the complete list
+of protocols that the listener supports, or it can directly suggest a protocol.
+Either way, a selected protocol is sent to the listener who can either accept (by
+echoing the same protocol) or reject (by responding with a message stating
+“not available”). If a suggested protocol is not available, the dialer may
+suggest another protocol. This process continues until a protocol is agreed upon,
+yielding a <a href="struct.Negotiated.html" title="struct multistream_select::Negotiated"><code>Negotiated</code></a> stream, or the dialer has run out of
+alternatives.</p>
+<p>See <a href="fn.dialer_select_proto.html" title="fn multistream_select::dialer_select_proto"><code>dialer_select_proto</code></a> and
+<a href="fn.listener_select_proto.html" title="fn multistream_select::listener_select_proto"><code>listener_select_proto</code></a>.</p>
+<h3 id="negotiated"><a class="doc-anchor" href="#negotiated">§</a><a href="struct.Negotiated.html" title="struct multistream_select::Negotiated"><code>Negotiated</code></a></h3>
+<p>A <code>Negotiated</code> represents an I/O stream that has settled on a protocol
+to use. By default, with <a href="enum.Version.html#variant.V1" title="variant multistream_select::Version::V1"><code>Version::V1</code></a>, protocol negotiation is always
+at least one dedicated round-trip message exchange, before application
+data for the negotiated protocol can be sent by the dialer. There is
+a variant <a href="enum.Version.html#variant.V1Lazy" title="variant multistream_select::Version::V1Lazy"><code>Version::V1Lazy</code></a> that permits 0-RTT negotiation if the
+dialer only supports a single protocol. In that case, when a dialer
+settles on a protocol to use, the <a href="struct.DialerSelectFuture.html" title="struct multistream_select::DialerSelectFuture"><code>DialerSelectFuture</code></a> yields a
+<a href="struct.Negotiated.html" title="struct multistream_select::Negotiated"><code>Negotiated</code></a> I/O stream before the negotiation
+data has been flushed. It is then expecting confirmation for that protocol
+as the first messages read from the stream. This behaviour allows the dialer
+to immediately send data relating to the negotiated protocol together with the
+remaining negotiation message(s). Note, however, that a dialer that performs
+multiple 0-RTT negotiations in sequence for different protocols layered on
+top of each other may trigger undesirable behaviour for a listener not
+supporting one of the intermediate protocols. See
+<a href="fn.dialer_select_proto.html" title="fn multistream_select::dialer_select_proto"><code>dialer_select_proto</code></a> and the documentation
+of <a href="enum.Version.html#variant.V1Lazy" title="variant multistream_select::Version::V1Lazy"><code>Version::V1Lazy</code></a> for further details.</p>
+<h3 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h3>
+<p>For a dialer:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>async_std::net::TcpStream;
+<span class="kw">use </span>multistream_select::{dialer_select_proto, Version};
+<span class="kw">use </span>futures::prelude::<span class="kw-2">*</span>;
+
+async_std::task::block_on(<span class="kw">async move </span>{
+    <span class="kw">let </span>socket = TcpStream::connect(<span class="string">"127.0.0.1:10333"</span>).<span class="kw">await</span>.unwrap();
+
+    <span class="kw">let </span>protos = <span class="macro">vec!</span>[<span class="string">"/echo/1.0.0"</span>, <span class="string">"/echo/2.5.0"</span>];
+    <span class="kw">let </span>(protocol, _io) = dialer_select_proto(socket, protos, Version::V1).<span class="kw">await</span>.unwrap();
+
+    <span class="macro">println!</span>(<span class="string">"Negotiated protocol: {:?}"</span>, protocol);
+    <span class="comment">// You can now use `_io` to communicate with the remote.
+</span>});</code></pre></div>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="struct" href="struct.DialerSelectFuture.html" title="struct multistream_select::DialerSelectFuture">DialerSelectFuture</a></div><div class="desc docblock-short">A <code>Future</code> returned by <a href="fn.dialer_select_proto.html" title="fn multistream_select::dialer_select_proto"><code>dialer_select_proto</code></a> which negotiates
+a protocol iteratively by considering one protocol after the other.</div></li><li><div class="item-name"><a class="struct" href="struct.ListenerSelectFuture.html" title="struct multistream_select::ListenerSelectFuture">ListenerSelectFuture</a></div><div class="desc docblock-short">The <code>Future</code> returned by <a href="fn.listener_select_proto.html" title="fn multistream_select::listener_select_proto"><code>listener_select_proto</code></a> that performs a
+multistream-select protocol negotiation on an underlying I/O stream.</div></li><li><div class="item-name"><a class="struct" href="struct.Negotiated.html" title="struct multistream_select::Negotiated">Negotiated</a></div><div class="desc docblock-short">An I/O stream that has settled on an (application-layer) protocol to use.</div></li><li><div class="item-name"><a class="struct" href="struct.NegotiatedComplete.html" title="struct multistream_select::NegotiatedComplete">NegotiatedComplete</a></div><div class="desc docblock-short">A <code>Future</code> that waits on the completion of protocol negotiation.</div></li></ul><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="enum" href="enum.NegotiationError.html" title="enum multistream_select::NegotiationError">NegotiationError</a></div><div class="desc docblock-short">Error that can happen when negotiating a protocol with the remote.</div></li><li><div class="item-name"><a class="enum" href="enum.ProtocolError.html" title="enum multistream_select::ProtocolError">ProtocolError</a></div><div class="desc docblock-short">A protocol error.</div></li><li><div class="item-name"><a class="enum" href="enum.Version.html" title="enum multistream_select::Version">Version</a></div><div class="desc docblock-short">Supported multistream-select versions.</div></li></ul><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="fn" href="fn.dialer_select_proto.html" title="fn multistream_select::dialer_select_proto">dialer_select_proto</a></div><div class="desc docblock-short">Returns a <code>Future</code> that negotiates a protocol on the given I/O stream
+for a peer acting as the <em>dialer</em> (or <em>initiator</em>).</div></li><li><div class="item-name"><a class="fn" href="fn.listener_select_proto.html" title="fn multistream_select::listener_select_proto">listener_select_proto</a></div><div class="desc docblock-short">Returns a <code>Future</code> that negotiates a protocol on the given I/O stream
+for a peer acting as the <em>listener</em> (or <em>responder</em>).</div></li></ul></section></div></main></body></html>
