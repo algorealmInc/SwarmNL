@@ -426,10 +426,17 @@ pub trait EventHandler {
 	/// Event that announces the arrival of a gossip message.
 	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, _data: Vec<String>);
 
-	/// Event that announces the beginning of the filtering and authentication of the incoming gossip message.
-	/// It returns a boolean to specify whether the massage should be dropped or should reach the application.
-	/// All incoming messages are allowed in by default.
-	fn gossipsub_incoming_message_filtered(&mut self, _propagation_source: PeerId, _message_id: MessageId, _source: Option<PeerId>, _topic: String, _data: Vec<String>) -> bool {
+	/// Event that announces the beginning of the filtering and authentication of the incoming
+	/// gossip message. It returns a boolean to specify whether the massage should be dropped or
+	/// should reach the application. All incoming messages are allowed in by default.
+	fn gossipsub_incoming_message_filtered(
+		&mut self,
+		_propagation_source: PeerId,
+		_message_id: MessageId,
+		_source: Option<PeerId>,
+		_topic: String,
+		_data: Vec<String>,
+	) -> bool {
 		true
 	}
 }
@@ -448,7 +455,6 @@ impl EventHandler for DefaultHandler {
 	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, _data: Vec<String>) {
 		// Default implementation
 	}
-
 }
 
 /// Important information to obtain from the [`CoreBuilder`], to properly handle network

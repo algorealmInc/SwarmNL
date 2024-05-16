@@ -1,5 +1,4 @@
 //! Tests for the communication between the layers of the application.
-//! 
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
@@ -83,10 +82,7 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
 }
 
 /// Used to create a node to peer with node_1.
-async fn setup_node_2(
-	node_1_ports: (Port, Port),
-	ports: (Port, Port),
-) -> (Core<AppState>, PeerId) {
+async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<AppState>, PeerId) {
 	let app_state = AppState;
 
 	// Our test keypair for the node_1
@@ -240,8 +236,7 @@ fn kademlia_store_records_works() {
 		{
 			println!("----> {:?}", result);
 			assert_eq!(AppResponse::KademliaStoreRecordSuccess, result);
-		}
-		else {
+		} else {
 			// TODO: do something  to ensure this test works
 		}
 	});
@@ -517,7 +512,7 @@ fn rpc_fetch_works() {
 }
 
 // -- Tests for kademlia --
-// Two nodes will interact with each other using the commands to the DHT. 
+// Two nodes will interact with each other using the commands to the DHT.
 // See: `swarm_nl::testing_guide` for information on how to run these tests.
 
 #[cfg(feature = "test-reading-node")]

@@ -1,5 +1,4 @@
 //! Node setup and behavor tests.
-//! 
 
 #![allow(dead_code)]
 #![allow(unused_variables)]

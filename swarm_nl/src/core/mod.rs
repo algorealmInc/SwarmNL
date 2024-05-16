@@ -26,7 +26,7 @@ use libp2p::{
 	identify::{self, Info},
 	kad::{self, store::MemoryStore, Mode, Record, RecordKey},
 	multiaddr::Protocol,
-	noise, 
+	noise,
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
 	swarm::{ConnectionError, NetworkBehaviour, SwarmEvent},

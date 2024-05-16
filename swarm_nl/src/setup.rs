@@ -71,7 +71,7 @@ impl BootstrapConfig {
 	}
 
 	/// Configure the TCP/IP port.
-	/// 
+	///
 	/// Note: Port must range between [`MIN_PORT`] and [`MAX_PORT`].
 	pub fn with_tcp(self, tcp_port: Port) -> Self {
 		if tcp_port > MIN_PORT && tcp_port < MAX_PORT {
@@ -102,7 +102,7 @@ impl BootstrapConfig {
 	/// # Panics
 	///
 	/// This function will panic if:
-	/// 
+	///
 	/// 1. The RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
 	/// 2. If the file contains invalid data and an RSA keypair cannot be generated from it.
 	pub fn generate_keypair(self, key_type: KeyType, rsa_pk8_filepath: Option<&str>) -> Self {
@@ -133,7 +133,7 @@ impl BootstrapConfig {
 	///
 	/// This function will panic if the `u8` buffer is not parsable into the specified key type.
 	/// This could be because one of two reasons:
-	/// 
+	///
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
