@@ -1,4 +1,9 @@
 //! Node setup and behavor tests.
+//! 
+
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
 
 use super::*;
 use futures::TryFutureExt;
@@ -71,16 +76,16 @@ fn node_custom_setup_works() {
 	let default_node = setup_core_builder();
 
 	// Custom node configuration
-	let mut custom_network_id = "/custom-protocol/1.0".to_string();
-	let mut custom_transport = TransportOpts::TcpQuic {
+	let custom_network_id = "/custom-protocol/1.0".to_string();
+	let custom_transport = TransportOpts::TcpQuic {
 		tcp_config: TcpConfig::Custom {
 			ttl: 10,
 			nodelay: true,
 			backlog: 10,
 		},
 	};
-	let mut custom_keep_alive_duration = 20;
-	let mut custom_ip_address = IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+	let custom_keep_alive_duration = 20;
+	let custom_ip_address = IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
 
 	// Pass in the custom node configuration and assert it works as expected
 	let custom_node = default_node

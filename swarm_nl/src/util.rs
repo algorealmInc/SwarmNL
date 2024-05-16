@@ -55,12 +55,11 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 		let boot_nodes = string_to_hashmap(section.get("boot_nodes").unwrap_or_default());
 
 		// Now, move onto reading the blacklist if any
-		let section = config
-			.section(Some("blacklist"))
-			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
-
-		// Blacklist
-		let blacklist = string_to_vec(section.get("blacklist").unwrap_or_default());
+		let blacklist = if let Some(section) = config.section(Some("blacklist")) {
+			string_to_vec(section.get("blacklist").unwrap_or_default())
+		} else {
+			Default::default()
+		};
 
 		Ok(BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type, &mut serialized_keypair)

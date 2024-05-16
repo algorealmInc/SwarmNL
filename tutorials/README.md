@@ -1,8 +1,7 @@
-# Tutorials
+## Tutorials
 
-A collection of tutorials to demonstrate how to use the Swarm Networking Library.<br>
-We will build the following using two nodes that are built with SwarmNL and interact with each other to fulfill the application goals.
+A collection of tutorials with running code examples that showcase the use of SwarmNl in different scenarios.
 
-* Echo server
-* File sharing application
-* Simple game
+* [Echo server tutorial](/tutorials/echo_server/README.md): demonstrates a simple use case of setting up a node and querying the network layer.
+* [File sharing application tutorial](/tutorials/file_sharing_app/README.md): demonstrates the use of storing records in a DHT.
+* [Simple game tutorial](/tutorials/simple_game/README.md): demonstrates the use of gossiping messages over the network.

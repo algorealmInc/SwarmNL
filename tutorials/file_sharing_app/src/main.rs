@@ -111,7 +111,20 @@ impl EventHandler for FileServer {
 /// Used to create a detereministic node 1.
 async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
-	setup_core_builder_1(&mut protobuf, ports).await
+	let app_state = FileServer;
+
+	// First, we want to configure our node by specifying a static keypair (for easy connection by
+	// node 2)
+	let config = BootstrapConfig::default()
+		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
+		.with_tcp(ports.0)
+		.with_udp(ports.1);
+
+	// Set up network
+	CoreBuilder::with_config(config, app_state)
+		.build()
+		.await
+		.unwrap()
 }
 
 /// Setup node 2.
@@ -150,23 +163,6 @@ async fn setup_node_2(
 	)
 }
 
-async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<FileServer> {
-	let app_state = FileServer;
-
-	// First, we want to configure our node by specifying a static keypair (for easy connection by
-	// node 2)
-	let config = BootstrapConfig::default()
-		.generate_keypair_from_protobuf("ed25519", buffer)
-		.with_tcp(ports.0)
-		.with_udp(ports.1);
-
-	// Set up network
-	CoreBuilder::with_config(config, app_state)
-		.build()
-		.await
-		.unwrap()
-}
-
 /// Run node 1.
 async fn run_node_1() {
 	// Set up node
@@ -177,6 +173,8 @@ async fn run_node_1() {
 
 	// What are we writing to the DHT?
 	// A file we have on the fs and the location of the file, so it can be easily retrieved
+
+	println!("[1] >>>> Writing file location to DHT: {}", String::from_utf8_lossy(KADEMLIA_KEY.as_bytes()));
 
 	// Prepare a query to write to the DHT
 	let (key, value, expiration_time, explicit_peers) = (
@@ -216,7 +214,7 @@ async fn run_node_2() {
 	if let Ok(result) = node_2.query_network(kad_request).await {
 		// We have our response
 		if let AppResponse::KademliaLookupSuccess(value) = result {
-			println!("File read from DHT: {}", String::from_utf8_lossy(&value));
+			println!("[2] >>>> File read from DHT: {}", String::from_utf8_lossy(&value));
 			// Now prepare an RPC query to fetch the file from the remote node
 			let fetch_key = vec![value];
 
@@ -231,7 +229,7 @@ async fn run_node_2() {
 
 			// If we used `query_network(0)`, we won't have been able to print here
 			println!(
-				"A fetch request has been sent to peer: {:?}",
+				"[2] >>>> A fetch request has been sent to peer: {:?}",
 				node_1_peer_id
 			);
 
@@ -245,7 +243,7 @@ async fn run_node_2() {
 					let file_str = String::from_utf8_lossy(&file);
 
 					// Print to stdout
-					println!("Here is the file delivered from the remote peer:");
+					println!("[2] >>>> Here is the file delivered from the remote peer:");
 					println!();
 					println!("{}", file_str);
 				}
