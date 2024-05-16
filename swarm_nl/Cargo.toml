@@ -15,7 +15,6 @@ futures = "0.3.30"
 futures-time = "3.0.0"
 serde = "1.0.200"
 base58 = "0.2.0"
-docify = "0.2.8"
 
 [dependencies.async-std]
 version = "1.12.0"
