@@ -13,8 +13,8 @@ SwarmNL is a library designed for P2P networking in distributed systems. It's li
 - [Tutorials](#tutorials)
 - [Documentation](#documentation)
 - [Features and examples](#features-and-examples)
-    * [Node configuration example](#node-configuration-example)
-    * [Node communication example](#node-communication-example)
+    * [Node configuration](#node-configuration)
+    * [Node communication](#node-communication)
 
 <!-- TOC end -->
 
