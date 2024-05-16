@@ -5,12 +5,15 @@
 //! - `node_behaviour` tests for single node setup and behaviour.
 //! - `layer_communication` tests involving the synchronization between two nodes.
 //! 
+//! Note: the library is compatible with both `tokio` and `async-std` runtimes, however all tests are written to use the `tokio` executor.
+//! To run the tests you must specify the runtime feature flag e.g. `cargo test --features=tokio-runtime`.
+//! 
 //! # Node behaviour testing
 //! 
 //! These are simple unit tests that check the behaviour of a single node. To run these tests, simply run the following command:
 //! 
 //! ```bash
-//! cargo test node_
+//! cargo test node_ --features=tokio-runtime
 //! ```
 //! 
 //! # Layer communication testing
@@ -32,13 +35,13 @@
 //! To run these tests, start the listening node by running the following command in one terminal:
 //! 
 //! ```bash
-//! cargo test dialing_peer_works --features=test-listening-node -- --nocapture
+//! cargo test dialing_peer_works --features=test-listening-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! Then, in another terminal run the dialing node:
 //! 
 //! ```bash
-//! cargo test dialing_peer_works --features=test-dialling-node -- --nocapture
+//! cargo test dialing_peer_works --features=test-dialling-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! The application event handler will log the dialing node's peer id and the listening node's peer id.
@@ -51,13 +54,13 @@
 //! To run these tests first start the server node in one terminal:
 //! 
 //! ```bash
-//! cargo test rpc_fetch_works --features=server-node -- --nocapture
+//! cargo test rpc_fetch_works --features=server-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! And in another terminal, run the client node:
 //! 
 //! ```bash
-//! cargo test rpc_fetch_works --features=client-node -- --nocapture
+//! cargo test rpc_fetch_works --features=client-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! Then you can check that the server node prints out a _"Recvd incoming RPC:"_ message with the data sent by the client node.
@@ -72,13 +75,13 @@
 //! To run this test, run the following command in one terminal to launch the "reading" node:
 //! 
 //! ```bash
-//! cargo test kademlia_record_store_itest_works --features=test-reading-node -- --nocapture
+//! cargo test kademlia_record_store_itest_works --features=test-reading-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! And then run the following command in another terminal to launch the "writing node":
 //! 
 //! ```bash
-//! cargo test kademlia_record_store_itest_works --features=test-writing-node -- --nocapture
+//! cargo test kademlia_record_store_itest_works --features=test-writing-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! ### Record providers tests
@@ -92,13 +95,13 @@
 //! To run this test, first run the "writing" node:
 //! 
 //! ```bash
-//! cargo test kademlia_provider_records_itest_works --features=test-writing-node -- --nocapture
+//! cargo test kademlia_provider_records_itest_works --features=test-writing-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! Then, in another terminal, run the "reading" node:
 //! 
 //! ```bash
-//! cargo test kademlia_provider_records_itest_works --features=test-reading-node -- --nocapture
+//! cargo test kademlia_provider_records_itest_works --features=test-reading-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! ### Gossipsub tests
@@ -116,13 +119,13 @@
 //! To run this test, first run the "subscribe" node:
 //! 
 //! ```bash
-//! cargo test gossipsub_join_exit_itest_works --features=test-subscribe-node -- --nocapture
+//! cargo test gossipsub_join_exit_itest_works --features=test-subscribe-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! Then, in another terminal, run the "query" node:
 //! 
 //! ```bash
-//! cargo test gossipsub_join_exit_itest_works --features=test-query-node -- --nocapture
+//! cargo test gossipsub_join_exit_itest_works --features=test-query-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! **Publish/Subscribe tests**
@@ -135,12 +138,12 @@
 //! To run this test, first run the "listening" node in one terminal:
 //! 
 //! ```bash
-//! cargo test gossipsub_message_itest_works --features=test-listening-node -- --nocapture
+//! cargo test gossipsub_message_itest_works --features=test-listening-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! Then run the "broadcast" node in another terminal:
 //! 
 //! ```bash
-//! cargo test gossipsub_message_itest_works --features=test-broadcast-node -- --nocapture
+//! cargo test gossipsub_message_itest_works --features=test-broadcast-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
