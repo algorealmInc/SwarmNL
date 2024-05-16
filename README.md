@@ -126,7 +126,94 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   ```
   Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
-  ### Communicate with the network layer
+  ### Application state change
+    SwarmNL exposes two interfaces to make application state changes:
+    - Event handlers: Registered event handlers can make state changes as a response to occurrences in the network.
+    - Network core or the node: The node construct is the canonical way of changing internal applicatio state. The application state is exposed by the `state` field of the node or network core.
+    This behaviour can only mean one thing: synchronization. Employement of really good synchronization pimitives. The occurrences of network events are non-deterministic meaning they could change state at any point in time. We solve this problem by using an `Mutex` to lock the state and make changes.
+
+    #### Event Handlers
+    When an event handler method id run, we can be sure that it has already acquired the application state `Mutex` and the entire length of its lifetime **is a critical section**. This is important to know as it is not advicable to make long computations or delay the release of the `Mutex` by prolonging the time the function completes its task and returns. It should be relatively simple.
+    ```rust
+        // A simple event handler method that modifies application state
+        // ...
+            /// Event that announces the arrival of a gossip message.
+            fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, data: Vec<String>) {
+                println!(
+                    "[[Node {}]] >> incoming data from peer -> {}: {}",
+                    self.node, data[0], data[1]
+                );
+
+                // Parse our data
+                match data[0].as_str() {
+                    "guess" => {
+                        // Our remote peer has made a guess
+                        let remote_peer_guess = data[1].parse::<i32>().unwrap();
+
+                        // Compare
+                        if self.current_guess > remote_peer_guess {
+                            self.score += 1;
+                        }
+                    },
+                    "win" => {
+                        // Set our score to -1
+                        // Game over
+                        self.score = -1;
+                    },
+                    _ => {},
+                }
+
+                if self.score != -1 && self.score != HIGH_SCORE {
+                    println!(
+                        "[[Node {}]] >> Node ({}) score: {}",
+                        self.node, self.node, self.score
+                    );
+                }
+            }
+        // ...
+    ```
+
+    #### Network Core
+    The state of the application is exposed to the network core (or node) through the `state` field. The field is protected by a mutex which prevents reace conditions in case the network event handlers are fired. So in order to access the application state or make changes to it, the mutex must first be acquired.
+    ```rust
+        // Check score
+        // If the remote has won, our handler will set our score to -1
+        if node_2.state.lock().await.score == HIGH_SCORE {
+            // We've won!
+            println!(
+                "[[Node {}]] >> Congratulations! Node 2 is the winner.",
+                node_2.state.lock().await.node
+            );
+
+            // Inform Node 1
+
+            // Prepare a gossip request
+            let gossip_request = AppData::GossipsubBroadcastMessage {
+                topic: GOSSIP_NETWORK.to_string(),
+                message: vec!["win".to_string(), random_u32.to_string()],
+            };
+
+            // Gossip our random value to our peers
+            let _ = node_2.query_network(gossip_request).await;
+
+            break;
+        } else if node_2.state.lock().await.score == -1 {
+            // We lost :(
+            println!(
+                "[[Node {}]] >> Game Over! Node 1 is the winner.",
+                node_2.state.lock().await.node
+            );
+            break;
+        }
+    ```
+
+- **Node Communication**: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
+
+  - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
+  - A simple RPC mechanism to exchange data quickly between peers.
+  - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
+
+  #### Communicate with the network layer
 
   ```rust
         //! Communicate with remote nodes using the simple and familiar async-await paradigm.
