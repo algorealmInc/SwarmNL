@@ -1,3 +1,4 @@
+use libp2p::gossipsub::MessageId;
 /// Copyright (c) 2024 Algorealm
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, time::Instant};
@@ -408,7 +409,7 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces the arrival of an RPC message.
-	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
+	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
 
 	/// Event that announces that a peer has just left a network.
 	fn gossipsub_unsubscribe_message_recieved(&mut self, _peer_id: PeerId, _topic: String) {
@@ -421,7 +422,14 @@ pub trait EventHandler {
 	}
 
 	/// Event that announces the arrival of a gossip message.
-	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>);
+	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, _data: Vec<String>);
+
+	/// Event that announces the beginning of the filtering and authentication of the incoming gossip message.
+	/// It returns a boolean to specify whether the massage should be dropped or should reach the application.
+	/// All incoming messages are allowed in by default
+	fn gossipsub_incoming_message_filtered(&mut self, propagation_source: PeerId, message_id: MessageId, source: Option<PeerId>, topic: String, data: Vec<String>) -> bool {
+		true
+	}
 }
 
 /// Default network event handler
@@ -430,14 +438,15 @@ pub struct DefaultHandler;
 /// Implement [`EventHandler`] for [`DefaultHandler`]
 impl EventHandler for DefaultHandler {
 	/// Echo the message back to the sender
-	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		data
 	}
 
 	/// Echo the incoming gossip message to the console
-	fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {
+	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, _data: Vec<String>) {
 		// Default implementation
 	}
+
 }
 
 /// Important information to obtain from the [`CoreBuilder`], to properly handle network

@@ -43,13 +43,13 @@ impl EventHandler for AppState {
 	}
 
 	// we're just echoing the data back
-	fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		println!("Recvd incoming RPC: {:?}", data);
 		data
 	}
 
 	// handle the incoming gossip message
-	fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<String>) {
+	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
 		println!("Recvd incoming gossip: {:?}", data);
 	}
 
@@ -85,7 +85,7 @@ pub async fn setup_node_2(
 	let app_state = AppState;
 
 	// Our test keypair for the node_1
-	let mut protobuf = vec![
+	let protobuf = vec![
 		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
 		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
 		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
@@ -295,7 +295,7 @@ fn kademlia_lookup_record_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let mut node = setup_node_1((49155, 49222)).await;
 
-		if let Ok(result) = node.clone().query_network(kad_request).await {
+		if let Ok(_) = node.clone().query_network(kad_request).await {
 			let kad_request = AppData::KademliaLookupRecord { key };
 
 			if let Ok(result) = node.query_network(kad_request).await {
