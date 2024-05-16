@@ -98,7 +98,7 @@ Run:
 docker run -it file-sharing-demo
 ```
 
-# Tutorial
+## Tutorial
 
 1. Define your application state and implement `EventHandler`:
 
@@ -130,8 +130,8 @@ impl EventHandler for FileServer {
 	) {
 		println!("Connection established with peer: {:?}", peer_id);
 	}
-
-    // -- rest of the EventHandler implementatio goes here  --
+	
+	// -- rest of the `EventHandler` implementation goes here --
 }
 ```
 
