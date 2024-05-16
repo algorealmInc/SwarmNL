@@ -11,8 +11,8 @@ COPY . .
 # Build the Rust crate
 RUN cargo build --release
 
-# Run the first node
-CMD ["cargo", "run", "--release", "--features=first-node"]
+# Run the script to start both nodes
+COPY run_both_nodes.sh .
+RUN chmod +x run_both_nodes.sh 
 
-# Run the second node after the first one completes
-CMD ["cargo", "run", "--release", "--features=second-node"]
+CMD ["./run_both_nodes.sh"]
