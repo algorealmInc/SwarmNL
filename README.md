@@ -6,6 +6,18 @@
 
 SwarmNL is a library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by [libp2p](https://docs.libp2p.io/), SwarmNL simplifies networking so developers can focus on building.
 
+<!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
+
+
+- [Why SwarmNL?](#why-swarmnl)
+- [Tutorials](#tutorials)
+- [Documentation](#documentation)
+- [Features and examples](#features-and-examples)
+    * [Node configuration example](#node-configuration-example)
+    * [Node communication example](#node-communication-example)
+
+<!-- TOC end -->
+
 ## Why SwarmNL?
 
 SwarmNL makes buiding a peer-to-peer decentralized and distributed networking stack for your application a breeze. With SwarmNL, you can effortlessly configure nodes, tailor network conditions, and fine-tune behaviors specific to your project's needs, allowing you to dive into networking without any hassle.
@@ -16,17 +28,19 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
 
 Have a look at some tutorials that demonstrate the use of SwarmNl in various contexts:
 
-- [Echo server]()
-- [File sharing app]()
-- [Simple game]()
+- [Echo server tutorial](/tutorials/echo_server/README.md): demonstrates a simple use case of setting up a node and querying the network layer.
+- [File sharing application tutorial](/tutorials/file_sharing_app/README.md): demonstrates the use of storing records in a DHT.
+- [Simple game tutorial](/tutorials/simple_game/README.md): demonstrates the use of gossiping messages over the network.
 
 ## Documentation
 
 Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html).
 
-## Features
+## Features and examples
 
-- **Node Configuration**: SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
+### Node configuration example
+
+SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
 
   - Selection and configuration of the transport layers to be supported by the node
   - Selection of cryptographic keypairs (ed25519, RSA, secp256k1, ecdsa)
@@ -34,16 +48,8 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   - PeerID and multiaddress generation
   - Protocol specification and handlers
   - Event handlers for network events and logging
-
-  - **Node Communication**: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
-
-  - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
-  - A simple RPC mechanism to exchange data quickly between peers.
-  - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
-
-  ## Example
-
-  ### Setup a node
+  
+#### Example
 
   ```rust
         //! Using the default node setup configuration and the default network event handler
@@ -129,7 +135,7 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
 
   Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
-  ### Application State Change
+  ### Making application state changes
 
   SwarmNL provides two ways to make application state changes:
 
@@ -138,7 +144,7 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
 
   This setup ensures proper synchronization using effective synchronization primitives. Network events are non-deterministic, so they can change state at any time. To manage this, we use a `Mutex` to lock the state during changes.
 
-  #### Event Handlers
+  #### Event handlers
 
   When an event handler method runs, it has already acquired the application state `Mutex`. The entire duration of the handler's execution is a critical section. It is important to avoid long computations or delays in releasing the `Mutex`, keeping the function simple and quick.
 
@@ -220,13 +226,15 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
       // ...
   ```
 
-- **Node Communication**: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
+### Node communication example
+
+For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
 
   - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
   - A simple RPC mechanism to exchange data quickly between peers.
   - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
-  #### Communicate with the network layer
+#### Communicate with the network layer
 
   ```rust
         //! Communicate with remote nodes using the simple and familiar async-await paradigm.
@@ -290,13 +298,13 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
         if let Ok(result) = node.query_network(gossip_request).await {
             assert_eq!(AppResponse::GossipsubBroadcastSuccess, result);
         }
-
   ```
 
-- _In Development 👷_:
-  - _Node failure handling involving reconnection strategies, failover mechanisms etc_.
-  - _Scaling involving techniques like sharding, data forwarding etc_.
-  - _IPFS upload and download interfaces_.
+_In Development 👷_:
+
+- _Node failure handling involving reconnection strategies, failover mechanisms etc_.
+- _Scaling involving techniques like sharding, data forwarding etc_.
+- _IPFS upload and download interfaces_.
 
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
