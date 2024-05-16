@@ -1,12 +1,13 @@
 //! A doc-only module explaining how to run core library tests.
 //! 
+//! > **Note**: the library is compatible with both `tokio` and `async-std` runtimes, however all tests are written to use the `tokio` executor.
+//! > Therefore, to run the tests you must specify the runtime feature flag e.g. `cargo test --features=tokio-runtime`.
+//! 
 //! There are two classes of tests in the core library:
 //! 
 //! - `node_behaviour` tests for single node setup and behaviour.
 //! - `layer_communication` tests involving the synchronization between two nodes.
 //! 
-//! Note: the library is compatible with both `tokio` and `async-std` runtimes, however all tests are written to use the `tokio` executor.
-//! To run the tests you must specify the runtime feature flag e.g. `cargo test --features=tokio-runtime`.
 //! 
 //! # Node behaviour testing
 //! 
@@ -41,7 +42,7 @@
 //! Then, in another terminal run the dialing node:
 //! 
 //! ```bash
-//! cargo test dialing_peer_works --features=test-dialling-node --features=tokio-runtime -- --nocapture
+//! cargo test dialing_peer_works --features=test-dialing-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! The application event handler will log the dialing node's peer id and the listening node's peer id.
@@ -133,7 +134,7 @@
 //! For this test we have a `listening` node and a `broadcast` node. The first node is setup which joins a mesh network. Then, node 2 is setup and connects to node 1, sleeps for a few seconds (to allow propagtion of data from node 1) and then joins the network.
 //! It then joins the network that node 1 was already a part of and sends a broadcast message to every peer in the mesh network.
 //! 
-//! The indicator of the success of this test is revealed in the applications' event handler function (see: [`crate::core::EventHandler::gossipsub_handle_incoming_message`]) which logs the message received from node 2.
+//! The indicator of the success of this test is revealed in the application's event handler function which logs the message received from node 2.
 //! 
 //! To run this test, first run the "listening" node in one terminal:
 //! 
