@@ -33,9 +33,15 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   - Protocol specification and handlers
   - Event handlers for network events and logging
 
-  ### Example
+  - **Node Communication**: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
+
+  - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
+  - A simple RPC mechanism to exchange data quickly between peers.
+  - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
+
+  ## Example
   
-  #### Setup a node
+  ### Setup a node
 
   ```rust
         //! Using the default node setup configuration and the default network event handler
@@ -120,13 +126,7 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   ```
   Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
-- **Node Communication**: For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
-
-  - The Kadmlia DHT: Developers can use the DHT to store infomation and leverage the capabilities of the DHT to build powerful applications, easily.
-  - A simple RPC mechanism to exchange data quickly between peers.
-  - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
-
-  #### Communicate with the network layer
+  ### Communicate with the network layer
 
   ```rust
         //! Communicate with remote nodes using the simple and familiar async-await paradigm.

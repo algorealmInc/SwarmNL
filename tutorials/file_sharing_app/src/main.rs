@@ -111,7 +111,20 @@ impl EventHandler for FileServer {
 /// Used to create a detereministic node 1.
 async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
-	setup_core_builder_1(&mut protobuf, ports).await
+	let app_state = FileServer;
+
+	// First, we want to configure our node by specifying a static keypair (for easy connection by
+	// node 2)
+	let config = BootstrapConfig::default()
+		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
+		.with_tcp(ports.0)
+		.with_udp(ports.1);
+
+	// Set up network
+	CoreBuilder::with_config(config, app_state)
+		.build()
+		.await
+		.unwrap()
 }
 
 /// Setup node 2.
@@ -148,23 +161,6 @@ async fn setup_node_2(
 			.unwrap(),
 		peer_id,
 	)
-}
-
-async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<FileServer> {
-	let app_state = FileServer;
-
-	// First, we want to configure our node by specifying a static keypair (for easy connection by
-	// node 2)
-	let config = BootstrapConfig::default()
-		.generate_keypair_from_protobuf("ed25519", buffer)
-		.with_tcp(ports.0)
-		.with_udp(ports.1);
-
-	// Set up network
-	CoreBuilder::with_config(config, app_state)
-		.build()
-		.await
-		.unwrap()
 }
 
 /// Run node 1.
