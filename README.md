@@ -29,8 +29,8 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
 Have a look at some tutorials that demonstrate the use of SwarmNl in various contexts:
 
 - [Echo server tutorial](/tutorials/echo_server/README.md): demonstrates a simple use case of setting up a node and querying the network layer.
-- [File sharing application tutorial](/tutorials/file_sharing_app/README.md): demonstrates the use of storing records in a DHT.
-- [Simple game tutorial](/tutorials/simple_game/README.md): demonstrates the use of gossiping messages over the network.
+- [File sharing application tutorial](/tutorials/file_sharing_app/README.md): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
+- [Simple game tutorial](/tutorials/simple_game/README.md): demonstrates communicating with peers over the network through gossiping.
 
 ## Documentation
 
