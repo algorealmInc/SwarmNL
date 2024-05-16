@@ -12,6 +12,7 @@ tokio = { version = "1.37.0", features = ["full"] }
 base58 = "0.2.0"
 
 [features]
+first-node = []
 second-node = []
 test-reading-node = []
 test-writing-node = []

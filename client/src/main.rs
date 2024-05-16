@@ -1,627 +1,271 @@
-/// Copyright (c) 2024 Algorealm
+/// Copyright (c) Algorealm 2024
 
-/// Age of Empires
-/// Objective: Form alliances and conquer as much empires as possible!
-/// It is a multi-player game
-/// Enjoy!
-use std::{borrow::Cow, num::NonZeroU32, time::Duration};
-use swarm_nl::{
-	core::{AppData, Core, CoreBuilder},
-	core::{AppResponse, EventHandler},
-	setup::BootstrapConfig,
-	util::string_to_peer_id,
-	ConnectedPoint, ConnectionId, Keypair, PeerId,
+/// This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing application
+/// using two nodes. One nodes writes a record to the DHT and specifies itself as a provider for a
+/// file it has locally. The other node reads the DHT and then uses an RPC to fetch the file from
+/// the first peer.
+/// 
+use std::{
+	collections::HashMap,
+	fs::File,
+	io::{self, BufRead, Read},
+	num::NonZeroU32,
+	time::Duration,
 };
 
+use swarm_nl::{
+	core::{AppData, AppResponse, Core, CoreBuilder, EventHandler},
+	setup::BootstrapConfig,
+	ConnectedPoint, ConnectionId, Keypair, ListenerId, Multiaddr, PeerId, Port,
+};
+
+/// The key we're writing to the DHT
+const KADEMLIA_KEY: &str = "config_file"; // File name
+const KADEMLIA_VALUE: &str = "bootstrap_config.ini"; // Location on fs (it is in the same directory as our binary)
+
+/// Our test keypair for node 1. It is always deterministic, so that node 2 can always connect to it
+/// at boot time
+const PROTOBUF_KEYPAIR: [u8; 68] = [
+	8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27, 202,
+	193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85, 72, 64,
+	174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164, 148, 159,
+	36, 170, 109, 178,
+];
+
+/// Node 1 wait time (for node 2 to initiate connection).
+/// This is useful because we need at least one connected peer (Quorum) to successfully write to the
+/// DHT
+const NODE_1_WAIT_TIME: u64 = 5;
+
+/// Node 2 wait time (for node 1 to write to the DHT).
+const NODE_2_WAIT_TIME: u64 = 5;
+
+/// Application State
+#[derive(Clone)]
+struct FileServer;
+
+/// Handle network events
+impl EventHandler for FileServer {
+	fn new_listen_addr(
+		&mut self,
+		local_peer_id: PeerId,
+		_listener_id: ListenerId,
+		addr: Multiaddr,
+	) {
+		// announce interfaces we're listening on
+		println!("Peer id: {}", local_peer_id);
+		println!("We're listening on the {}", addr);
+	}
+
+	fn connection_established(
+		&mut self,
+		peer_id: PeerId,
+		_connection_id: ConnectionId,
+		_endpoint: &ConnectedPoint,
+		_num_established: NonZeroU32,
+		_established_in: Duration,
+	) {
+		println!("Connection established with peer: {:?}", peer_id);
+	}
+
+	// We need to handle the incoming rpc here.
+	// What we're going to do is to look at out file system for the file specified in the rpc data
+	// and return it's binary content
+	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+		println!("Received incoming RPC: {:?}", data);
+
+		// Extract the file name from the incoming data
+		let file_name = String::from_utf8_lossy(&data[0]);
+		let file_name = file_name.trim(); // Trim any potential whitespace
+
+		// Read the file content
+		let mut file_content = Vec::new();
+		match File::open(&file_name) {
+			Ok(mut file) => match file.read_to_end(&mut file_content) {
+				Ok(_) => {
+					println!("File read successfully: {}", file_name);
+				},
+				Err(e) => {
+					println!("Failed to read file content: {}", e);
+					return vec![b"Error: Failed to read file content".to_vec()];
+				},
+			},
+			Err(e) => {
+				println!("Failed to open file: {}", e);
+				return vec![b"Error: Failed to open file".to_vec()];
+			},
+		}
+
+		// Return the file content as a Vec<Vec<u8>>
+		vec![file_content]
+	}
+
+	// handle the incoming gossip message
+	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
+		println!("Recvd incoming gossip: {:?}", data);
+	}
+
+	fn kademlia_put_record_success(&mut self, key: Vec<u8>) {
+		println!("Record successfully written to DHT. Key: {:?}", key);
+	}
+}
+
+/// Used to create a detereministic node 1.
+async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
+	let mut protobuf = PROTOBUF_KEYPAIR.clone();
+	setup_core_builder_1(&mut protobuf, ports).await
+}
+
+/// Setup node 2.
+async fn setup_node_2(
+	node_1_ports: (Port, Port),
+	ports: (Port, Port),
+) -> (Core<FileServer>, PeerId) {
+	let app_state = FileServer;
+
+	// The PeerId of the node 1
+	let peer_id = Keypair::from_protobuf_encoding(&PROTOBUF_KEYPAIR)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	// Set up node 1 as bootnode, so we can connect to it immediately we start up
+	let mut bootnode = HashMap::new();
+	bootnode.insert(
+		peer_id.to_base58(),
+		format!("/ip4/127.0.0.1/tcp/{}", node_1_ports.0),
+	);
+
+	// First, we want to configure our node (we'll be generating a new identity)
+	let config = BootstrapConfig::new()
+		.with_bootnodes(bootnode)
+		.with_tcp(ports.0)
+		.with_udp(ports.1);
+
+	// Set up network
+	(
+		CoreBuilder::with_config(config, app_state)
+			.build()
+			.await
+			.unwrap(),
+		peer_id,
+	)
+}
+
+async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<FileServer> {
+	let app_state = FileServer;
+
+	// First, we want to configure our node by specifying a static keypair (for easy connection by
+	// node 2)
+	let config = BootstrapConfig::default()
+		.generate_keypair_from_protobuf("ed25519", buffer)
+		.with_tcp(ports.0)
+		.with_udp(ports.1);
+
+	// Set up network
+	CoreBuilder::with_config(config, app_state)
+		.build()
+		.await
+		.unwrap()
+}
+
+/// Run node 1
+async fn run_node_1() {
+	// Set up node
+	let mut node = setup_node_1((49666, 49606)).await;
+
+	// Sleep for a few seconds to allow node 2 to reach out
+	// async_std::task::sleep(Duration::from_secs(NODE_1_WAIT_TIME)).await;
+	tokio::time::sleep(Duration::from_secs(NODE_1_WAIT_TIME)).await;
+
+	// What are we writing to the DHT?
+	// A file we have on the fs and the location of the file, so it can be easily retrieved
+
+	// Prepare a query to write to the DHT
+	let (key, value, expiration_time, explicit_peers) = (
+		KADEMLIA_KEY.as_bytes().to_vec(),
+		KADEMLIA_VALUE.as_bytes().to_vec(),
+		None,
+		None,
+	);
+
+	let kad_request = AppData::KademliaStoreRecord {
+		key,
+		value,
+		expiration_time,
+		explicit_peers,
+	};
+
+	// Submit query to the network
+	node.query_network(kad_request).await.unwrap();
+
+	loop {}
+}
+
+/// Run node 2
+async fn run_node_2() {
+	// Set up node 2 and initiate connection to node 1
+	let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+	// Sleep for a few seconds to allow node 1 write to the DHT
+	// async_std::task::sleep(Duration::from_secs(NODE_2_WAIT_TIME)).await;
+	tokio::time::sleep(Duration::from_secs(NODE_2_WAIT_TIME)).await;
+
+	// Prepare a query to read from the DHT
+	let kad_request = AppData::KademliaLookupRecord {
+		key: KADEMLIA_KEY.as_bytes().to_vec(),
+	};
+
+	// Submit query to the network
+	if let Ok(result) = node_2.query_network(kad_request).await {
+		// We have our response
+		if let AppResponse::KademliaLookupSuccess(value) = result {
+			println!("File read from DHT: {}", String::from_utf8_lossy(&value));
+			// Now prepare an RPC query to fetch the file from the remote node
+			let fetch_key = vec![value];
+
+			// prepare fetch request
+			let fetch_request = AppData::FetchData {
+				keys: fetch_key.clone(),
+				peer: node_1_peer_id.clone(), // The peer to query for data
+			};
+
+			// We break the flow into send and recv explicitly here
+			let stream_id = node_2.send_to_network(fetch_request).await.unwrap();
+
+			// If we used `query_network(0)`, we won't have been able to print here
+			println!(
+				"A fetch request has been sent to peer: {:?}",
+				node_1_peer_id
+			);
+
+			// Poll the network for the result
+			if let Ok(response) = node_2.recv_from_network(stream_id).await {
+				if let AppResponse::FetchData(response_file) = response {
+					// Get the file
+					let file = response_file[0].clone();
+
+					// Convert it to string
+					let file_str = String::from_utf8_lossy(&file);
+
+					// Print to stdout
+					println!("Here is the file delivered from the remote peer:");
+					println!();
+					println!("{}", file_str);
+				}
+			} else {
+				println!("An error occured");
+			}
+		}
+	}
+}
+
+// #[async_std::main]
 #[tokio::main]
 async fn main() {
-	// ping_test::run_ping_example().await;
+	#[cfg(feature = "first-node")]
+	run_node_1().await;
 
-	// Communication example
-	// layer_communication::run_comm_example().await;
-
-	kademlia::test_kademlia_itest_works().await;
-}
-
-mod kademlia {
-	use std::collections::HashMap;
-
-	use swarm_nl::{
-		core::{Core, CoreBuilder, AppData},
-		setup::BootstrapConfig,
-		Keypair, PeerId, Port,
-	};
-
-	use crate::layer_communication::AppState;
-
-	/// Time to wait for the other peer to act, during integration tests (in seconds)
-	pub const ITEST_WAIT_TIME: u64 = 15;
-	/// The key to test the Kademlia DHT
-	pub const KADEMLIA_TEST_KEY: &str = "GOAT";
-	/// The value to test the Kademlia DHT
-	pub const KADEMLIA_TEST_VALUE: &str = "Steve Jobs";
-
-	/// Used to create a detereministic node.
-	pub async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
-		// Our test keypair for the first node
-		let mut protobuf = vec![
-			8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
-			27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
-			147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
-			152, 42, 164, 148, 159, 36, 170, 109, 178,
-		];
-
-		// The PeerId of the first node
-		let peer_id = Keypair::from_protobuf_encoding(&protobuf)
-			.unwrap()
-			.public()
-			.to_peer_id();
-
-		setup_core_builder_1(&mut protobuf[..], ports).await
-	}
-
-	/// Used to create a node to peer with node_1.
-	pub async fn setup_node_2(
-		node_1_ports: (Port, Port),
-		ports: (Port, Port),
-	) -> (Core<AppState>, PeerId) {
-		let app_state = AppState;
-
-		// Our test keypair for the node_1
-		let mut protobuf = vec![
-			8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
-			27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
-			147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
-			152, 42, 164, 148, 159, 36, 170, 109, 178,
-		];
-
-		// The PeerId of the first node
-		let peer_id = Keypair::from_protobuf_encoding(&protobuf)
-			.unwrap()
-			.public()
-			.to_peer_id();
-
-		// Set up bootnode to query node 1
-		let mut bootnode = HashMap::new();
-		bootnode.insert(
-			peer_id.to_base58(),
-			format!("/ip4/127.0.0.1/tcp/{}", node_1_ports.0),
-		);
-
-		println!("Second node here!");
-
-		// First, we want to configure our node
-		let config = BootstrapConfig::new()
-			.with_bootnodes(bootnode)
-			.with_tcp(ports.0)
-			.with_udp(ports.1);
-
-		// Set up network
-		(
-			CoreBuilder::with_config(config, app_state)
-				.build()
-				.await
-				.unwrap(),
-			peer_id,
-		)
-	}
-
-	pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> {
-		let app_state = AppState;
-
-		// First, we want to configure our node with the bootstrap config file on disk
-		let config = BootstrapConfig::default()
-			.generate_keypair_from_protobuf("ed25519", buffer)
-			.with_tcp(ports.0)
-			.with_udp(ports.1);
-
-		// Set up network
-		CoreBuilder::with_config(config, app_state)
-			.build()
-			.await
-			.unwrap()
-	}
-
-	pub async fn test_kademlia_itest_works() {
-		#[cfg(feature = "test-reading-node")]
-		async {
-			// set up the node that will be dialled
-			let mut node_1 = setup_node_1((51666, 51606)).await;
-
-			// Wait for a few seconds before trying to read the DHT
-			#[cfg(feature = "tokio-runtime")]
-			tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME + 20)).await;
-
-			// now poll for the kademlia record
-			// let kad_request = AppData::KademliaLookupRecord { key:
-			// KADEMLIA_TEST_KEY.as_bytes().to_vec() };
-			let kad_request = AppData::KademliaGetProviders {
-				key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
-			};
-			if let Ok(result) = node_1.query_network(kad_request).await {
-				// if let AppResponse::KademliaLookupSuccess(value) = result {
-				// 	assert_eq!(KADEMLIA_TEST_VALUE.as_bytes().to_vec(), value);
-				// }
-				println!("{:?}", result);
-			} else {
-				println!("No record found");
-			}
-		}
-		.await;
-
-		#[cfg(feature = "test-writing-node")]
-		async {
-			// set up the second node that will dial
-			let (mut node_2, node_1_peer_id) = setup_node_2((51666, 51606), (51667, 51607)).await;
-
-			// create request to read the DHT
-			let (key, value, expiration_time, explicit_peers) = (
-				KADEMLIA_TEST_KEY.as_bytes().to_vec(),
-				KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
-				None,
-				None,
-			);
-
-			let kad_request = AppData::KademliaStoreRecord {
-				key,
-				value,
-				expiration_time,
-				explicit_peers,
-			};
-
-			let res = node_2.query_network(kad_request).await;
-			println!("{:?}", res);
-
-			let kad_request = AppData::KademliaGetProviders {
-				key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
-			};
-			let result = node_2.query_network(kad_request).await;
-
-			println!("{:?}", result);
-
-			loop {}
-
-			// if let Ok(_) = node_2.query_network(kad_request).await {
-			// 	loop {}
-			// } else {
-			// 	println!("Error");
-			// }
-		}
-		.await;
-	}
-}
-
-mod age_of_empire {
-	use super::*;
-
-	#[derive(Clone)]
-	pub struct Empire {
-		name: String,
-		soldiers: u8,
-		farmers: u8,
-		blacksmith: u8,
-		land_mass: u8,
-		gold_reserve: u8,
-	}
-
-	impl Empire {
-		/// Create a new empire and assign the assets to begin with
-		pub fn new(name: String) -> Self {
-			Empire {
-				name,
-				soldiers: 100,
-				farmers: 100,
-				blacksmith: 100,
-				land_mass: 100,
-				gold_reserve: 100,
-			}
-		}
-	}
-
-	impl EventHandler for Empire {
-		fn new_listen_addr(
-			&mut self,
-			local_peer_id: PeerId,
-			_listener_id: swarm_nl::ListenerId,
-			addr: swarm_nl::Multiaddr,
-		) {
-			// announce interfaces we're listening on
-			println!("Peer id: {}", local_peer_id);
-			println!("We're listening on the {}", addr);
-			println!(
-				"There are {} soldiers guarding the {} Empire gate",
-				self.soldiers, self.name
-			);
-		}
-
-		fn connection_established(
-			&mut self,
-			peer_id: PeerId,
-			_connection_id: ConnectionId,
-			_endpoint: &ConnectedPoint,
-			_num_established: NonZeroU32,
-			_established_in: Duration,
-		) {
-			println!("Connection established with peer: {}", peer_id);
-		}
-
-		/// Handle any incoming RPC from any neighbouring empire
-		fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-			// The semantics is left to the application to handle
-			match String::from_utf8_lossy(&data[0]) {
-				// Handle the request to get military status
-				Cow::Borrowed("military_status") => {
-					// Get empire name
-					let empire_name = self.name.as_bytes().to_vec();
-
-					// Get military capacity
-					let military_capacity = self.soldiers;
-
-					// marshall into accepted format andd then return it
-					vec![empire_name, vec![military_capacity]]
-				},
-				_ => Default::default(),
-			}
-		}
-
-		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {}
-	}
-
-	/// Setup game (This is for the persian Empire)
-	/// This requires no bootnodes connection
-	// #[cfg(not(feature = "macedonian"))]
-	// pub async fn setup_game() -> Core<Empire> {
-	// 	// First, we want to configure our node
-	// 	let config = BootstrapConfig::default();
-
-	// 	// State kept by this node
-	// 	let empire = Empire::new(String::from("Spartan"));
-
-	// 	// Set up network
-	// 	CoreBuilder::with_config(config, empire)
-	// 		.build()
-	// 		.await
-	// 		.unwrap()
-	// }
-
-	/// The Macedonian Empire setup.
-	/// These require bootnodes of empires to form alliance.
-	/// We will be providing the location (peer id and multiaddress) of the Spartan Empire as boot
-	/// parameters
-	// #[cfg(feature = "macedonian")]
-	pub async fn setup_game() -> Core<Empire> {
-		// First, we want to configure our node with the bootstrap config file on disk
-		let config = BootstrapConfig::from_file("bootstrap_config.ini");
-
-		// State kept by this node
-		let empire = Empire::new(String::from("Macedonian"));
-
-		// Set up network
-		CoreBuilder::with_config(config, empire)
-			.build()
-			.await
-			.unwrap()
-	}
-
-	/// Play game
-	pub async fn play_game() {
-		// Setup network
-		let mut core = setup_game().await;
-
-		// TODO: DELAY FOR A WHILE
-
-		// Print game state
-		println!("Empire Information:");
-		println!("Name: {}", core.state.soldiers);
-		println!("Farmers: {}", core.state.farmers);
-		println!("Black smiths: {}", core.state.blacksmith);
-		println!("Land mass: {}", core.state.land_mass);
-		println!("Gold reserve: {}", core.state.gold_reserve);
-
-		// TODO! FUNCTION TO CHECK NODES I'M CONNECTED WITH
-
-		let request = vec!["military_status".as_bytes().to_vec()];
-
-		// Spartan Empire
-		let remote_peer_id = "12D3KooWMD3kvZ7hSngeu1p7HAoCCYusSXqPPYDPvzxsa9T4vz3a";
-
-		// Prepare request
-		let status_request = AppData::FetchData {
-			keys: request,
-			peer: string_to_peer_id(remote_peer_id).unwrap(),
-		};
-
-		// Send request
-		// let stream_id = core.send_to_network(status_request).await.unwrap();
-
-		// Get response
-		// AppData::Fetch returns a Vec<Vec<u8>>, hence we can parse the response from it
-		if let Ok(status_response) = core.query_network(status_request).await {
-			if let AppResponse::FetchData(status) = status_response {
-				let empire_name = String::from_utf8_lossy(&status[0]);
-				let military_status = status[1][0];
-
-				// Print the military status of the empire we just contacted
-				println!("Empire Contacted:");
-				println!("Name: {} Empire", empire_name);
-				println!("Military Capacity: {} Soldiers", military_status);
-			}
-		}
-
-		// Keep looping so we can record network events
-		loop {}
-	}
-}
-
-mod ping_test {
-	use swarm_nl::{
-		core::ping_config::{PingConfig, PingErrorPolicy},
-		Failure,
-	};
-
-	use super::*;
-	/// Sate of the Application
-	#[derive(Clone)]
-	pub struct Ping;
-
-	impl EventHandler for Ping {
-		fn new_listen_addr(
-			&mut self,
-			local_peer_id: PeerId,
-			_listener_id: swarm_nl::ListenerId,
-			addr: swarm_nl::Multiaddr,
-		) {
-			// announce interfaces we're listening on
-			println!("Peer id: {}", local_peer_id);
-			println!("We're listening on the {}", addr);
-		}
-
-		fn connection_established(
-			&mut self,
-			peer_id: PeerId,
-			_connection_id: ConnectionId,
-			_endpoint: &ConnectedPoint,
-			_num_established: NonZeroU32,
-			_established_in: Duration,
-		) {
-			println!("Connection established with peer: {}", peer_id);
-		}
-
-		fn outbound_ping_success(&mut self, peer_id: PeerId, duration: Duration) {
-			println!("we just pinged {:?}. RTT = {:?}", peer_id, duration);
-		}
-
-		fn outbound_ping_error(&mut self, peer_id: PeerId, err_type: Failure) {
-			println!("Tried to ping {:?}. Error: {:?}", peer_id, err_type);
-		}
-
-		fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-			data
-		}
-
-		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {}
-	}
-
-	#[cfg(not(feature = "second-node"))]
-	pub async fn setup_node(buffer: &mut [u8], ports: (u16, u16)) -> Core<Ping> {
-		let app_state = Ping;
-
-		// First, we want to configure our node with the bootstrap config file on disk
-		let config = BootstrapConfig::default()
-			.generate_keypair_from_protobuf("ed25519", buffer)
-			.with_tcp(ports.0)
-			.with_udp(ports.1);
-
-		println!("First node here!");
-
-		// Set up network
-		CoreBuilder::with_config(config, app_state)
-			.build()
-			.await
-			.unwrap()
-	}
-
-	pub async fn run_ping_example() {
-		// Our test keypair for the first node
-		let mut protobuf = vec![
-			8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
-			27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
-			147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
-			152, 42, 164, 148, 159, 36, 170, 109, 178,
-		];
-		// Ports for the first node
-		let ports = (49500, 49501);
-
-		// The PeerId of the first node
-		let peer_id = Keypair::from_protobuf_encoding(&protobuf)
-			.unwrap()
-			.public()
-			.to_peer_id();
-
-		#[cfg(not(feature = "second-node"))]
-		let node = ping_test::setup_node(&mut protobuf[..], ports).await;
-
-		#[cfg(feature = "second-node")]
-		let node = ping_test::setup_node(peer_id, ports).await;
-
-		loop {}
-	}
-
-	/// Setup node
 	#[cfg(feature = "second-node")]
-	pub async fn setup_node(peer_id: PeerId, ports: (u16, u16)) -> Core<Ping> {
-		use std::collections::HashMap;
-		// App state
-		let app_state = Ping;
-
-		// Custom ping configuration
-		let custom_ping = PingConfig {
-			interval: Duration::from_secs(3),
-			timeout: Duration::from_secs(5),
-			err_policy: PingErrorPolicy::DisconnectAfterMaxErrors(3),
-		};
-
-		// Set up bootnode to query node 1
-		let mut bootnode = HashMap::new();
-		bootnode.insert(
-			peer_id.to_base58(),
-			format!("/ip4/127.0.0.1/tcp/{}", ports.0),
-		);
-
-		println!("Second node here!");
-
-		// First, we want to configure our node
-		let config = BootstrapConfig::new().with_bootnodes(bootnode);
-
-		// Set up network by passing in a default handler or application state
-		CoreBuilder::with_config(config, app_state)
-			.with_ping(custom_ping)
-			.build()
-			.await
-			.unwrap()
-	}
+	run_node_2().await;
 }
-
-mod layer_communication {
-	use super::*;
-
-	/// Sate of the Application
-	#[derive(Clone)]
-	pub struct AppState;
-
-	impl EventHandler for AppState {
-		fn new_listen_addr(
-			&mut self,
-			local_peer_id: PeerId,
-			_listener_id: swarm_nl::ListenerId,
-			addr: swarm_nl::Multiaddr,
-		) {
-			// announce interfaces we're listening on
-			println!("Peer id: {}", local_peer_id);
-			println!("We're listening on the {}", addr);
-		}
-
-		fn connection_established(
-			&mut self,
-			peer_id: PeerId,
-			_connection_id: ConnectionId,
-			_endpoint: &ConnectedPoint,
-			_num_established: NonZeroU32,
-			_established_in: Duration,
-		) {
-			println!("Connection established with peer: {}", peer_id);
-		}
-
-		fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-			data
-		}
-
-		fn gossipsub_handle_incoming_message(&mut self, _source: PeerId, _data: Vec<String>) {}
-	}
-
-	pub async fn run_comm_example() {
-		// Our test keypair for the first node
-		let mut protobuf = vec![
-			8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
-			27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
-			147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
-			152, 42, 164, 148, 159, 36, 170, 109, 178,
-		];
-		// Ports for the first node
-		let ports = (49500, 49501);
-
-		// The PeerId of the first node
-		let peer_id = Keypair::from_protobuf_encoding(&protobuf)
-			.unwrap()
-			.public()
-			.to_peer_id();
-
-		let node = setup_node(&mut protobuf[..], ports).await;
-
-		// Test that AppData::Echo works (using fetch)
-		test_echo_atomically(node.clone()).await;
-
-		// Test that AppData::Echo works
-		test_echo(node.clone()).await;
-
-		loop {}
-	}
-
-	#[cfg(not(feature = "second-node"))]
-	pub async fn setup_node(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> {
-		let app_state = AppState;
-
-		// First, we want to configure our node with the bootstrap config file on disk
-		let config = BootstrapConfig::default()
-			.generate_keypair_from_protobuf("ed25519", buffer)
-			.with_tcp(ports.0)
-			.with_udp(ports.1);
-
-		println!("First node here!");
-
-		// Set up network
-		CoreBuilder::with_config(config, app_state)
-			.build()
-			.await
-			.unwrap()
-	}
-
-	pub async fn test_echo_atomically(mut node: Core<AppState>) {
-		// Prepare an echo request
-		let echo_string = "Sacha rocks!".to_string();
-		if let Ok(status_response) = node.query_network(AppData::Echo(echo_string.clone())).await {
-			if let AppResponse::Echo(echoed_response) = status_response {
-				// Assert that what was sent was gotten back
-				assert_eq!(echo_string, echoed_response);
-
-				println!("{} === {}", echo_string, echoed_response);
-			}
-		}
-	}
-
-	pub async fn test_echo(mut node: Core<AppState>) {
-		// Prepare an echo request
-		let echo_string = "Sacha rocks!".to_string();
-
-		// Get request stream id
-		let stream_id = node
-			.send_to_network(AppData::Echo(echo_string.clone()))
-			.await
-			.unwrap();
-
-		println!("This is between the sending and the recieving of the payload. It is stored in an internal buffer, until polled for");
-
-		if let Ok(status_response) = node.recv_from_network(stream_id).await {
-			if let AppResponse::Echo(echoed_response) = status_response {
-				// Assert that what was sent was gotten back
-				assert_eq!(echo_string, echoed_response);
-
-				println!("{} === {}", echo_string, echoed_response);
-			}
-		}
-	}
-}
-
-// make pr
-// merge to main
-// loggings
-// network data
-// gossip
-// examples
-// appdata
-// configure logger
-
-// TEST
-// Events, dailing, AppData, RPC, Kad, Ping, Gossip
-// check for rexeports e.g to initialize gossipsub
-
-// check if i'm subscribed to topics
-
-// BootstrapConfig
-// CoreBuilder
-
-// INTEGRATION
-// Core
-// Ping
-// Events
-// App requests i.e kad, rpc, echo
