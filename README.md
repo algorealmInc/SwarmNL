@@ -129,7 +129,8 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   ### Application state change
     SwarmNL exposes two interfaces to make application state changes:
     - Event handlers: Registered event handlers can make state changes as a response to occurrences in the network.
-    - Network core or the node: The node construct is the canonical way of changing internal application state. The application state is exposed by the `state` field of the node or network core.<br>
+    - Network core or the node: The node construct is the canonical way of changing internal application state. The application state is exposed by the `state` field of the node or network core.<br><br>
+
     This behaviour can only mean one thing: synchronization. Employement of really good synchronization pimitives. The occurrences of network events are non-deterministic meaning they could change state at any point in time. We solve this problem by using an `Mutex` to lock the state and make changes.
 
     #### Event Handlers
