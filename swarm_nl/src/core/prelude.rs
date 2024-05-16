@@ -429,7 +429,7 @@ pub trait EventHandler {
 	/// Event that announces the beginning of the filtering and authentication of the incoming gossip message.
 	/// It returns a boolean to specify whether the massage should be dropped or should reach the application.
 	/// All incoming messages are allowed in by default.
-	fn gossipsub_incoming_message_filtered(&mut self, propagation_source: PeerId, message_id: MessageId, source: Option<PeerId>, topic: String, data: Vec<String>) -> bool {
+	fn gossipsub_incoming_message_filtered(&mut self, _propagation_source: PeerId, _message_id: MessageId, _source: Option<PeerId>, _topic: String, _data: Vec<String>) -> bool {
 		true
 	}
 }

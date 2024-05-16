@@ -1,4 +1,9 @@
 //! Tests for the communication between the layers of the application.
+//! 
+
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
 
 use super::*;
 use libp2p::{
@@ -59,7 +64,7 @@ impl EventHandler for AppState {
 }
 
 /// Used to create a detereministic node.
-pub async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
+async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
 	// Our test keypair for the first node
 	let mut protobuf = vec![
 		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
@@ -78,7 +83,7 @@ pub async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
 }
 
 /// Used to create a node to peer with node_1.
-pub async fn setup_node_2(
+async fn setup_node_2(
 	node_1_ports: (Port, Port),
 	ports: (Port, Port),
 ) -> (Core<AppState>, PeerId) {
@@ -123,7 +128,7 @@ pub async fn setup_node_2(
 	)
 }
 
-pub async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> {
+async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> {
 	let app_state = AppState;
 
 	// First, we want to configure our node with the bootstrap config file on disk

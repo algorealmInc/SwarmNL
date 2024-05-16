@@ -894,7 +894,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		mut network_info: NetworkInfo,
 		mut network_sender: Sender<StreamData>,
 		mut receiver: Receiver<StreamData>,
-		mut network_core: Core<T>,
+		network_core: Core<T>,
 	) {
 		let mut exec_queue_1 = ExecQueue::new();
 		let mut exec_queue_2 = ExecQueue::new();
@@ -1387,7 +1387,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													}
 												},
 										},
-										request_response::Event::OutboundFailure { error, .. } => {
+										request_response::Event::OutboundFailure { .. } => {
 											// Receive data from out one-way channel
 											if let Some(stream_id) = exec_queue_4.pop().await {
 												// Send the error back to the application layer
