@@ -26,7 +26,7 @@ jobs:
       - name: Clean docs folder
         run: cd swarm_nl && cargo clean --doc
       - name: Build docs
-        run: cd swarm_nl && cargo doc --no-deps
+        run: cd swarm_nl && cargo doc --no-deps --features=tokio-runtime
       - name: Add redirect
         run: cd swarm_nl && echo '<meta http-equiv="refresh" content="0;url=aoc/index.html">' > target/doc/index.html
       - name: Remove lock file
