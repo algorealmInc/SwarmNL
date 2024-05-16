@@ -1,5 +1,7 @@
+// Copyright 2024 Algorealm
+// Apache 2.0 License
+
 use libp2p::gossipsub::MessageId;
-/// Copyright (c) 2024 Algorealm
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, time::Instant};
 use thiserror::Error;
@@ -181,7 +183,7 @@ pub type NetworkResult = Result<AppResponse, NetworkError>;
 /// This type has a maximum buffer size and will drop subsequent requests when full.
 /// It is unlikely to be ever full as the default is usize::MAX except otherwise specified during
 /// configuration. It is always good practice to read responses from the internal stream buffer
-/// using `query_network()` or explicitly using `recv_from_network`
+/// using `query_network()` or explicitly using `recv_from_network`.
 #[derive(Clone, Debug)]
 pub(super) struct StreamRequestBuffer {
 	/// Max requests we can keep track of.
@@ -426,23 +428,23 @@ pub trait EventHandler {
 
 	/// Event that announces the beginning of the filtering and authentication of the incoming gossip message.
 	/// It returns a boolean to specify whether the massage should be dropped or should reach the application.
-	/// All incoming messages are allowed in by default
+	/// All incoming messages are allowed in by default.
 	fn gossipsub_incoming_message_filtered(&mut self, propagation_source: PeerId, message_id: MessageId, source: Option<PeerId>, topic: String, data: Vec<String>) -> bool {
 		true
 	}
 }
 
-/// Default network event handler
+/// Default network event handler.
 #[derive(Clone)]
 pub struct DefaultHandler;
 /// Implement [`EventHandler`] for [`DefaultHandler`]
 impl EventHandler for DefaultHandler {
-	/// Echo the message back to the sender
+	/// Echo the message back to the sender.
 	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		data
 	}
 
-	/// Echo the incoming gossip message to the console
+	/// Echo the incoming gossip message to the console.
 	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, _data: Vec<String>) {
 		// Default implementation
 	}
@@ -450,24 +452,24 @@ impl EventHandler for DefaultHandler {
 }
 
 /// Important information to obtain from the [`CoreBuilder`], to properly handle network
-/// operations
+/// operations.
 #[derive(Clone)]
 pub(super) struct NetworkInfo {
-	/// The name/id of the network
+	/// The name/id of the network.
 	pub id: StreamProtocol,
-	/// Important information to manage `Ping` operations
+	/// Important information to manage `Ping` operations.
 	pub ping: PingInfo,
-	/// Important information to manage `Gossipsub` operations
+	/// Important information to manage `Gossipsub` operations.
 	pub gossipsub: gossipsub_cfg::GossipsubInfo,
 }
 
-/// Module that contains important data structures to manage `Ping` operations on the network
+/// Module that contains important data structures to manage `Ping` operations on the network.
 pub mod ping_config {
 	use libp2p_identity::PeerId;
 	use std::{collections::HashMap, time::Duration};
 
-	/// Policies to handle a `Ping` error
-	/// - All connections to peers are closed during a disconnect operation.
+	/// Policies to handle a `Ping` error.
+	/// All connections to peers are closed during a disconnect operation.
 	#[derive(Debug, Clone)]
 	pub enum PingErrorPolicy {
 		/// Do not disconnect under any circumstances.
@@ -481,13 +483,13 @@ pub mod ping_config {
 	/// Struct that stores critical information for the execution of the [`PingErrorPolicy`].
 	#[derive(Debug, Clone)]
 	pub struct PingManager {
-		/// The number of timeout errors encountered from a peer
+		/// The number of timeout errors encountered from a peer.
 		pub timeouts: HashMap<PeerId, u16>,
-		/// The number of outbound errors encountered from a peer
+		/// The number of outbound errors encountered from a peer.
 		pub outbound_errors: HashMap<PeerId, u16>,
 	}
 
-	/// The configuration for the `Ping` protocol
+	/// The configuration for the `Ping` protocol.
 	#[derive(Debug, Clone)]
 	pub struct PingConfig {
 		/// The interval between successive pings.
@@ -508,11 +510,11 @@ pub mod ping_config {
 	}
 }
 
-/// Module containing important state relating to the `Gossipsub` protocol
+/// Module containing important state relating to the `Gossipsub` protocol.
 pub(crate) mod gossipsub_cfg {
 	use super::*;
 
-	/// The struct containing the list of blacklisted peers
+	/// The struct containing the list of blacklisted peers.
 	#[derive(Clone, Debug, Default)]
 	pub struct Blacklist {
 		// Blacklist
@@ -520,20 +522,20 @@ pub(crate) mod gossipsub_cfg {
 	}
 
 	impl Blacklist {
-		/// Return the inner list we're keeping track of
+		/// Return the inner list we're keeping track of.
 		pub fn into_inner(&self) -> HashSet<PeerId> {
 			self.list.clone()
 		}
 	}
 
-	/// Important information to manage `Gossipsub` operations
+	/// Important information to manage `Gossipsub` operations.
 	#[derive(Clone)]
 	pub struct GossipsubInfo {
 		pub blacklist: Blacklist,
 	}
 }
 
-/// Network queue that tracks the execution of application requests in the network layer
+/// Network queue that tracks the execution of application requests in the network layer.
 pub(super) struct ExecQueue {
 	buffer: Mutex<VecDeque<StreamId>>,
 }

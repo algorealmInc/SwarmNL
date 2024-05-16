@@ -11,10 +11,9 @@ use std::{collections::HashMap, str::FromStr};
 
 /// Read an INI file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
-	// read the file from disk
+	// Read the file from disk
 	if let Ok(config) = Ini::load_from_file(file_path) {
-		// ports section
-		// get TCP port & UDP port
+		// Get TCP port & UDP port
 		let (tcp_port, udp_port) = if let Some(section) = config.section(Some("ports")) {
 			(
 				section
@@ -29,38 +28,38 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 					.unwrap_or_default(),
 			)
 		} else {
-			// fallback to default ports
+			// Fallback to default ports
 			(MIN_PORT, MAX_PORT)
 		};
 
-		// try to read the serialized keypair
+		// Try to read the serialized keypair
 		// auth section
 		let (key_type, mut serialized_keypair) = if let Some(section) = config.section(Some("auth"))
 		{
 			(
-				// get the preferred key type
+				// Get the preferred key type
 				section.get("crypto").unwrap_or_default(),
-				// get serialized keypair
+				// Get serialized keypair
 				string_to_vec::<u8>(section.get("protobuf_keypair").unwrap_or_default()),
 			)
 		} else {
 			Default::default()
 		};
 
-		// now, move onto reading the bootnodes if any
+		// Now, move onto reading the bootnodes if any
 		let section = config
 			.section(Some("bootstrap"))
 			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
 
-		// get the provided bootnodes
+		// Get the provided bootnodes
 		let boot_nodes = string_to_hashmap(section.get("boot_nodes").unwrap_or_default());
 
-		// now, move onto reading the blacklist if any
+		// Now, move onto reading the blacklist if any
 		let section = config
 			.section(Some("blacklist"))
 			.ok_or(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))?;
 
-		// blacklist
+		// Blacklist
 		let blacklist = string_to_vec(section.get("blacklist").unwrap_or_default());
 
 		Ok(BootstrapConfig::new()
@@ -70,7 +69,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			.with_tcp(tcp_port)
 			.with_udp(udp_port))
 	} else {
-		// return error
+		// Return error
 		Err(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))
 	}
 }
@@ -116,7 +115,7 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 		})
 }
 
-/// Convert PeerId string to peerId.
+/// Convert a peer ID string to [`PeerId`].
 pub fn string_to_peer_id(peer_id_string: &str) -> Option<PeerId> {
 	PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).ok()
 }
@@ -130,12 +129,11 @@ mod tests {
 	use crate::prelude::{MAX_PORT, MIN_PORT};
 	use std::fs;
 
-	// define custom ports for testing
+	// Define custom ports for testing
 	const CUSTOM_TCP_PORT: Port = 49666;
 	const CUSTOM_UDP_PORT: Port = 49852;
 
-	// helper to create an INI file without a static keypair
-	// here we specify a valid range for ports
+	// Helper to create an INI file without a static keypair and a valid range for ports.
 	fn create_test_ini_file_without_keypair(file_path: &str) {
 		let mut config = Ini::new();
 		config
@@ -148,11 +146,11 @@ mod tests {
 			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
 		);
 		config.with_section(Some("blacklist")).set("blacklist", "[]");
-		// write config to a new INI file
+		// Write config to a new INI file
 		config.write_to_file(file_path).unwrap_or_default();
 	}
 
-	// helper to create an INI file with keypair
+	// Helper to create an INI file with keypair
 	fn create_test_ini_file_with_keypair(file_path: &str, key_type: KeyType) {
 		let mut config = Ini::new();
 
@@ -190,30 +188,30 @@ mod tests {
 
 		config.with_section(Some("blacklist")).set("blacklist", "[]");
 
-		// write config to the new INI file
+		// Write config to the new INI file
 		config.write_to_file(file_path).unwrap_or_default();
 	}
 
-	// helper to clean up temp file
+	// Helper to clean up temp file
 	fn clean_up_temp_file(file_path: &str) {
 		fs::remove_file(file_path).unwrap_or_default();
 	}
 
 	#[test]
 	fn file_does_not_exist() {
-		// try to read a non-existent file should panic
+		// Try to read a non-existent file should panic
 		assert_eq!(read_ini_file("non_existent_file.ini").is_err(), true);
 	}
 
 	#[test]
 	fn write_config_works() {
-		// create temp INI file
+		// Create temp INI file
 		let file_path = "temp_test_write_ini_file.ini";
 
-		// create INI file without keypair for simplicity
+		// Create INI file without keypair for simplicity
 		create_test_ini_file_without_keypair(file_path);
 
-		// try to write some keypair to the INI file
+		// Try to write some keypair to the INI file
 		let add_keypair = write_config(
 			"auth",
 			"serialized_keypair",
@@ -231,17 +229,17 @@ mod tests {
 
 		assert_eq!(add_keypair, true);
 
-		// delete temp file
+		// Delete temp file
 		clean_up_temp_file(file_path);
 	}
 
-	// read without keypair file
+	// Read without keypair file
 	#[test]
 	fn read_ini_file_with_custom_setup_works() {
-		// create temp INI file
+		// Create temp INI file
 		let file_path = "temp_test_read_ini_file_custom.ini";
 
-		// we've set our ports to tcp=49666 and upd=49852
+		// We've set our ports to tcp=49666 and upd=49852
 		create_test_ini_file_without_keypair(file_path);
 
 		let ini_file_result: BootstrapConfig = read_ini_file(file_path).unwrap();
@@ -249,34 +247,33 @@ mod tests {
 		assert_eq!(ini_file_result.ports().0, CUSTOM_TCP_PORT);
 		assert_eq!(ini_file_result.ports().1, CUSTOM_UDP_PORT);
 
-		// checking for the default keypair that's generated (ED25519) if none are provided
+		// Checking for the default keypair that's generated (ED25519) if none are provided
 		assert_eq!(ini_file_result.keypair().key_type(), KeyType::Ed25519);
 
-		// delete temp file
+		// Delete temp file
 		clean_up_temp_file(file_path);
 	}
 
 	#[test]
 	fn read_ini_file_with_default_setup_works() {
-		// create INI file
+		// Create INI file
 		let file_path = "temp_test_ini_file_default.ini";
 		create_test_ini_file_with_keypair(file_path, KeyType::Ecdsa);
 
-		// assert that the content has no [port] section
+		// Assert that the content has no [port] section
 		let ini_file_content = fs::read_to_string(file_path).unwrap();
 		assert!(!ini_file_content.contains("[port]"));
 
-		// but when we call read_ini_file it generates a BootstrapConfig with default ports from
-		// crate::prelude::{MIN_PORT, MAX_PORT}
+		// But when we call read_ini_file it generates a BootstrapConfig with default ports
 		let ini_file_result = read_ini_file(file_path).unwrap();
 
 		assert_eq!(ini_file_result.ports().0, MIN_PORT);
 		assert_eq!(ini_file_result.ports().1, MAX_PORT);
 
-		// checking that the default keypair matches the configured keytype
+		// Checking that the default keypair matches the configured keytype
 		assert_eq!(ini_file_result.keypair().key_type(), KeyType::Ecdsa);
 
-		// delete temp file
+		// Delete temp file
 		clean_up_temp_file(file_path);
 	}
 
@@ -318,6 +315,7 @@ mod tests {
 	fn bootstrap_config_blacklist_works() {
 		let file_path = "bootstrap_config_blacklist_test.ini";
 
+		// Create a new INI file with a blacklist
 		let mut config = Ini::new();
 		config
 			.with_section(Some("ports"))
@@ -336,10 +334,10 @@ mod tests {
 			.with_section(Some("blacklist"))
 			.set("blacklist", black_list_peer_id_string);
 
-		// write config to a new INI file
+		// Write config to a new INI file
 		config.write_to_file(file_path).unwrap_or_default();
 
-		// read the new file
+		// Read the new file
 		let ini_file_result: BootstrapConfig = read_ini_file(file_path).unwrap();
 
 		assert_eq!(ini_file_result.blacklist().list.len(), 1);

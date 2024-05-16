@@ -6,16 +6,16 @@ use libp2p::{
 	PeerId,
 };
 
-/// Time to wait for the other peer to act, during integration tests (in seconds)
+/// Time to wait for the other peer to act, during integration tests (in seconds).
 pub const ITEST_WAIT_TIME: u64 = 7;
-/// The key to test the Kademlia DHT
+/// The key to test the Kademlia DHT.
 pub const KADEMLIA_TEST_KEY: &str = "GOAT";
-/// The value to test the Kademlia DHT
+/// The value to test the Kademlia DHT.
 pub const KADEMLIA_TEST_VALUE: &str = "Steve Jobs";
-/// The test network we join for our mesh
+/// The test network we join for our mesh.
 pub const GOSSIP_NETWORK: &str = "avada";
 
-/// Sate of the Application
+/// Sate of the Application.
 #[derive(Clone)]
 pub struct AppState;
 
@@ -26,7 +26,7 @@ impl EventHandler for AppState {
 		_listener_id: ListenerId,
 		addr: Multiaddr,
 	) {
-		// announce interfaces we're listening on
+		// Announce interfaces we're listening on
 		println!("Peer id: {}", local_peer_id);
 		println!("We're listening on the {}", addr);
 	}
@@ -42,13 +42,13 @@ impl EventHandler for AppState {
 		println!("Connection established with peer: {:?}", peer_id);
 	}
 
-	// we're just echoing the data back
+	// We're just echoing the data back
 	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		println!("Recvd incoming RPC: {:?}", data);
 		data
 	}
 
-	// handle the incoming gossip message
+	// Handle the incoming gossip message
 	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
 		println!("Recvd incoming gossip: {:?}", data);
 	}
@@ -145,7 +145,6 @@ fn echo_for_node1_query_network() {
 	let echo_string = "Sacha rocks!".to_string();
 	let data_request = AppData::Echo(echo_string.clone());
 
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1((49600, 49623))
 			.await
@@ -166,7 +165,6 @@ fn echo_for_node1_send_and_receive() {
 	let echo_string = "Sacha rocks!".to_string();
 	let data_request = AppData::Echo(echo_string.clone());
 
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let stream_id = setup_node_1((49500, 49501))
 			.await
@@ -195,7 +193,6 @@ fn dial_peer_failure_works() {
 
 	let dial_request = AppData::DailPeer(peer_id, multi_addr.clone());
 
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let stream_id = setup_node_1((49611, 49601))
 			.await
@@ -209,37 +206,6 @@ fn dial_peer_failure_works() {
 			.await
 		{
 			assert_eq!(AppResponse::Error(NetworkError::DailPeerError), result);
-		}
-	});
-}
-
-#[cfg(feature = "test-listening-node")]
-#[test]
-fn dialing_peer_works() {
-	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
-		setup_node_1((49666, 49606)).await;
-		// loop for the listening node to keep running
-		loop {}
-	});
-}
-
-#[cfg(feature = "test-dialing-node")]
-#[test]
-fn dialing_peer_works() {
-	// use tokio runtime to test async function
-	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the second node that will dial
-		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
-
-		// what we're dialing
-		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
-
-		let dial_request = AppData::DailPeer(node_1_peer_id, multi_addr.clone());
-		let stream_id = node_2.send_to_network(dial_request).await.unwrap();
-
-		if let Ok(result) = node_2.recv_from_network(stream_id).await {
-			assert_eq!(AppResponse::DailPeerSuccess(multi_addr), result);
 		}
 	});
 }
@@ -261,7 +227,6 @@ fn kademlia_store_records_works() {
 		explicit_peers,
 	};
 
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1((49100, 49101))
 			.await
@@ -272,14 +237,14 @@ fn kademlia_store_records_works() {
 			assert_eq!(AppResponse::KademliaStoreRecordSuccess, result);
 		}
 		else {
-			// do something  to ensure this test works
+			// TODO: do something  to ensure this test works
 		}
 	});
 }
 
 #[test]
 fn kademlia_lookup_record_works() {
-	// Prepare an kademlia request to send to the network layer
+	// Prepare a kademlia request to send to the network layer
 	let (key, value, expiration_time, explicit_peers) = (
 		KADEMLIA_TEST_KEY.as_bytes().to_vec(),
 		KADEMLIA_TEST_VALUE.as_bytes().to_vec(),
@@ -294,7 +259,6 @@ fn kademlia_lookup_record_works() {
 		explicit_peers,
 	};
 
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let mut node = setup_node_1((49155, 49222)).await;
 
@@ -315,7 +279,7 @@ fn kademlia_get_providers_works() {
 	// Note: we can only test for the error case here, an integration test is needed to actually
 	// check that the providers can be fetched
 
-	// Prepare an kademlia request to send to the network layer
+	// Prepare a kademlia request to send to the network layer
 	let req_key = KADEMLIA_TEST_KEY.as_bytes().to_vec();
 
 	let kad_request = AppData::KademliaGetProviders {
@@ -338,7 +302,6 @@ fn kademlia_get_routing_table_info_works() {
 	// Prepare an kademlia request to send to the network layer
 	let kad_request = AppData::KademliaGetRoutingTableInfo;
 
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		if let Ok(result) = setup_node_1((49999, 64555))
 			.await
@@ -355,60 +318,16 @@ fn kademlia_get_routing_table_info_works() {
 	});
 }
 
-// -- For fetch tests --
-#[cfg(feature = "server-node")]
-#[test]
-fn rpc_fetch_works() {
-	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
-		setup_node_1((49666, 49606)).await;
-
-		println!("This is the server node for rpc testing");
-		// loop for the listening node to keep running
-		loop {}
-	});
-}
-
-#[cfg(feature = "test-client-node")]
-#[test]
-fn rpc_fetch_works() {
-	// use tokio runtime to test async function
-	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the second node that will dial
-		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
-
-		println!("This is the client node for rpc testing");
-
-		let fetch_key = vec!["SomeFetchKey".as_bytes().to_vec()];
-
-		// what we're dialing
-		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
-
-		// prepare fetch request
-		let fetch_request = AppData::FetchData {
-			keys: fetch_key.clone(),
-			peer: node_1_peer_id,
-		};
-
-		let stream_id = node_2.send_to_network(fetch_request).await.unwrap();
-
-		if let Ok(result) = node_2.recv_from_network(stream_id).await {
-			assert_eq!(AppResponse::FetchData(fetch_key), result);
-		}
-	});
-}
-
 #[test]
 fn get_network_info_works() {
 	// Prepare an info request to send to the network layer
 	let kad_request = AppData::GetNetworkInfo;
 
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		let mut node = setup_node_1((59999, 54555)).await;
 
 		if let Ok(result) = node.query_network(kad_request).await {
-			// we'll use the peer id returned to validate the network information recieved
+			// We'll use the peer id returned to validate the network information recieved
 			if let AppResponse::GetNetworkInfo {
 				peer_id,
 				connected_peers,
@@ -423,17 +342,15 @@ fn get_network_info_works() {
 	});
 }
 
-// -- For gossip tests --
-
 #[test]
 fn gossipsub_join_and_exit_network_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
+		// Set up the node that will be dialled
 		let mut node_1 = setup_node_1((49655, 49609)).await;
 
 		let network = "Testers";
 
-		// join a network (subscribe to a topic)
+		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(network.to_string());
 
 		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
@@ -454,17 +371,16 @@ fn gossipsub_join_and_exit_network_works() {
 	});
 }
 
-// Test
 #[test]
 fn gossipsub_blacklist_and_remove_blacklist_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
+		// Set up the node that will be dialled
 		let mut node_1 = setup_node_1((49695, 49699)).await;
 
-		// random peer id
+		// Random peer id
 		let peer_id = PeerId::random();
 
-		// blacklist
+		// Blacklist
 		let gossip_request = AppData::GossipsubBlacklistPeer(peer_id);
 		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
 
@@ -472,7 +388,7 @@ fn gossipsub_blacklist_and_remove_blacklist_works() {
 			assert_eq!(AppResponse::GossipsubBlacklistSuccess, result);
 		}
 
-		// remove blacklist
+		// Remove blacklist
 		let gossip_request = AppData::GossipsubFilterBlacklist(peer_id);
 		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
 
@@ -485,18 +401,18 @@ fn gossipsub_blacklist_and_remove_blacklist_works() {
 #[test]
 fn gossipsub_info_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
+		// Set up the node that will be dialled
 		let mut node_1 = setup_node_1((49395, 43699)).await;
 
-		// random peer id
+		// Random peer id
 		let peer_id = PeerId::random();
 		let network = "Blackbeard".to_string();
 
-		// join a network (subscribe to a topic)
+		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(network.clone());
 		node_1.query_network(gossip_request).await.unwrap();
 
-		// blacklist a random peer
+		// Blacklist a random peer
 		let gossip_request = AppData::GossipsubBlacklistPeer(peer_id);
 		node_1.query_network(gossip_request).await.unwrap();
 
@@ -520,20 +436,97 @@ fn gossipsub_info_works() {
 	});
 }
 
-// INTEGRATION TESTS FOR KADEMLIA
-// TWO NODES WILL INTERACT WITH EACH OTHER USING THE COMMANDS TO THE DHT
+// -- Dialing and fetch tests --
+// See: `swarm_nl::testing_guide` for information on how to run these tests.
+
+#[cfg(feature = "test-listening-node")]
+#[test]
+fn dialing_peer_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// Set up the node that will be dialled
+		setup_node_1((49666, 49606)).await;
+		// Loop for the listening node to keep running
+		loop {}
+	});
+}
+
+#[cfg(feature = "test-dialing-node")]
+#[test]
+fn dialing_peer_works() {
+	// Use tokio runtime to test async function
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// Set up the second node that will dial
+		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+		// What we're dialing
+		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
+
+		let dial_request = AppData::DailPeer(node_1_peer_id, multi_addr.clone());
+		let stream_id = node_2.send_to_network(dial_request).await.unwrap();
+
+		if let Ok(result) = node_2.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::DailPeerSuccess(multi_addr), result);
+		}
+	});
+}
+
+#[cfg(feature = "server-node")]
+#[test]
+fn rpc_fetch_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// Set up the node that will be dialled
+		setup_node_1((49666, 49606)).await;
+
+		println!("This is the server node for rpc testing");
+		// Loop for the listening node to keep running
+		loop {}
+	});
+}
+
+#[cfg(feature = "test-client-node")]
+#[test]
+fn rpc_fetch_works() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		// Set up the second node that will dial
+		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+		println!("This is the client node for rpc testing");
+
+		let fetch_key = vec!["SomeFetchKey".as_bytes().to_vec()];
+
+		// What we're dialing
+		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
+
+		// Prepare fetch request
+		let fetch_request = AppData::FetchData {
+			keys: fetch_key.clone(),
+			peer: node_1_peer_id,
+		};
+
+		let stream_id = node_2.send_to_network(fetch_request).await.unwrap();
+
+		if let Ok(result) = node_2.recv_from_network(stream_id).await {
+			assert_eq!(AppResponse::FetchData(fetch_key), result);
+		}
+	});
+}
+
+// -- Tests for kademlia --
+// Two nodes will interact with each other using the commands to the DHT. 
+// See: `swarm_nl::testing_guide` for information on how to run these tests.
+
 #[cfg(feature = "test-reading-node")]
 #[test]
 fn kademlia_record_store_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
+		// Set up the node that will be dialled
 		let mut node_1 = setup_node_1((51666, 51606)).await;
 
 		// Wait for a few seconds before trying to read the DHT
 		#[cfg(feature = "tokio-runtime")]
 		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
 
-		// now poll for the kademlia record
+		// Now poll for the kademlia record
 		let kad_request = AppData::KademliaLookupRecord {
 			key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
 		};
@@ -550,9 +543,8 @@ fn kademlia_record_store_itest_works() {
 #[cfg(feature = "test-writing-node")]
 #[test]
 fn kademlia_record_store_itest_works() {
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the second node that will dial
+		// Set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((51666, 51606), (51667, 51607)).await;
 
 		let (key, value, expiration_time, explicit_peers) = (
@@ -569,19 +561,27 @@ fn kademlia_record_store_itest_works() {
 			explicit_peers,
 		};
 
-		// submit query
+		// Submit query
 		let res = node_2.query_network(kad_request).await;
 
 		loop {}
 	});
 }
 
-// TEST FOR PROVIDERS
+// Note: KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
+// The right function to use is sent_to_network() which will not return a Some(StreamId) but will
+// always return None. This is because it always succeeds and doesn't need to be tracked internally.
+// Do not use query_network() to send the command, if you do, it will succeed but you will get a
+// wrong error. The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).
+
+// -- Tests for providers --
+// See: `swarm_nl::testing_guide` for information on how to run these tests.
+
 #[cfg(feature = "test-writing-node")]
 #[test]
 fn kademlia_provider_records_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
+		// Set up the node that will be dialled
 		let mut node_1 = setup_node_1((51066, 51006)).await;
 
 		// create a Kademlia request
@@ -606,24 +606,22 @@ fn kademlia_provider_records_itest_works() {
 	});
 }
 
-// TEST FOR PROVIDERS
 #[cfg(feature = "test-reading-node")]
 #[test]
 fn kademlia_provider_records_itest_works() {
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the second node that will dial
+		// Set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((51066, 51006), (51067, 51007)).await;
 
-		// wait for a few seconds before trying to read the DHT
+		// Wait for a few seconds before trying to read the DHT
 		#[cfg(feature = "tokio-runtime")]
 		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
 
-		// now poll for the kademlia record provider
+		// Now poll for the kademlia record provider
 		let kad_request = AppData::KademliaGetProviders {
 			key: KADEMLIA_TEST_KEY.as_bytes().to_vec(),
 		};
-		// submit query and assert that the provider is the node 1
+		// Submit query and assert that the provider is the node 1
 		if let Ok(result) = node_2.query_network(kad_request).await {
 			if let AppResponse::KademliaGetProviders { key, providers } = result {
 				assert_eq!(providers[0], node_1_peer_id.to_base58());
@@ -634,15 +632,17 @@ fn kademlia_provider_records_itest_works() {
 	});
 }
 
-// GOSSIPSUB INTEGRATION TESTS
+// -- Gossipsub tests --
+// See: `swarm_nl::testing_guide` for information on how to run these tests.
+
 #[cfg(feature = "test-subscribe-node")]
 #[test]
 fn gossipsub_join_exit_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
+		// Set up the node that will be dialled
 		let mut node_1 = setup_node_1((49775, 49779)).await;
 
-		// join a network (subscribe to a topic)
+		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
 
 		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
@@ -659,21 +659,20 @@ fn gossipsub_join_exit_itest_works() {
 #[cfg(feature = "test-query-node")]
 #[test]
 fn gossipsub_join_exit_itest_works() {
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the second node that will dial
+		// Set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((49775, 49779), (51767, 51707)).await;
 
 		// Wait for a few seconds for propagation
 		#[cfg(feature = "tokio-runtime")]
 		tokio::time::sleep(Duration::from_secs(ITEST_WAIT_TIME)).await;
 
-		// join a network (subscribe to a topic)
+		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
 
 		if let Ok(_) = node_2.query_network(gossip_request).await {
 			println!("Subscription successfull");
-			// query the network to confirm subscription of peer
+			// Query the network to confirm subscription of peer
 			let gossip_request = AppData::GossipsubGetInfo;
 			if let Ok(result) = node_2.query_network(gossip_request).await {
 				if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = result {
@@ -685,15 +684,14 @@ fn gossipsub_join_exit_itest_works() {
 	});
 }
 
-// GOSSIPSUB INTEGRATION TESTS
 #[cfg(feature = "test-listening-node")]
 #[test]
 fn gossipsub_message_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the node that will be dialled
+		// Set up the node that will be dialled
 		let mut node_1 = setup_node_1((49885, 49889)).await;
 
-		// join a network (subscribe to a topic)
+		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
 
 		let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
@@ -710,18 +708,17 @@ fn gossipsub_message_itest_works() {
 #[cfg(feature = "test-broadcast-node")]
 #[test]
 fn gossipsub_message_itest_works() {
-	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		// set up the second node that will dial
+		// Set up the second node that will dial
 		let (mut node_2, _) = setup_node_2((49885, 49889), (51887, 51887)).await;
 
-		// join a network (subscribe to a topic)
+		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
 
 		if let Ok(_) = node_2.query_network(gossip_request).await {
 			println!("Subscription successfull");
 
-			// prepare broadcast query
+			// Prepare broadcast query
 			let gossip_request = AppData::GossipsubBroadcastMessage {
 				topic: GOSSIP_NETWORK.to_string(),
 				message: vec!["Apple".to_string(), "nike".to_string()],
@@ -733,9 +730,3 @@ fn gossipsub_message_itest_works() {
 		}
 	});
 }
-
-// KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
-// The right function to use is sent_to_network() which will not return a Some(StreamId) but will
-// always return None. This is because it always succeeds and doesn't need to be tracked internally.
-// Do not use query_network() to send the command, if you do, it will succeed but you will get a
-// wrong error. The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).

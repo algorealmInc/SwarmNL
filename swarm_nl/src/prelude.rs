@@ -52,7 +52,7 @@ pub const MIN_PORT: u16 = 49152;
 /// Upper bound port range (u16::MAX).
 pub const MAX_PORT: u16 = 65535;
 
-/// Default network id
+/// Default network ID.
 pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
 /// This constant sets the shortest acceptable length for a network ID.
 /// The network ID identifies a network and ensures it's distinct from others.

@@ -1,7 +1,5 @@
 // Copyright 2024 Algorealm
 // Apache 2.0 License
-//
-// This file is a part of SwarmNL
 
 //! Core data structures and protocol implementations for building a swarm.
 
@@ -112,16 +110,22 @@ impl From<gossipsub::Event> for CoreEvent {
 
 /// Structure containing necessary data to build [`Core`].
 pub struct CoreBuilder<T: EventHandler + Clone + Send + Sync + 'static> {
+	/// The network ID of the network.
 	network_id: StreamProtocol,
+	/// The cryptographic keypair of the node.
 	keypair: Keypair,
+	/// The TCP and UDP ports to listen on.
 	tcp_udp_port: (Port, Port),
+	/// The bootnodes to connect to.
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+	/// The blacklist of peers to ignore.
 	blacklist: Blacklist,
-	/// the network event handler
+	/// The network event handler.
 	handler: T,
 	/// The size of the stream buffers to use to track application requests to the network layer
 	/// internally.
 	stream_size: usize,
+	/// The IP address to listen on.
 	ip_address: IpAddr,
 	/// Connection keep-alive duration while idle.
 	keep_alive_duration: Seconds,
@@ -137,7 +141,7 @@ pub struct CoreBuilder<T: EventHandler + Clone + Send + Sync + 'static> {
 	/// The `Behaviour` of the `Request-Response` protocol. The second field value is the function
 	/// to handle an incoming request from a peer.
 	request_response: Behaviour<Rpc, Rpc>,
-	/// The `Behaviour` of the `GossipSub` protocol
+	/// The `Behaviour` of the `GossipSub` protocol.
 	gossipsub: gossipsub::Behaviour,
 }
 
@@ -243,7 +247,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 
 	/// Configure the size of the stream buffers to use to track application requests to the network
 	/// layer internally. This should be as large an possible to prevent dropping off requests to
-	/// the network layer. Defaults to [`usize::MAX`]
+	/// the network layer. Defaults to [`usize::MAX`].
 	pub fn with_stream_size(self, size: usize) -> Self {
 		CoreBuilder {
 			stream_size: size,
@@ -291,10 +295,11 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { kademlia, ..self }
 	}
 
-	/// Configure the `Gossipsub` protocol for the network
+	/// Configure the `Gossipsub` protocol for the network.
+	/// 
 	/// # Panics
 	///
-	/// This function panics if `Gossipsub` cannot be configured properly
+	/// This function panics if `Gossipsub` cannot be configured properly.
 	pub fn with_gossipsub(
 		self,
 		config: gossipsub::Config,
@@ -317,7 +322,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		CoreBuilder { handler, ..self }
 	}
 
-	/// Return the id of the network
+	/// Return the id of the network.
 	pub fn network_id(&self) -> String {
 		self.network_id.to_string()
 	}
@@ -601,8 +606,6 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		let network_core = Core {
 			keypair: self.keypair,
 			application_sender,
-			// network_sender,
-			// application_receiver,
 			stream_request_buffer: stream_request_buffer.clone(),
 			stream_response_buffer: stream_response_buffer.clone(),
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
@@ -610,7 +613,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			state: self.handler,
 		};
 
-		// Spin up task to handle async operations and data on the network.
+		// Spin up task to handle async operations and data on the network
 		#[cfg(feature = "async-std-runtime")]
 		async_std::task::spawn(Core::handle_async_operations(
 			swarm,
@@ -620,7 +623,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			network_core.clone(),
 		));
 
-		// Spin up task to handle async operations and data on the network.
+		// Spin up task to handle async operations and data on the network
 		#[cfg(feature = "tokio-runtime")]
 		tokio::task::spawn(Core::handle_async_operations(
 			swarm,
@@ -713,7 +716,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		false
 	}
 
-	/// Return the node's `PeerId`
+	/// Return the node's `PeerId`.
 	pub fn peer_id(&self) -> PeerId {
 		self.keypair.public().to_peer_id()
 	}
@@ -836,9 +839,9 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 	///
 	/// If the internal buffer is full, it will return an error.
 	pub async fn query_network(&mut self, request: AppData) -> NetworkResult {
-		// send request
+		// Send request
 		if let Some(stream_id) = self.send_to_network(request).await {
-			// wait to recieve response from the network
+			// Wait to recieve response from the network
 			self.recv_from_network(stream_id).await
 		} else {
 			Err(NetworkError::StreamBufferOverflow)
@@ -899,10 +902,10 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 		let mut exec_queue_3 = ExecQueue::new();
 		let mut exec_queue_4 = ExecQueue::new();
 
-		// Loop to handle incoming application streams indefinitely.
+		// Loop to handle incoming application streams indefinitely
 		loop {
 			select! {
-						// handle incoming stream data
+						// Handle incoming stream data
 						stream_data = receiver.next() => {
 							match stream_data {
 								Some(incoming_data) => {
@@ -931,7 +934,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												},
 												// Store a value in the DHT and (optionally) on explicit specific peers
 												AppData::KademliaStoreRecord { key, value, expiration_time, explicit_peers } => {
-													// create a kad record
+													// Create a kad record
 													let mut record = Record::new(key.clone(), value);
 
 													// Set (optional) expiration time
@@ -1341,12 +1344,12 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													// We just recieved an `Identify` info from a peer.s
 													network_core.state.identify_info_recieved(peer_id, info.clone());
 
-													// disconnect from peer of the network id is different
+													// Disconnect from peer of the network id is different
 													if info.protocol_version != network_info.id.as_ref() {
-														// disconnect
+														// Disconnect
 														let _ = swarm.disconnect_peer_id(peer_id);
 													} else {
-														// add to routing table if not present already
+														// Add to routing table if not present already
 														let _ = swarm.behaviour_mut().kademlia.add_address(&peer_id, info.listen_addrs[0].clone());
 													}
 												}
@@ -1364,7 +1367,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 																	// Pass request data to configured request handler
 																	let response_data = network_core.state.rpc_incoming_message_handled(data);
 
-																	// construct an RPC
+																	// Construct an RPC
 																	let response_rpc = Rpc::ReqResponse { data: response_data };
 
 																	// Send the response
@@ -1432,7 +1435,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											established_in,
 										} => {
 											// Before a node dails a peer, it firstg adds the peer to its routing table.
-											// To enable DHT operations, the listener must do the same on establishing a new connection
+											// To enable DHT operations, the listener must do the same on establishing a new connection.
 											if let ConnectedPoint::Listener { send_back_addr, .. } = endpoint.clone() {
 												// Add peer to routing table
 												let _ = swarm.behaviour_mut().kademlia.add_address(&peer_id, send_back_addr);
