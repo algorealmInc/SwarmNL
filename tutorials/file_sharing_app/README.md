@@ -135,14 +135,14 @@ impl EventHandler for FileServer {
 }
 ```
 
-1. Set a timeout for nodes to initiate connections (this could be 5 seconds, our example is set to 10 for running the Docker example)
+2. Set a timeout for nodes to initiate connections (this could be 5 seconds, our example is set to 10 for running the Docker example)
 
 ```rust
 const NODE_1_WAIT_TIME: u64 = 10;
 const NODE_2_WAIT_TIME: u64 = 10;
 ```
 
-1. Create constants for the file name, file location and protobuf keypair.
+3. Create constants for the file name, file location and protobuf keypair.
 
 ```rust
 /// The key we're writing to the DHT
@@ -159,7 +159,7 @@ pub const PROTOBUF_KEYPAIR: [u8; 68] = [
 ];
 ```
 
-1. Create a function to set up _node_1_ using the specified protobuf keypair and application state from the previous steps.
+4. Create a function to set up _node_1_ using the specified protobuf keypair and application state from the previous steps.
 
 ```rust
 async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
@@ -181,7 +181,7 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
 }
 ```
 
-1. Create a function to set up _node_2_.
+5. Create a function to set up _node_2_.
 
 ```rust
 async fn setup_node_2(
@@ -220,7 +220,7 @@ async fn setup_node_2(
 }
 ```
 
-1. Implement the following methods from the `EventHandler` trait:
+6. Implement the following methods from the `EventHandler` trait:
 
 - [`fn rpc_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.rpc_incoming_message_handled)
 - [`fn gossipsub_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_handled)
@@ -263,7 +263,7 @@ async fn run_node_1() {
 }
 ```
 
-1. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.recv_from_network) to handle the request.
+7. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.recv_from_network) to handle the request.
 
 ```rust
 async fn run_node_2() {
@@ -323,7 +323,7 @@ async fn run_node_2() {
 }
 ```
 
-1. Create the main function that will run both nodes.
+8. Create the main function that will run both nodes.
 
 ```rust
 #[async_std::main]
