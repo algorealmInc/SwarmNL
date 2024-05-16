@@ -147,7 +147,7 @@ fn echo_for_node1_query_network() {
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		if let Ok(result) = setup_node_1((49600, 49601))
+		if let Ok(result) = setup_node_1((49600, 49623))
 			.await
 			.query_network(data_request)
 			.await
@@ -197,13 +197,13 @@ fn dial_peer_failure_works() {
 
 	// use tokio runtime to test async function
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
-		let stream_id = setup_node_1((49600, 49601))
+		let stream_id = setup_node_1((49611, 49601))
 			.await
 			.send_to_network(dial_request)
 			.await
 			.unwrap();
 
-		if let Ok(result) = setup_node_1((49500, 49501))
+		if let Ok(result) = setup_node_1((49507, 49508))
 			.await
 			.recv_from_network(stream_id)
 			.await
@@ -270,6 +270,9 @@ fn kademlia_store_records_works() {
 		{
 			println!("----> {:?}", result);
 			assert_eq!(AppResponse::KademliaStoreRecordSuccess, result);
+		}
+		else {
+			// do something  to ensure this test works
 		}
 	});
 }
