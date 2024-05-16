@@ -37,7 +37,7 @@ pub const PROTOBUF_KEYPAIR: [u8; 68] = [
 const NODE_1_WAIT_TIME: u64 = 5;
 
 /// Node 2 wait time (for node 1 to write to the DHT).
-const NODE_2_WAIT_TIME: u64 = 3;
+const NODE_2_WAIT_TIME: u64 = 5;
 
 /// Application State.
 #[derive(Clone)]

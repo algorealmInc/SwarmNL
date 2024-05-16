@@ -33,7 +33,7 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   - Protocol specification and handlers
   - Event handlers for network events and logging
 
-  ### Inegration example
+  ### Example
   
   #### Setup a node
 
