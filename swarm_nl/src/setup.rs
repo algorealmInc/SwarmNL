@@ -3,7 +3,7 @@
 
 //! Data structures and functions to setup a node and configure it for networking.
 
-#![doc = include_str!("../../doc/setup/NodeSetup.md")]
+#![doc = include_str!("../doc/setup/NodeSetup.md")]
 
 use std::collections::HashMap;
 

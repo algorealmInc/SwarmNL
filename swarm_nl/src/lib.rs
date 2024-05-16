@@ -2,7 +2,7 @@
 // Apache 2.0 License
 // This file is a part of SwarmNL
 
-#![doc = include_str!("../../../README.md")]
+#![doc = include_str!("../../README.md")]
 
 pub use crate::prelude::*;
 pub use libp2p::{
