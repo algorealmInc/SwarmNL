@@ -10,6 +10,8 @@ A 5 second timeout is set to give enough time for the nodes to communicate with 
 
 > This example uses `async-std-runtime` specified in the crate's Cargo.toml file to demonsrate SwarmNl's compatibility with using the async-std runtime.
 
+**Note:** The example requires a quorum of 1, which means that that if the second node does not run the first node will not be able to write to the DHT and will panic.
+
 ## Run the example
 
 To run this example, you'll need two terminals.

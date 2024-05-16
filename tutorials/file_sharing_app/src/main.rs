@@ -34,10 +34,10 @@ pub const PROTOBUF_KEYPAIR: [u8; 68] = [
 
 /// Node 1 wait time (for node 2 to initiate connection).
 /// This is useful because we need at least one connected peer (Quorum) to successfully write to the DHT.
-const NODE_1_WAIT_TIME: u64 = 5;
+const NODE_1_WAIT_TIME: u64 = 10;
 
 /// Node 2 wait time (for node 1 to write to the DHT).
-const NODE_2_WAIT_TIME: u64 = 5;
+const NODE_2_WAIT_TIME: u64 = 10;
 
 /// Application State.
 #[derive(Clone)]

@@ -253,7 +253,6 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[docify::export]
 	#[test]
 	fn default_config_works() {
 		let bootstrap_config = BootstrapConfig::default();
