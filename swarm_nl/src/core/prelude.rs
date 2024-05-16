@@ -13,8 +13,8 @@ use super::*;
 pub const NETWORK_READ_TIMEOUT: Seconds = 30;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
-/// the repsonse buffer (7 seconds).
-pub const TASK_SLEEP_DURATION: Seconds = 7;
+/// the repsonse buffer;
+pub const TASK_SLEEP_DURATION: Seconds = 3;
 
 /// Type that represents the response of the network layer to the application layer's event handler.
 type AppResponseResult = Result<AppResponse, NetworkError>;
