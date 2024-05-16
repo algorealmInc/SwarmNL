@@ -1,31 +1,36 @@
-/// Copyright (c) 2024 Algorealm
+// Copyright 2024 Algorealm
+// Apache 2.0 License
 
-// The module containing the data structures and functions to setup a node identity and
-/// configure it for networking.
-///
-/// This file is part of the SwarmNl library.
+//! Data structures and functions to setup a node and configure it for networking.
+
+#![doc = include_str!("../doc/setup/NodeSetup.md")]
+
 use std::collections::HashMap;
 
-use libp2p_identity::rsa;
+use crate::core::gossipsub_cfg::Blacklist;
+pub use crate::prelude::*;
+pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 
-/// Import the contents of the exported modules into this module
+/// Import the contents of the exported modules into this module.
 use super::*;
 
-/// Configuration data required for node bootstrap
+/// Configuration data required for node bootstrap.
 #[derive(Debug)]
 pub struct BootstrapConfig {
-	/// The port to listen on if using the TCP/IP protocol
+	/// The port to listen on if using the TCP/IP protocol.
 	tcp_port: Port,
-	/// The port to listen on if using the UDP or QUIC protocol
+	/// The port to listen on if using the UDP or QUIC protocol.
 	udp_port: Port,
-	/// The Cryptographic Keypair for node identification and message auth
+	/// The Cryptographic Keypair for node identification and message auth.
 	keypair: Keypair,
-	/// Bootstrap peers
+	/// Bootstrap peers.
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+	/// Blacklisted peers
+	blacklist: Blacklist,
 }
 
 impl BootstrapConfig {
-	/// Read from a bootstrap config file on disk
+	/// Read from a bootstrap config file on disk.
 	///
 	/// # Panics
 	///
@@ -37,28 +42,37 @@ impl BootstrapConfig {
 	/// Return a new `BootstrapConfig` struct populated by default (empty) values.
 	///
 	/// Must be called first if the config is to be explicitly built without reading `.ini` file
-	/// from disk
+	/// from disk.
 	pub fn new() -> Self {
 		BootstrapConfig {
-			// Default TCP/IP port if not specified
+			// Default TCP/IP port if not specified.
 			tcp_port: MIN_PORT,
-			// Default UDP port if not specified
+			// Default UDP port if not specified.
 			udp_port: MAX_PORT,
-			// Default node keypair type i.e Ed25519
+			// Default node keypair type i.e Ed25519.
 			keypair: Keypair::generate_ed25519(),
 			boot_nodes: Default::default(),
+			blacklist: Default::default(),
 		}
 	}
 
-	/// Configure available bootnodes
+	/// Configure available bootnodes.
 	pub fn with_bootnodes(mut self, boot_nodes: HashMap<PeerIdString, MultiaddrString>) -> Self {
-		// additive operation
+		// Additive operation
 		self.boot_nodes.extend(boot_nodes.into_iter());
 		self
 	}
 
-	/// Configure the TCP/IP port
-	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
+	/// Configure a list of peers to add to blacklist.
+	pub fn with_blacklist(mut self, list: Vec<PeerId>) -> Self {
+		// additive operation
+		self.blacklist.list.extend(list.into_iter());
+		self
+	}
+
+	/// Configure the TCP/IP port.
+	/// 
+	/// Note: Port must range between [`MIN_PORT`] and [`MAX_PORT`].
 	pub fn with_tcp(self, tcp_port: Port) -> Self {
 		if tcp_port > MIN_PORT && tcp_port < MAX_PORT {
 			BootstrapConfig { tcp_port, ..self }
@@ -67,8 +81,9 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Configure the UDP port
-	/// Port must range between [`MIN_PORT`] and [`MAX_PORT`]
+	/// Configure the UDP port.
+	///
+	/// Note: Port must range between [`MIN_PORT`] and [`MAX_PORT`]
 	pub fn with_udp(self, udp_port: Port) -> Self {
 		if udp_port > MIN_PORT && udp_port < MAX_PORT {
 			BootstrapConfig { udp_port, ..self }
@@ -77,15 +92,17 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Generate a Cryptographic Keypair.
+	/// Generate a Cryptographic Keypair for node identity creation and message signing.
+	///
 	/// An RSA keypair cannot be generated on-the-fly. It has to be generated from a `.pk8` file.
-	/// Hence the `Option` parameter is always `None` except in the case of RSA.
-	/// Please note that calling this function overrides whatever might have been read from the
+	/// Hence the `rsa_pk8_filepath` parameter must always be set to `None` except in the case of
+	/// RSA. Please note that calling this function overrides whatever might have been read from the
 	/// `.ini` file
 	///
-	/// # Panics (Only applies to the RSA keypair instance)
+	/// # Panics
 	///
 	/// This function will panic if:
+	/// 
 	/// 1. The RSA key type is specified and the `rsa_pk8_filepath` is set to `None`.
 	/// 2. If the file contains invalid data and an RSA keypair cannot be generated from it.
 	pub fn generate_keypair(self, key_type: KeyType, rsa_pk8_filepath: Option<&str>) -> Self {
@@ -98,7 +115,7 @@ impl BootstrapConfig {
 			KeyType::Ed25519 => Keypair::generate_ed25519(),
 			KeyType::RSA => {
 				let mut bytes = std::fs::read(rsa_pk8_filepath.unwrap()).unwrap_or_default();
-				// return RSA keypair generated from a .pk8 binary file
+				// Return RSA keypair generated from a .pk8 binary file
 				Keypair::rsa_from_pkcs8(&mut bytes).unwrap()
 			},
 			KeyType::Secp256k1 => Keypair::generate_secp256k1(),
@@ -115,7 +132,8 @@ impl BootstrapConfig {
 	/// # Panics
 	///
 	/// This function will panic if the `u8` buffer is not parsable into the specified key type.
-	/// This could be for one of two reasons:
+	/// This could be because one of two reasons:
+	/// 
 	/// 1. If the key type is valid, but the keypair data is not valid for that key type.
 	/// 2. If the key type is invalid.
 	pub fn generate_keypair_from_protobuf(self, key_type_str: &str, bytes: &mut [u8]) -> Self {
@@ -137,7 +155,7 @@ impl BootstrapConfig {
 
 			BootstrapConfig { keypair, ..self }
 		} else {
-			// generate a default Ed25519 keypair
+			// Generate a default Ed25519 keypair
 			BootstrapConfig {
 				keypair: Keypair::generate_ed25519(),
 				..self
@@ -145,23 +163,28 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Return a node's cryptographic keypair
+	/// Return a node's cryptographic keypair.
 	pub fn keypair(&self) -> Keypair {
 		self.keypair.clone()
 	}
 
-	/// Return the configured ports in a tuple i.e (TCP Port, UDP port)
+	/// Return the configured ports in a tuple i.e (TCP Port, UDP port).
 	pub fn ports(&self) -> (Port, Port) {
 		(self.tcp_port, self.udp_port)
 	}
 
-	/// Return the configured bootnodes for the network
+	/// Return the configured bootnodes for the network.
 	pub fn bootnodes(&self) -> HashMap<PeerIdString, MultiaddrString> {
 		self.boot_nodes.clone()
 	}
+
+	/// Return the 	`PeerId`'s of nodes that are to be blacklisted.
+	pub fn blacklist(&self) -> Blacklist {
+		self.blacklist.clone()
+	}
 }
 
-/// Implement [`Default`] for [`BootstrapConfig`]
+/// [`Default`] implementation for [`BootstrapConfig`].
 impl Default for BootstrapConfig {
 	fn default() -> Self {
 		Self::new()
@@ -170,8 +193,6 @@ impl Default for BootstrapConfig {
 
 #[cfg(test)]
 mod tests {
-	use libp2p_identity::ed25519;
-
 	use super::*;
 	use std::fs;
 	use std::panic;
@@ -232,34 +253,35 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[docify::export]
 	#[test]
 	fn default_config_works() {
 		let bootstrap_config = BootstrapConfig::default();
 
-		// default port values
+		// Default port values
 		assert_eq!(bootstrap_config.tcp_port, MIN_PORT);
 		assert_eq!(bootstrap_config.udp_port, MAX_PORT);
 
-		// and we know that the default is Ed25519
+		// .. and we know that the default is Ed25519
 		let keypair = bootstrap_config.keypair;
 		assert_eq!(keypair.key_type(), KeyType::Ed25519);
 
-		// bootnodes aren't configured by default so we expect an empty HashMap
+		// Bootnodes aren't configured by default so we expect an empty HashMap
 		assert_eq!(bootstrap_config.boot_nodes, HashMap::new());
 	}
 
 	#[test]
 	fn new_config_with_bootnodes_works() {
-		// setup test data
+		// Setup test data
 		let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
-		let mut key_1 = "12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
-		let mut val_1 = "/ip4/192.168.1.205/tcp/1509".to_string();
-		let mut key_2 = "12A0ZooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
-		let mut val_2 = "/ip4/192.168.1.205/tcp/1588".to_string();
+		let key_1 = "12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
+		let val_1 = "/ip4/192.168.1.205/tcp/1509".to_string();
+		let key_2 = "12A0ZooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
+		let val_2 = "/ip4/192.168.1.205/tcp/1588".to_string();
 		bootnodes.insert(key_1.clone(), val_1.clone());
 		bootnodes.insert(key_2.clone(), val_2.clone());
 
-		// we've inserted two bootnodes
+		// We've inserted two bootnodes
 		let bootstrap_config = BootstrapConfig::new().with_bootnodes(bootnodes);
 		assert_eq!(bootstrap_config.bootnodes().len(), 2);
 
@@ -271,15 +293,15 @@ mod tests {
 
 	#[test]
 	fn new_config_with_tcp_port_works() {
-		// first assert that the default is MIN_PORT
+		// First assert that the default is MIN_PORT
 		let bootstrap_config = BootstrapConfig::default();
 		assert_eq!(bootstrap_config.ports().0, MIN_PORT);
 
-		// now set a custom port
+		// Now set a custom port
 		let bootstrap_config_with_tcp = bootstrap_config.with_tcp(49666);
 		assert_eq!(bootstrap_config_with_tcp.ports().0, 49666);
 
-		// now set an invalid port and check it falls back to the default tcp port value
+		// Now set an invalid port and check it falls back to the default tcp port value
 		// Note: MAX_PORT+1 would overflow the u16 type
 		let bootstrap_config_invalid_tcp_port = BootstrapConfig::new().with_tcp(MIN_PORT - 42);
 
@@ -289,29 +311,29 @@ mod tests {
 
 	#[test]
 	fn new_config_with_udp_port_works() {
-		// default should be MAX_PORT
+		// Default should be MAX_PORT
 		let bootstrap_config = BootstrapConfig::default();
 		assert_eq!(bootstrap_config.ports().1, MAX_PORT);
 
-		// now set a custom port
+		// Now set a custom port
 		let bootstrap_config_with_udp = bootstrap_config.with_udp(55555);
 		assert_eq!(bootstrap_config_with_udp.ports().1, 55555);
 
-		// now set an invalid port and check it falls back to the default udp port value
+		// Now set an invalid port and check it falls back to the default udp port value
 		let bootstrap_config_invalid_udp_port = BootstrapConfig::new().with_udp(MIN_PORT - 42);
 		assert_eq!(bootstrap_config_invalid_udp_port.ports().1, MAX_PORT);
 	}
 
 	#[test]
 	fn key_type_is_invalid() {
-		// invalid keytype
+		// Invalid keytype
 		let invalid_keytype = "SomeMagicCryptoType";
 
-		// valid keypair
+		// Valid keypair
 		let mut ed25519_serialized_keypair =
 			Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
-		// should not panic but default to ed25519
+		// Should not panic but default to ed25519
 		let result = panic::catch_unwind(move || {
 			let bootstrap_config = BootstrapConfig::default()
 				.generate_keypair_from_protobuf(invalid_keytype, &mut ed25519_serialized_keypair);
@@ -328,7 +350,7 @@ mod tests {
 		let valid_key_types = ["Ed25519", "RSA", "Secp256k1", "Ecdsa"];
 		let mut invalid_keypair: [u8; 2] = [0; 2];
 
-		// keypair is invalid for each valid key type
+		// Keypair is invalid for each valid key type
 		let _ = BootstrapConfig::default()
 			.generate_keypair_from_protobuf(valid_key_types[0], &mut invalid_keypair);
 		let _ = BootstrapConfig::default()
@@ -355,47 +377,47 @@ mod tests {
 
 	#[test]
 	fn rsa_with_invalid_contents_should_panic() {
-		// create an RSA file with invalid contents
+		// Create an RSA file with invalid contents
 		let file_path = "invalid_rsa_keypair_temp_file.pk8";
 		let invalid_keypair: [u8; 64] = [0; 64];
 		std::fs::write(file_path, invalid_keypair).unwrap();
 
 		let result = panic::catch_unwind(|| {
-			// should panic when parsing invalid RSA file
+			// Should panic when parsing invalid RSA file
 			let _ = BootstrapConfig::default().generate_keypair(KeyType::RSA, Some(file_path));
 		});
 
-		// this will return an error
+		// This will return an error
 		assert!(result.is_err());
 
-		// clean-up invalid_rsa_keypair_temp_file.pk8
+		// Clean-up invalid_rsa_keypair_temp_file.pk8
 		fs::remove_file(file_path).unwrap_or_default();
 	}
 
 	#[test]
 	fn rsa_from_valid_file_works() {
-		// create a valid private.pk8 file
+		// Create a valid private.pk8 file
 		generate_rsa_keypair_files();
 
-		let mut bootstrap_config =
+		let bootstrap_config =
 			BootstrapConfig::new().generate_keypair(KeyType::RSA, Some("private.pk8"));
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::RSA);
 
-		// clean-up RSA files
+		// Clean-up RSA files
 		fs::remove_file("private.pk8").unwrap_or_default();
 		fs::remove_file("private.pem").unwrap_or_default();
 	}
 
 	#[test]
 	fn generate_keypair_from_protobuf_ed25519_works() {
-		// generate a valid keypair for ed25519
+		// Generate a valid keypair for ed25519
 		let key_type_str = "Ed25519";
 		let mut ed25519_serialized_keypair =
 			Keypair::generate_ed25519().to_protobuf_encoding().unwrap();
 
-		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new()
+		// Add to bootstrap config from protobuf
+		let bootstrap_config = BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type_str, &mut ed25519_serialized_keypair);
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ed25519);
@@ -403,13 +425,13 @@ mod tests {
 
 	#[test]
 	fn generate_keypair_from_protobuf_ecdsa_works() {
-		// generate a valid keypair for ecdsa
+		// Generate a valid keypair for ecdsa
 		let key_type_str = "Ecdsa";
 		let mut ecdsa_serialized_keypair =
 			Keypair::generate_ecdsa().to_protobuf_encoding().unwrap();
 
-		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new()
+		// Add to bootstrap config from protobuf
+		let bootstrap_config = BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type_str, &mut ecdsa_serialized_keypair);
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Ecdsa);
@@ -417,14 +439,14 @@ mod tests {
 
 	#[test]
 	fn generate_keypair_from_protobuf_secp256k1_works() {
-		// generate a valid keypair for Secp256k1
+		// Generate a valid keypair for Secp256k1
 		let key_type_str = "Secp256k1";
 		let mut secp256k1_serialized_keypair = Keypair::generate_secp256k1()
 			.to_protobuf_encoding()
 			.unwrap();
 
-		// add to bootstrap config from protobuf
-		let mut bootstrap_config = BootstrapConfig::new()
+		// Add to bootstrap config from protobuf
+		let bootstrap_config = BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type_str, &mut secp256k1_serialized_keypair);
 
 		assert_eq!(bootstrap_config.keypair().key_type(), KeyType::Secp256k1);

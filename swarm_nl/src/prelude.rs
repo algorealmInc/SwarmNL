@@ -1,17 +1,19 @@
-use libp2p_identity::{KeyType, PeerId};
+// Copyright 2024 Algorealm
+// Apache 2.0 License
+
+//! Types and traits that are used throughout SwarmNL.
+
+use libp2p_identity::KeyType;
 use std::net::Ipv4Addr;
-/// Copyright (c) 2024 Algorealm
-///  
-/// This file is part of the SwarmNL library.
 use thiserror::Error;
 
 /// Default IP address when no address is specified.
 pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
 
 /// Default amount of time to keep a connection alive.
-pub static DEFAULT_KEEP_ALIVE_DURATION: u64 = 60;
+pub static DEFAULT_KEEP_ALIVE_DURATION: Seconds = 60;
 
-/// Library error type containing all custom errors that could be encountered
+/// Library error type containing all custom errors that could be encountered.
 #[derive(Error, Debug)]
 pub enum SwarmNlError {
 	#[error("could not read bootstrap config file")]
@@ -30,32 +32,36 @@ pub enum SwarmNlError {
 	RemotePeerDialError(String),
 	#[error("could not parse provided network id")]
 	NetworkIdParseError(String),
+	#[error("could not configure node for gossiping")]
+	GossipConfigError,
 }
 
-/// Generic SwarmNl result type
+/// Generic SwarmNl result type.
 pub type SwarmNlResult<T> = Result<T, SwarmNlError>;
-/// Port type
+/// Port type.
 pub type Port = u16;
-/// Seconds type
+/// Seconds type.
 pub type Seconds = u64;
-/// The stringified PeerId type
+/// The stringified `PeerId` type.
 pub type PeerIdString = String;
-/// The stringified Multiaddr type
+/// The stringified `Multiaddr` type.
 pub type MultiaddrString = String;
 
-/// Port ranges
+/// Lower bound port range (u16::MIN).
 pub const MIN_PORT: u16 = 49152;
+/// Upper bound port range (u16::MAX).
 pub const MAX_PORT: u16 = 65535;
 
-/// Default network id
+/// Default network ID.
 pub static DEFAULT_NETWORK_ID: &str = "/swarmnl/1.0";
-/// Minimum network (protocol) id. This helps ensure that the protocol id is well formed and
-/// contains a reasonable value because it is what identifies a network, makes it unique and
-/// separates it from others.
+/// This constant sets the shortest acceptable length for a network ID.
+/// The network ID identifies a network and ensures it's distinct from others.
 pub static MIN_NETWORK_ID_LENGTH: u8 = 4;
 
-/// Implement From<&str> for libp2p2_identity::KeyType.
-/// We'll define a custom trait because of the Rust visibility rule to solve this problem
+/// An implementation of [`From<&str>`] for [`KeyType`] to read a key type from a bootstrap config
+/// file.
+///
+/// We define a custom trait because of the Rust visibility rule.
 pub trait CustomFrom {
 	fn from(string: &str) -> Option<Self>
 	where
@@ -74,15 +80,15 @@ impl CustomFrom for KeyType {
 	}
 }
 
-/// Supported transport protocols
+/// Supported transport protocols.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum TransportOpts {
-	/// QUIC transport protocol enabled with TCP/IP as fallback.
-	/// DNS lookup is also configured by default
+	/// QUIC transport protocol enabled with TCP/IP as fallback. DNS lookup is also configured by
+	/// default.
 	TcpQuic { tcp_config: TcpConfig },
 }
 
-/// TCP setup Config
+/// TCP setup configuration.
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum TcpConfig {
 	/// Default configuration specified in the [libp2p docs](https://docs.rs/libp2p/latest/libp2p/tcp/struct.Config.html#method.new).
@@ -98,9 +104,3 @@ pub enum TcpConfig {
 		// port_resuse: bool
 	},
 }
-
-/// A unique type that indicates that a struct is not yet initialized to its default state
-pub struct NotInitialiazed;
-
-/// A unique type that indicates that a struct has been default configured
-pub struct Initialized;

@@ -1,21 +1,18 @@
-/// Copyright (c) 2024 Algorealm
-///
-/// This file is part of the SwarmNL library.
+// Copyright 2024 Algorealm
+// Apache 2.0 License
 
-/// Re-exports
+#![doc = include_str!("../../README.md")]
+
 pub use crate::prelude::*;
-pub use futures::{
-	channel::mpsc::{self, Receiver, Sender},
-	SinkExt, StreamExt,
-};
 pub use libp2p::{
 	core::{transport::ListenerId, ConnectedPoint, Multiaddr},
+	ping::Failure,
 	swarm::ConnectionId,
 };
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
-pub use async_trait::async_trait;
 
 pub mod core;
 mod prelude;
 pub mod setup;
 pub mod util;
+pub mod testing_guide;
