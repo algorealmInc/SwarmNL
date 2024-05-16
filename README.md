@@ -38,7 +38,7 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
 
 ## Features and examples
 
-### Node configuration example
+### Node configuration
 
 SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
 
@@ -226,7 +226,7 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
       // ...
   ```
 
-### Node communication example
+### Node communication
 
 For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
 
