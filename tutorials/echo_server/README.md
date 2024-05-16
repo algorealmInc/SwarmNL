@@ -1,19 +1,41 @@
-// Copyright 2024 Algorealm
+# Echo server example
 
-/// This crate demonstrates how to use SwarmNl. Here, we build a simple echo server that
-/// recieves inout from stdin, writes it to the network layer and then recieves it
-/// back from the network.
+To run this example, cd into the root of this directory and run:
 
-use swarm_nl::core::{AppData, AppResponse, Core, CoreBuilder, EventHandler};
-use swarm_nl::setup::BootstrapConfig;
-use swarm_nl::{PeerId, Port};
-use std::io::{self, BufRead};
+```bash
+cargo run
+```
+ 
+Then submit an input into the terminal and watch your input get echoed back to you.
 
-/// Our application state.
+## Run with Docker
+
+Build:
+
+```bash
+docker build -t echo-server .
+```
+
+Run:
+
+```bash
+docker run -it echo-server
+```
+
+Then submit an input into the terminal and watch your input get echoed back to you.
+
+Hit `Ctrl+D` to exit.
+
+## Tutorial
+
+1. Define a custom handler for application state.
+
+```rust
+// 1a. Define your application state.
 #[derive(Clone)]
 struct EchoServer;
 
-/// Define custom handler for application state.
+/// 1b. Define custom handler for application state.
 impl EventHandler for EchoServer {
 	// We're just echoing the data back
 	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -26,8 +48,12 @@ impl EventHandler for EchoServer {
 		println!("Recvd incoming gossip: {:?}", data);
 	}
 }
+```
 
-/// Setup first node using default config.
+2. Create an async function to set up a node using the default configuration provided by SwarmNl and specify the ports your want to use.
+
+```rust
+// Setup the node
 pub async fn setup_node(ports: (Port, Port)) -> Core<EchoServer> {
 	// Application state
 	let state = EchoServer;
@@ -43,14 +69,17 @@ pub async fn setup_node(ports: (Port, Port)) -> Core<EchoServer> {
 		.await
 		.unwrap()
 }
+```
 
-// Run server
+3. Create a main function to run the server and echo lines read from stdin over the network.
+
+```rust
 #[tokio::main]
 async fn main() {
 	let stdin = io::stdin();
 	let mut handle = stdin.lock();
 
-	// Create node
+	// 3a. Create node
 	let mut node = setup_node((55000, 46000)).await;
 
 	println!("Welcome to the Echo-Server SwarmNl example.");
@@ -70,10 +99,10 @@ async fn main() {
 
 		let input = buffer.trim();
 
-		// Prepare an Echo request to send to the network
+		// 3b. Prepare an Echo request to send to the network
 		let echo_request = AppData::Echo(input.to_string());
 
-		// Send request to the network layer and retrieve response
+		// 3c. Send request to the network layer and retrieve response
 		if let Ok(result) = node.query_network(echo_request).await {
 			// Echo to stdout
 			if let AppResponse::Echo(output) = result {
@@ -85,3 +114,6 @@ async fn main() {
 		buffer.clear();
 	}
 }
+```
+
+The server simply creates an Echo request using [`AppData`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/enum.AppData.html#variant.Echo), sends it to the network using [`query_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.query_network) and prints the string received from [`AppResponse`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/enum.AppResponse.html#variant.Echo) to the terminal.
