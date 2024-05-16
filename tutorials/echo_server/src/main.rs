@@ -3,13 +3,6 @@
 /// This crate demonstrates how to use SwarmNl. Here, we build a simple echo server that
 /// recieves inout from stdin, writes it to the network layer and then recieves it
 /// back from the network.
-/// 
-/// To run this example, cd into the root of the repository and run:
-/// ```bash
-/// cargo run
-/// ```
-/// 
-/// Then type into the terminal and watch your input get echoed back to you.
 
 use swarm_nl::core::{AppData, AppResponse, Core, CoreBuilder, EventHandler};
 use swarm_nl::setup::BootstrapConfig;
@@ -29,7 +22,7 @@ impl EventHandler for EchoServer {
 	}
 
 	// Handle the incoming gossip message
-	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
+	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, data: Vec<String>) {
 		println!("Recvd incoming gossip: {:?}", data);
 	}
 }

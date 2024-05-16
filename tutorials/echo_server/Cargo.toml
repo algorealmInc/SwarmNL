@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-swarm_nl = { path = "../../swarm_nl", features = ["tokio-runtime"] }
+swarm_nl = { git = "https://github.com/algorealmInc/SwarmNL.git", features = ["tokio-runtime"] }
 tokio = { version = "1.37.0", features = ["full"] }
