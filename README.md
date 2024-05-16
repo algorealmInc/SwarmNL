@@ -28,9 +28,9 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
 
 Have a look at some tutorials that demonstrate the use of SwarmNl in various contexts:
 
-- [Echo server tutorial](/tutorials/echo_server/README.md): demonstrates a simple use case of setting up a node and querying the network layer.
-- [File sharing application tutorial](/tutorials/file_sharing_app/README.md): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
-- [Simple game tutorial](/tutorials/simple_game/README.md): demonstrates communicating with peers over the network through gossiping.
+- [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/echo_server): demonstrates a simple use case of setting up a node and querying the network layer.
+- [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/file_sharing_app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
+- [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/simple_game): demonstrates communicating with peers over the network through gossiping.
 
 ## Documentation
 
