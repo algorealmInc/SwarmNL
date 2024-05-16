@@ -3,25 +3,35 @@
 # SwarmNL
 **A library to build custom networking layers for decentralized applications**
 
-SwarmNL is a library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by libp2p, SwarmNL simplifies networking, so you can focus on building.
+SwarmNL is a library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by [libp2p](https://docs.libp2p.io/), SwarmNL simplifies networking so developers can focus on building.
 
 ## Why SwarmNL?
-SwarmNL makes buiding a peer-to-peer decentralized and distributed networking stack for your application a breeze. With SwarmNL, you can effortlessly configure nodes, tailor network conditions, and fine-tune behaviors specific to your project's needs, allowing you to dive into networking without the usual hassle.
+SwarmNL makes buiding a peer-to-peer decentralized and distributed networking stack for your application a breeze. With SwarmNL, you can effortlessly configure nodes, tailor network conditions, and fine-tune behaviors specific to your project's needs, allowing you to dive into networking without any hassle.
 
-Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic. It's that easy!
+Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic.
 
-Have a look at the [`swarmnl_guides::guides`] to get started.
+## Tutorials
+
+Have a look at some tutorials that demonstrate the use of SwarmNl in various contexts:
+
+- [Echo server]()
+- [File sharing app]()
+- [Simple game]()
+
+## Documentation
+
+Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html).
 
 ## Features
 
 - **Node Configuration**: SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
 
-  - Selection and configuration of the transport layers to be supported by the node.
+  - Selection and configuration of the transport layers to be supported by the node
   - Selection of cryptographic keypairs (ed25519, RSA, secp256k1, ecdsa)
-  - Storage and retrieval of keypair locally.
-  - PeerID and multiaddress generation.
-  - Protocol specification and handlers.
-  - Event handlers for network events and logging.
+  - Storage and retrieval of keypair locally
+  - PeerID and multiaddress generation
+  - Protocol specification and handlers
+  - Event handlers for network events and logging
 
   #### Example
 
@@ -186,7 +196,7 @@ Have a look at the [`swarmnl_guides::guides`] to get started.
   - _Scaling involving techniques like sharding, data forwarding etc_.
   - _IPFS upload and download interfaces_.
 
-Again, SwarmNL simplifies networking so you can focus on building that world-changing application of yours! Cheers! 🥂 
+In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂 
 
-With ❤️ from Deji and Sacha.
+With ❤️ from [Deji](https://github.com/thewoodfish) and [Sacha](https://github.com/sacha-l).
 
