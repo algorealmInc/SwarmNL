@@ -147,6 +147,7 @@ mod tests {
 			"boot_nodes",
 			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
 		);
+		config.with_section(Some("blacklist")).set("blacklist", "[]");
 		// write config to a new INI file
 		config.write_to_file(file_path).unwrap_or_default();
 	}
@@ -186,6 +187,8 @@ mod tests {
 			"boot_nodes",
 			"[12D3KooWGfbL6ZNGWqS11MoptH2A7DB1DG6u85FhXBUPXPVkVVRq:/ip4/192.168.1.205/tcp/1509]",
 		);
+
+		config.with_section(Some("blacklist")).set("blacklist", "[]");
 
 		// write config to the new INI file
 		config.write_to_file(file_path).unwrap_or_default();
