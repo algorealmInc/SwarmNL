@@ -33,7 +33,9 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   - Protocol specification and handlers
   - Event handlers for network events and logging
 
-  #### Example
+  ### Inegration example
+  
+  #### Setup a node
 
   ```rust
         //! Using the default node setup configuration and the default network event handler
@@ -124,7 +126,7 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
   - A simple RPC mechanism to exchange data quickly between peers.
   - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
-  #### Example
+  #### Communicate with the network layer
 
   ```rust
         //! Communicate with remote nodes using the simple and familiar async-await paradigm.
