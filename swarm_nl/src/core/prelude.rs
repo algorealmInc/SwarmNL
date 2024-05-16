@@ -44,7 +44,7 @@ pub(super) enum StreamData {
 pub enum AppData {
 	/// A simple echo message.
 	Echo(String),
-	/// Dail peer
+	/// Dail peer.
 	DailPeer(PeerId, MultiaddrString),
 	/// Store a value associated with a given key in the Kademlia DHT.
 	KademliaStoreRecord {
