@@ -178,6 +178,8 @@ async fn run_node_1() {
 	// What are we writing to the DHT?
 	// A file we have on the fs and the location of the file, so it can be easily retrieved
 
+	println!("[1] >>>> Writing file location to DHT: {}", String::from_utf8_lossy(KADEMLIA_KEY.as_bytes()));
+
 	// Prepare a query to write to the DHT
 	let (key, value, expiration_time, explicit_peers) = (
 		KADEMLIA_KEY.as_bytes().to_vec(),
@@ -216,7 +218,7 @@ async fn run_node_2() {
 	if let Ok(result) = node_2.query_network(kad_request).await {
 		// We have our response
 		if let AppResponse::KademliaLookupSuccess(value) = result {
-			println!("File read from DHT: {}", String::from_utf8_lossy(&value));
+			println!("[2] >>>> File read from DHT: {}", String::from_utf8_lossy(&value));
 			// Now prepare an RPC query to fetch the file from the remote node
 			let fetch_key = vec![value];
 
@@ -231,7 +233,7 @@ async fn run_node_2() {
 
 			// If we used `query_network(0)`, we won't have been able to print here
 			println!(
-				"A fetch request has been sent to peer: {:?}",
+				"[2] >>>> A fetch request has been sent to peer: {:?}",
 				node_1_peer_id
 			);
 
@@ -245,7 +247,7 @@ async fn run_node_2() {
 					let file_str = String::from_utf8_lossy(&file);
 
 					// Print to stdout
-					println!("Here is the file delivered from the remote peer:");
+					println!("[2] >>>> Here is the file delivered from the remote peer:");
 					println!();
 					println!("{}", file_str);
 				}
