@@ -1,28 +1,57 @@
-//! Copyright (c) Algorealm 2024
+# Simple game example
 
-//! BEST GUESSER GAME!
-//! 
-//! This crate demonstrates how to use SwarmNl by building a simple game using two nodes.
-//! 
-//! The game's logic is as follows:
-//! - Node 1 and Node 2 connect to each other
-//! - Then at an interval, they each guess a value
-//! - The value is gossiped to the other peer
-//! - The incoming value is then compared with the local value
-//! - If the local value is greater, a score count is increased
-//! - Whoever gets to the HIGHT_SCORE first wins the game and gossips the result
-//! - The result is exchanged and the winner is announced on both nodes
-//! - Once the winner is announced, the game ends and both nodes exit
+This example runs a simple guessing game between two nodes. The game's logic is as follows:
 
-use std::{collections::HashMap, num::NonZeroU32, time::Duration};
+- Node 1 and Node 2 connect to each other
+- Then at an interval, they each guess a value
+- The value is gossiped to the other peer
+- The incoming value is then compared with the local value
+- If the local value is greater, a score count is increased
+- Whoever gets to the HIGHT_SCORE first wins the game and gossips the result
+- The result is exchanged and the winner is announced on both nodes
+- Once the winner is announced, the game ends and both nodes exit
 
-use rand::Rng;
-use swarm_nl::{
-	core::{AppData, Core, CoreBuilder, EventHandler},
-	setup::BootstrapConfig,
-	ConnectedPoint, ConnectionId, Keypair, ListenerId, MessageId, Multiaddr, PeerId, Port,
-};
+We filter every guess that is greater than 10, and each guess that is greater than 10 is dropped at . All other guesses are gossiped to the network.
 
+Guesses that are greater than 10 on arrival will not be propagated to the application for handling, but will be dropped at the application layer on arrival because of the filtering logic that's implemented.
+
+> This example uses `tokio-runtime`, specified in the crate's Cargo.toml file. You can also run this example using `async-std-runtime` by updating your Cargo.toml file accordingly.
+
+## Run the example
+
+To run this example, you'll need two terminals.
+
+1. In the first terminal, cd into the root of this directory and run:
+
+```bash
+cargo run --features=first-node
+```
+
+1. In the second terminal, cd into the root of this directory and _immediately_ run (there's a 5 second timeout after which the first node will panic if it doesn't connect to the second node):
+
+```bash
+cargo run --features=second-node
+```
+
+## Run with Docker
+
+Build:
+
+```bash
+docker build -t simple-game-demo .
+```
+
+Run:
+
+```bash
+docker run -it simple-game-demo
+```
+
+## Tutorial
+
+1. In a `main.rs` file, start by defining the constants we'll need to run our guessing game.
+
+```rust
 /// High score to determine winner
 const HIGH_SCORE: i32 = 5;
 
@@ -43,7 +72,11 @@ const WAIT_TIME: u64 = 4;
 
 /// Time to sleep for before generating new number.
 const GAME_SLEEP_TIME: u64 = 2;
+```
 
+2. Define your application state and implement `EventHandler`:
+
+```rust
 /// Game state
 #[derive(Clone)]
 struct Game {
@@ -79,15 +112,32 @@ impl EventHandler for Game {
 		);
 	}
 
-	/// Event that announces that a peer has just joined a network.
+    // -- rest of the `EventHandler` implementation goes here --
+}
+```
+
+2. Implement the event handler methods we'll need for the game. These include:
+
+- [`gossipsub_subscribe_message_recieved`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#method.gossipsub_subscribe_message_recieved)
+- [`gossipsub_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_handled)
+- [`gossipsub_incoming_message_filtered`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_filtered)
+- [`rpc_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.rpc_incoming_message_handled)
+
+For `gossipsub_subscribe_message_recieved`:
+
+```rust
+/// Event that announces that a peer has just joined a network.
 	fn gossipsub_subscribe_message_recieved(&mut self, peer_id: PeerId, topic: String) {
 		println!(
 			"[[Node {}]] >> Peer {:?} just joined the mesh network for topic: {}",
 			self.node, peer_id, topic
 		);
 	}
+```
+For `gossipsub_incoming_message_handled`:
 
-	/// Event that announces the arrival of a gossip message.
+```rust
+/// Event that announces the arrival of a gossip message.
 	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, data: Vec<String>) {
 		println!(
 			"[[Node {}]] >> incoming data from peer -> {}: {}",
@@ -120,8 +170,12 @@ impl EventHandler for Game {
 			);
 		}
 	}
+```
 
-	/// Event that announces the beginning of the filtering and authentication of the incoming
+For `gossipsub_incoming_message_filtered`:
+
+```rust
+/// Event that announces the beginning of the filtering and authentication of the incoming
 	/// gossip message. It returns a boolean to specify whether the massage should be dropped or
 	/// should reach the application. All incoming messages are allowed in by default.
 	fn gossipsub_incoming_message_filtered(
@@ -132,33 +186,23 @@ impl EventHandler for Game {
 		topic: String,
 		data: Vec<String>,
 	) -> bool {
-		// Drop all guesses that a greater than 10
-		// Parse our data
-		match data[0].as_str() {
-			"guess" => {
-				// Our remote peer has made a guess
-				let remote_peer_guess = data[1].parse::<i32>().unwrap();
-
-				if remote_peer_guess > 10 {
-					println!(
-						"[[Node {}]] >> Message dropped, remote guess: {}",
-						self.node, remote_peer_guess
-					);
-					return false;
-				}
-			},
-			_ => {},
-		}
-
 		true
 	}
+```
 
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+For `rpc_incoming_message_handled`:
+
+```rust
+fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		// Just echo it back
 		data
 	}
-}
+```
 
+
+3. Create a function to set up _node_1_ using the specified protobuf keypair and application state from the previous steps.
+
+```rust
 /// Used to create a detereministic node 1.
 async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
@@ -181,8 +225,11 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
 		.await
 		.unwrap()
 }
+```
 
-/// Setup node 2.
+5. Create a function to set up _node_2_.
+
+```rust
 async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<Game>, PeerId) {
 	let game = Game {
 		node: 2,
@@ -218,8 +265,11 @@ async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<
 		peer_id,
 	)
 }
+```
 
-/// Run node 1
+1. Create a function that runs _node 1_ and loops indefinately to receive and respond to network events (i.e. the RPC request of data on the file system).
+
+```rust
 async fn run_node_1() {
 	// Set up node
 	let mut node_1 = setup_node_1((49666, 49606)).await;
@@ -237,7 +287,7 @@ async fn run_node_1() {
 		// The loop stops when we have a winner
 		loop {
 			let mut rng = rand::thread_rng();
-			let random_u32: i32 = rng.gen_range(1..=20);
+			let random_u32: i32 = rng.gen_range(1..=10);
 
 			// Save as current
 			node_1.state.lock().await.current_guess = random_u32;
@@ -288,8 +338,11 @@ async fn run_node_1() {
 		panic!("Could not join mesh network");
 	}
 }
+```
 
-/// Run node 2
+7. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.recv_from_network) and [`send_to_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.send_to_network) to handle the request.
+
+```rust
 async fn run_node_2() {
 	// Set up node 2 and initiate connection to node 1
 	let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
@@ -358,8 +411,12 @@ async fn run_node_2() {
 		panic!("Could not join mesh network");
 	}
 }
+```
 
-#[tokio::main]
+8. Create the main function that will run both nodes.
+
+```rust
+#[async_std::main]
 async fn main() {
 	#[cfg(feature = "first-node")]
 	run_node_1().await;
@@ -367,3 +424,6 @@ async fn main() {
 	#[cfg(feature = "second-node")]
 	run_node_2().await;
 }
+```
+
+That's it! You've just created a guessing game app using SwarmNl.
