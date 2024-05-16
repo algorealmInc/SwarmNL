@@ -1,32 +1,40 @@
-use std::io::{self, BufRead};
 /// Copyright (c) Algorealm 2024
-
+/// 
 /// This crate demonstrates how to use SwarmNl. Here, we build a simple echo server that
 /// recieves inout from stdin, writes it to the network layer and then recieves it
-/// back from the network
+/// back from the network.
+/// 
+/// To run this example, cd into the root of the repository and run:
+/// ```bash
+/// cargo run
+/// ```
+/// 
+/// Then type into the terminal and watch your input get echoed back to you.
+
 use swarm_nl::core::{AppData, AppResponse, Core, CoreBuilder, EventHandler};
 use swarm_nl::setup::BootstrapConfig;
 use swarm_nl::{PeerId, Port};
+use std::io::{self, BufRead};
 
-/// Our application state
+/// Our application state.
 #[derive(Clone)]
 struct EchoServer;
 
-/// Define custom handler for application state
+/// Define custom handler for application state.
 impl EventHandler for EchoServer {
-	// we're just echoing the data back
+	// We're just echoing the data back
 	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		println!("Recvd incoming RPC: {:?}", data);
 		data
 	}
 
-	// handle the incoming gossip message
+	// Handle the incoming gossip message
 	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
 		println!("Recvd incoming gossip: {:?}", data);
 	}
 }
 
-/// Setup first node using default config
+/// Setup first node using default config.
 pub async fn setup_node(ports: (Port, Port)) -> Core<EchoServer> {
 	// Application state
 	let state = EchoServer;
