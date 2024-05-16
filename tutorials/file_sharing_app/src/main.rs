@@ -1,10 +1,10 @@
-/// Copyright (c) Algorealm 2024
+// Copyright 2024 Algorealm
 
 /// This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing application
 /// using two nodes. One nodes writes a record to the DHT and specifies itself as a provider for a
 /// file it has locally. The other node reads the DHT and then uses an RPC to fetch the file from
 /// the first peer.
-/// 
+
 use std::{
 	collections::HashMap,
 	fs::File,
@@ -26,6 +26,8 @@ const KADEMLIA_VALUE: &str = "bootstrap_config.ini"; // Location on fs (it is in
 /// Our test keypair for node 1. It is always deterministic, so that node 2 can always connect to it
 /// at boot time
 const PROTOBUF_KEYPAIR: [u8; 68] = [
+/// at boot time.
+pub const PROTOBUF_KEYPAIR: [u8; 68] = [
 	8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27, 202,
 	193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85, 72, 64,
 	174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164, 148, 159,
@@ -33,18 +35,17 @@ const PROTOBUF_KEYPAIR: [u8; 68] = [
 ];
 
 /// Node 1 wait time (for node 2 to initiate connection).
-/// This is useful because we need at least one connected peer (Quorum) to successfully write to the
-/// DHT
+/// This is useful because we need at least one connected peer (Quorum) to successfully write to the DHT.
 const NODE_1_WAIT_TIME: u64 = 5;
 
 /// Node 2 wait time (for node 1 to write to the DHT).
 const NODE_2_WAIT_TIME: u64 = 3;
 
-/// Application State
+/// Application State.
 #[derive(Clone)]
 struct FileServer;
 
-/// Handle network events
+/// Handle network events.
 impl EventHandler for FileServer {
 	fn new_listen_addr(
 		&mut self,
@@ -68,9 +69,8 @@ impl EventHandler for FileServer {
 		println!("Connection established with peer: {:?}", peer_id);
 	}
 
-	// We need to handle the incoming rpc here.
-	// What we're going to do is to look at out file system for the file specified in the rpc data
-	// and return it's binary content
+	// We need to handle the incoming rpc here
+	// What we're going to do is to look at out file system for the file specified in the rpc data and return it's binary content
 	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 		println!("Received incoming RPC: {:?}", data);
 
@@ -169,7 +169,7 @@ async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<File
 		.unwrap()
 }
 
-/// Run node 1
+/// Run node 1.
 async fn run_node_1() {
 	// Set up node
 	let mut node = setup_node_1((49666, 49606)).await;
@@ -201,7 +201,7 @@ async fn run_node_1() {
 	loop {}
 }
 
-/// Run node 2
+/// Run node 2.
 async fn run_node_2() {
 	// Set up node 2 and initiate connection to node 1
 	let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;

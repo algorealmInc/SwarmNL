@@ -1,5 +1,5 @@
-/// Copyright (c) Algorealm 2024
-/// 
+// Copyright 2024 Algorealm
+
 /// This crate demonstrates how to use SwarmNl. Here, we build a simple echo server that
 /// recieves inout from stdin, writes it to the network layer and then recieves it
 /// back from the network.
