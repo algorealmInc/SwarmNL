@@ -1388,7 +1388,8 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 															}
 														},
 												},
-												request_response::Event::OutboundFailure { .. } => {
+												request_response::Event::OutboundFailure { error, .. } => {
+													println!("----> {:?}", error);
 													// Receive data from out one-way channel
 													if let Some(stream_id) = exec_queue_4.pop().await {
 														// Send the error back to the application layer
