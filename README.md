@@ -184,10 +184,11 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
 
   #### Network Core
 
-  The application state is exposed through the `state` field in the network core (or node). This field is protected by a mutex to prevent race conditions when network event handlers are triggered. To access or modify the application state, the mutex must be acquired first.
+  The application state is exposed through the `state` field in the network core (or node). This field is protected by a `Mutex` to prevent race conditions when network event handlers are triggered. To access or modify the application state, the `Mutex` must be acquired first.
 
   ```rust
-      // Check score
+    // Snippets from the game example that modifies internal application state
+
       // If the remote has won, our handler will set our score to -1
       if node_2.state.lock().await.score == HIGH_SCORE {
           // We've won!

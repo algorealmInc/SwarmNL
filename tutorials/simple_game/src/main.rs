@@ -129,6 +129,24 @@ impl EventHandler for Game {
 		topic: String,
 		data: Vec<String>,
 	) -> bool {
+		// Drop all guesses that a greater than 10
+		// Parse our data
+		match data[0].as_str() {
+			"guess" => {
+				// Our remote peer has made a guess
+				let remote_peer_guess = data[1].parse::<i32>().unwrap();
+
+				if remote_peer_guess > 10 {
+					println!(
+						"[[Node {}]] >> Message dropped, remote guess: {}",
+						self.node, remote_peer_guess
+					);
+					return false;
+				}
+			},
+			_ => {},
+		}
+
 		true
 	}
 
@@ -220,7 +238,7 @@ async fn run_node_1() {
 		// The loop stops when we have a winner
 		loop {
 			let mut rng = rand::thread_rng();
-			let random_u32: i32 = rng.gen_range(1..=10);
+			let random_u32: i32 = rng.gen_range(1..=20);
 
 			// Save as current
 			node_1.state.lock().await.current_guess = random_u32;
