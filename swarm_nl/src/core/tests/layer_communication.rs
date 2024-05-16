@@ -470,7 +470,7 @@ fn dialing_peer_works() {
 	});
 }
 
-#[cfg(feature = "server-node")]
+#[cfg(feature = "test-server-node")]
 #[test]
 fn rpc_fetch_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {

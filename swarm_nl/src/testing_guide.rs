@@ -54,13 +54,13 @@
 //! To run these tests first start the server node in one terminal:
 //! 
 //! ```bash
-//! cargo test rpc_fetch_works --features=server-node --features=tokio-runtime -- --nocapture
+//! cargo test rpc_fetch_works --features=test-server-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! And in another terminal, run the client node:
 //! 
 //! ```bash
-//! cargo test rpc_fetch_works --features=client-node --features=tokio-runtime -- --nocapture
+//! cargo test rpc_fetch_works --features=test-client-node --features=tokio-runtime -- --nocapture
 //! ```
 //! 
 //! Then you can check that the server node prints out a _"Recvd incoming RPC:"_ message with the data sent by the client node.
