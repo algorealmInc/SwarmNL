@@ -26,7 +26,7 @@ use libp2p::{
 	identify::{self, Info},
 	kad::{self, store::MemoryStore, Mode, Record, RecordKey},
 	multiaddr::Protocol,
-	noise,
+	noise, 
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
 	swarm::{ConnectionError, NetworkBehaviour, SwarmEvent},
@@ -164,10 +164,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 		// Set up default config for Kademlia
 		let mut cfg = kad::Config::default();
 		cfg.set_protocol_names(vec![StreamProtocol::new(network_id)]);
-		let kademlia = kad::Behaviour::new(
-			peer_id,
-			kad::store::MemoryStore::new(peer_id),
-		);
+		let kademlia = kad::Behaviour::new(peer_id, kad::store::MemoryStore::new(peer_id));
 
 		// Set up default config for Kademlia
 		let cfg = identify::Config::new(network_id.to_owned(), config.keypair().public())
@@ -612,7 +609,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> CoreBuilder<T> {
 			stream_response_buffer: stream_response_buffer.clone(),
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
 			// Save handler as the state of the application
-			state: self.handler,
+			state: Arc::new(Mutex::new(self.handler)),
 		};
 
 		// Spin up task to handle async operations and data on the network
@@ -682,7 +679,7 @@ pub struct Core<T: EventHandler + Clone + Send + Sync + 'static> {
 	/// Current stream id. Useful for opening new streams, we just have to bump the number by 1
 	current_stream_id: Arc<Mutex<StreamId>>,
 	/// The state of the application
-	pub state: T,
+	pub state: Arc<Mutex<T>>,
 }
 
 impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
@@ -1120,7 +1117,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									address,
 								} => {
 									// Call configured handler
-									network_core.state.new_listen_addr(swarm.local_peer_id().to_owned(), listener_id, address);
+									network_core.state.lock().await.new_listen_addr(swarm.local_peer_id().to_owned(), listener_id, address);
 								}
 								SwarmEvent::Behaviour(event) => match event {
 									// Ping
@@ -1160,7 +1157,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}
 
 												// Call custom handler
-												network_core.state.outbound_ping_success(peer, duration);
+												network_core.state.lock().await.outbound_ping_success(peer, duration);
 											}
 											// Outbound ping failure
 											Err(err_type) => {
@@ -1229,7 +1226,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}
 
 												// Call custom handler
-												network_core.state.outbound_ping_error(peer, err_type);
+												network_core.state.lock().await.outbound_ping_error(peer, err_type);
 											}
 										}
 									}
@@ -1305,7 +1302,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}
 
 												// Call handler
-												network_core.state.kademlia_put_record_success(key.to_vec());
+												network_core.state.lock().await.kademlia_put_record_success(key.to_vec());
 											}
 											kad::QueryResult::PutRecord(Err(e)) => {
 												let key = match e {
@@ -1319,23 +1316,23 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 												}
 
 												// Call handler
-												network_core.state.kademlia_put_record_error();
+												network_core.state.lock().await.kademlia_put_record_error();
 											}
 											kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
 												key,
 											})) => {
 												// Call handler
-												network_core.state.kademlia_start_providing_success(key.to_vec());
+												network_core.state.lock().await.kademlia_start_providing_success(key.to_vec());
 											}
 											kad::QueryResult::StartProviding(Err(_)) => {
 												// Call handler
-												network_core.state.kademlia_start_providing_error();
+												network_core.state.lock().await.kademlia_start_providing_error();
 											}
 											_ => {}
 										}
 										kad::Event::RoutingUpdated { peer, .. } => {
 											// Call handler
-											network_core.state.routing_table_updated(peer);
+											network_core.state.lock().await.routing_table_updated(peer);
 										}
 										// Other events we don't care about
 										_ => {}
@@ -1344,7 +1341,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									CoreEvent::Identify(event) => match event {
 										identify::Event::Received { peer_id, info } => {
 											// We just recieved an `Identify` info from a peer.s
-											network_core.state.identify_info_recieved(peer_id, info.clone());
+											network_core.state.lock().await.identify_info_recieved(peer_id, info.clone());
 
 											// Disconnect from peer of the network id is different
 											if info.protocol_version != network_info.id.as_ref() {
@@ -1367,7 +1364,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 													match request {
 														Rpc::ReqResponse { data } => {
 															// Pass request data to configured request handler
-															let response_data = network_core.state.rpc_incoming_message_handled(data);
+															let response_data = network_core.state.lock().await.rpc_incoming_message_handled(data);
 
 															// Construct an RPC
 															let response_rpc = Rpc::ReqResponse { data: response_data };
@@ -1409,21 +1406,21 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 											let gossip_data = data_string.split(GOSSIP_MESSAGE_SEPARATOR).map(|msg| msg.to_string()).collect::<Vec<_>>();
 
 											// First trigger the configured application filter event
-											if network_core.state.gossipsub_incoming_message_filtered(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
+											if network_core.state.lock().await.gossipsub_incoming_message_filtered(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
 												// Pass incoming data to configured handler
-												network_core.state.gossipsub_incoming_message_handled(propagation_source, gossip_data);
+												network_core.state.lock().await.gossipsub_incoming_message_handled(propagation_source, gossip_data);
 											}
 											// else { drop message }
 										},
 										// A peer just subscribed
 										gossipsub::Event::Subscribed { peer_id, topic } => {
 											// Call handler
-											network_core.state.gossipsub_subscribe_message_recieved(peer_id, topic.to_string());
+											network_core.state.lock().await.gossipsub_subscribe_message_recieved(peer_id, topic.to_string());
 										},
 										// A peer just unsubscribed
 										gossipsub::Event::Unsubscribed { peer_id, topic } => {
 											// Call handler
-											network_core.state.gossipsub_unsubscribe_message_recieved(peer_id, topic.to_string());
+											network_core.state.lock().await.gossipsub_unsubscribe_message_recieved(peer_id, topic.to_string());
 										},
 										_ => {},
 									}
@@ -1444,7 +1441,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									}
 
 									// Call configured handler
-									network_core.state.connection_established(
+									network_core.state.lock().await.connection_established(
 										peer_id,
 										connection_id,
 										&endpoint,
@@ -1460,7 +1457,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									cause,
 								} => {
 									// Call configured handler
-									network_core.state.connection_closed(
+									network_core.state.lock().await.connection_closed(
 										peer_id,
 										connection_id,
 										&endpoint,
@@ -1473,7 +1470,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									address,
 								} => {
 									// Call configured handler
-									network_core.state.expired_listen_addr(listener_id, address);
+									network_core.state.lock().await.expired_listen_addr(listener_id, address);
 								}
 								SwarmEvent::ListenerClosed {
 									listener_id,
@@ -1481,33 +1478,33 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									reason: _,
 								} => {
 									// Call configured handler
-									network_core.state.listener_closed(listener_id, addresses);
+									network_core.state.lock().await.listener_closed(listener_id, addresses);
 								}
 								SwarmEvent::ListenerError {
 									listener_id,
 									error: _,
 								} => {
 									// Call configured handler
-									network_core.state.listener_error(listener_id);
+									network_core.state.lock().await.listener_error(listener_id);
 								}
 								SwarmEvent::Dialing {
 									peer_id,
 									connection_id,
 								} => {
 									// Call configured handler
-									network_core.state.dialing(peer_id, connection_id);
+									network_core.state.lock().await.dialing(peer_id, connection_id);
 								}
 								SwarmEvent::NewExternalAddrCandidate { address } => {
 									// Call configured handler
-									network_core.state.new_external_addr_candidate(address);
+									network_core.state.lock().await.new_external_addr_candidate(address);
 								}
 								SwarmEvent::ExternalAddrConfirmed { address } => {
 									// Call configured handler
-									network_core.state.external_addr_confirmed(address);
+									network_core.state.lock().await.external_addr_confirmed(address);
 								}
 								SwarmEvent::ExternalAddrExpired { address } => {
 									// Call configured handler
-									network_core.state.external_addr_expired(address);
+									network_core.state.lock().await.external_addr_expired(address);
 								}
 								SwarmEvent::IncomingConnection {
 									connection_id,
@@ -1515,7 +1512,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									send_back_addr,
 								} => {
 									// Call configured handler
-									network_core.state.incoming_connection(connection_id, local_addr, send_back_addr);
+									network_core.state.lock().await.incoming_connection(connection_id, local_addr, send_back_addr);
 								}
 								SwarmEvent::IncomingConnectionError {
 									connection_id,
@@ -1524,7 +1521,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									error: _,
 								} => {
 									// Call configured handler
-									network_core.state.incoming_connection_error(
+									network_core.state.lock().await.incoming_connection_error(
 										connection_id,
 										local_addr,
 										send_back_addr,
@@ -1536,7 +1533,7 @@ impl<T: EventHandler + Clone + Send + Sync + 'static> Core<T> {
 									error: _,
 								} => {
 									// Call configured handler
-									network_core.state.outgoing_connection_error(connection_id,  peer_id);
+									network_core.state.lock().await.outgoing_connection_error(connection_id,  peer_id);
 								}
 								_ => {},
 							}

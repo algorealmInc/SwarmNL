@@ -9,10 +9,8 @@ edition = "2021"
 rust-ini = "0.20.0"
 swarm_nl = { path = "../swarm_nl", features = ["tokio-runtime"] }
 tokio = { version = "1.37.0", features = ["full"] }
-base58 = "0.2.0"
+rand = "0.8.5"
 
 [features]
 first-node = []
 second-node = []
-test-reading-node = []
-test-writing-node = []
