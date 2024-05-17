@@ -13,7 +13,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 // Set up a default node helper
 pub fn setup_core_builder() -> CoreBuilder<DefaultHandler> {
-	let config = BootstrapConfig::default();
+	let config = BootstrapConfig::default().with_tcp(49158).with_udp(49159);
 	let handler = DefaultHandler;
 
 	// Return default network core builder
@@ -40,6 +40,7 @@ fn create_test_ini_file(file_path: &str) {
 	config.write_to_file(file_path).unwrap_or_default();
 }
 
+#[cfg(feature = "tokio-runtime")]
 #[test]
 fn node_default_behavior_works() {
 	// Build a node with the default network id
@@ -65,8 +66,14 @@ fn node_default_behavior_works() {
 		IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))
 	);
 
+	let config = BootstrapConfig::default();
+	let handler = DefaultHandler;
+
+	// Return default network core builder
+	let builder = CoreBuilder::with_config(config, handler);
+
 	// Default tcp/udp port is MIN_PORT and MAX_PORT
-	assert_eq!(default_node.tcp_udp_port, (MIN_PORT, MAX_PORT));
+	assert_eq!(builder.tcp_udp_port, (MIN_PORT, MAX_PORT));
 }
 
 #[test]
@@ -144,14 +151,12 @@ fn node_custom_behavior_with_network_id_fails() {
 #[test]
 fn node_save_keypair_offline_works_tokio() {
 	// Build a node with the default network id
-	let default_node = setup_core_builder();
+	let default_node: CoreBuilder<DefaultHandler> = setup_core_builder();
 
 	// Use tokio runtime to test async function
-	let result = tokio::runtime::Runtime::new().unwrap().block_on(
-		default_node
-			.build()
-			.unwrap_or_else(|_| panic!("Could not build node")),
-	);
+	let result = tokio::runtime::Runtime::new()
+		.unwrap()
+		.block_on(async { default_node.build().await.unwrap() });
 
 	// Create a saved_keys.ini file
 	let file_path_1 = "saved_keys.ini";
