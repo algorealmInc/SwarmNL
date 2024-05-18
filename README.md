@@ -91,7 +91,7 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
         #[derive(Clone)]
         struct ApplicationState{
             name: String,
-            version: i8,
+            version: f32,
         }
 
         // Define custom behaviour to respond to network events

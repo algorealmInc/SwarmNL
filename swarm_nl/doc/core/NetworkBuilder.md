@@ -33,7 +33,7 @@ use swarm_nl::core::EventHandler;
 #[derive(Clone)]
 struct ApplicationState {
 	name: String,
-	version: u8,
+	version: f32,
 }
 
 impl EventHandler for ApplicationState {
