@@ -1,5 +1,4 @@
 <!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNL.png" alt="SwarmNL" style="border-radius: 15px !important;"> -->
-
 # SwarmNL
 
 **A library to build custom networking layers for decentralized applications**
@@ -309,3 +308,7 @@ _In Development 👷_:
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
 With ❤️ from [Deji](https://github.com/thewoodfish) and [Sacha](https://github.com/sacha-l).
+
+<p align="center">
+<img src="https://github.com/algorealmInc/SwarmNL/blob/9c00c692857c6981faae2680cc785a430e378ecf/web3%20foundation_grants_badge_black.png"  alt="Web3 Foundation Grants Badge" width="300"> 
+</p>
