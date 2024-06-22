@@ -23,45 +23,6 @@ pub const GOSSIP_NETWORK: &str = "avada";
 #[derive(Clone)]
 pub struct AppState;
 
-impl EventHandler for AppState {
-	fn new_listen_addr(
-		&mut self,
-		local_peer_id: PeerId,
-		_listener_id: ListenerId,
-		addr: Multiaddr,
-	) {
-		// Announce interfaces we're listening on
-		println!("Peer id: {}", local_peer_id);
-		println!("We're listening on the {}", addr);
-	}
-
-	fn connection_established(
-		&mut self,
-		peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_established_in: Duration,
-	) {
-		println!("Connection established with peer: {:?}", peer_id);
-	}
-
-	// We're just echoing the data back
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-		println!("Recvd incoming RPC: {:?}", data);
-		data
-	}
-
-	// Handle the incoming gossip message
-	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
-		println!("Recvd incoming gossip: {:?}", data);
-	}
-
-	fn kademlia_put_record_success(&mut self, key: Vec<u8>) {
-		println!("Record successfully written to DHT. Key: {:?}", key);
-	}
-}
-
 /// Used to create a detereministic node.
 async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
 	// Our test keypair for the first node
@@ -116,7 +77,7 @@ async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<
 
 	// Set up network
 	(
-		CoreBuilder::with_config(config, app_state)
+		CoreBuilder::with_config(config)
 			.build()
 			.await
 			.unwrap(),
@@ -134,7 +95,7 @@ async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppS
 		.with_udp(ports.1);
 
 	// Set up network
-	CoreBuilder::with_config(config, app_state)
+	CoreBuilder::with_config(config)
 		.build()
 		.await
 		.unwrap()

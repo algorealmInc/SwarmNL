@@ -1,117 +1,120 @@
-// Copyright 2024 Algorealm
+//! Copyright (c) Algorealm 2024
 
-/// This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing application
-/// using two nodes. One nodes writes a record to the DHT and specifies itself as a provider for a
-/// file it has locally. The other node reads the DHT and then uses an RPC to fetch the file from
-/// the first peer.
+//! BEST GUESSER GAME!
+//!
+//! This crate demonstrates how to use SwarmNl by building a simple game using two nodes.
+//!
+//! The game's logic is as follows:
+//! - Node 1 and Node 2 connect to each other
+//! - Then at an interval, they each guess a value
+//! - The value is gossiped to the other peer
+//! - The incoming value is then compared with the local value
+//! - If the local value is greater, a score count is increased
+//! - Whoever gets to the HIGHT_SCORE first wins the game and gossips the result
+//! - The result is exchanged and the winner is announced on both nodes
+//! - Once the winner is announced, the game ends and both nodes exit
 
-use std::{
-	collections::HashMap,
-	fs::File,
-	io::{self, BufRead, Read},
-	num::NonZeroU32,
-	time::Duration,
-};
+use std::{collections::HashMap, time::Duration};
 
+use rand::Rng;
 use swarm_nl::{
-	core::{AppData, AppResponse, Core, CoreBuilder, EventHandler},
+	core::{gossipsub_cfg::GossipsubConfig, AppData, Core, CoreBuilder, NetworkEvent},
 	setup::BootstrapConfig,
-	ConnectedPoint, ConnectionId, Keypair, ListenerId, Multiaddr, PeerId, Port,
+	Keypair, MessageId, PeerId, Port,
 };
 
-/// The key we're writing to the DHT
-const KADEMLIA_KEY: &str = "config_file"; // File name
-const KADEMLIA_VALUE: &str = "bootstrap_config.ini"; // Location on fs (it is in the same directory as our binary)
+/// High score to determine winner
+const HIGH_SCORE: i32 = 5;
 
 /// Our test keypair for node 1. It is always deterministic, so that node 2 can always connect to it
-/// at boot time.
-pub const PROTOBUF_KEYPAIR: [u8; 68] = [
+/// at boot time
+const PROTOBUF_KEYPAIR: [u8; 68] = [
 	8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27, 202,
 	193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85, 72, 64,
 	174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164, 148, 159,
 	36, 170, 109, 178,
 ];
 
-/// Node 1 wait time (for node 2 to initiate connection).
-/// This is useful because we need at least one connected peer (Quorum) to successfully write to the DHT.
-const NODE_1_WAIT_TIME: u64 = 10;
+/// Mesh topic tha the peers will gather round
+const GOSSIP_NETWORK: &str = "game_group";
 
-/// Node 2 wait time (for node 1 to write to the DHT).
-const NODE_2_WAIT_TIME: u64 = 10;
+/// Time to wait for propagation.
+const WAIT_TIME: u64 = 4;
 
-/// Application State.
+/// Time to sleep for before generating new number.
+const GAME_SLEEP_TIME: u64 = 2;
+
+/// Game state
 #[derive(Clone)]
-struct FileServer;
+struct Game {
+	pub node: u8,
+	pub score: i32,
+	pub current_guess: i32,
+}
 
-/// Handle network events.
-impl EventHandler for FileServer {
-	fn new_listen_addr(
-		&mut self,
-		local_peer_id: PeerId,
-		_listener_id: ListenerId,
-		addr: Multiaddr,
-	) {
-		// announce interfaces we're listening on
-		println!("Peer id: {}", local_peer_id);
-		println!("We're listening on the {}", addr);
+/// Gossipsub incoming message filter function
+fn gossipsub_filter_fn(
+	propagation_source: PeerId,
+	message_id: MessageId,
+	source: Option<PeerId>,
+	topic: String,
+	data: Vec<String>,
+) -> bool {
+	// Drop all guesses that a greater than 10
+	// Parse our data
+	match data[0].as_str() {
+		"guess" => {
+			// Our remote peer has made a guess
+			let remote_peer_guess = data[1].parse::<i32>().unwrap();
+
+			if remote_peer_guess > 10 {
+				println!("Message dropped, remote guess: {}", remote_peer_guess);
+				return false;
+			}
+		},
+		_ => {},
 	}
 
-	fn connection_established(
-		&mut self,
-		peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_established_in: Duration,
-	) {
-		println!("Connection established with peer: {:?}", peer_id);
+	true
+}
+
+/// Handle the arrival of a gossip message.
+fn handle_gossipsub_incoming_message(game: &mut Game, _source: PeerId, data: Vec<String>) {
+	println!(
+		"[[Node {}]] >> incoming data from peer -> {}: {}",
+		game.node, data[0], data[1]
+	);
+
+	// Parse our data
+	match data[0].as_str() {
+		"guess" => {
+			// Our remote peer has made a guess
+			let remote_peer_guess = data[1].parse::<i32>().unwrap();
+
+			// Compare
+			if game.current_guess > remote_peer_guess {
+				game.score += 1;
+			}
+		},
+		"win" => {
+			// Set our score to -1
+			// Game over
+			game.score = -1;
+		},
+		_ => {},
 	}
 
-	// We need to handle the incoming rpc here
-	// What we're going to do is to look at out file system for the file specified in the rpc data and return it's binary content
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-		println!("Received incoming RPC: {:?}", data);
-
-		// Extract the file name from the incoming data
-		let file_name = String::from_utf8_lossy(&data[0]);
-		let file_name = file_name.trim(); // Trim any potential whitespace
-
-		// Read the file content
-		let mut file_content = Vec::new();
-		match File::open(&file_name) {
-			Ok(mut file) => match file.read_to_end(&mut file_content) {
-				Ok(_) => {
-					println!("File read successfully: {}", file_name);
-				},
-				Err(e) => {
-					println!("Failed to read file content: {}", e);
-					return vec![b"Error: Failed to read file content".to_vec()];
-				},
-			},
-			Err(e) => {
-				println!("Failed to open file: {}", e);
-				return vec![b"Error: Failed to open file".to_vec()];
-			},
-		}
-
-		// Return the file content as a Vec<Vec<u8>>
-		vec![file_content]
-	}
-
-	// handle the incoming gossip message
-	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
-		println!("Recvd incoming gossip: {:?}", data);
-	}
-
-	fn kademlia_put_record_success(&mut self, key: Vec<u8>) {
-		println!("Record successfully written to DHT. Key: {:?}", key);
+	if game.score != -1 && game.score != HIGH_SCORE {
+		println!(
+			"[[Node {}]] >> Node ({}) score: {}",
+			game.node, game.node, game.score
+		);
 	}
 }
 
 /// Used to create a detereministic node 1.
-async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
+async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
-	let app_state = FileServer;
 
 	// First, we want to configure our node by specifying a static keypair (for easy connection by
 	// node 2)
@@ -121,19 +124,26 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
 		.with_udp(ports.1);
 
 	// Set up network
-	CoreBuilder::with_config(config, app_state)
-		.build()
-		.await
-		.unwrap()
+	let builder = CoreBuilder::with_config(config);
+
+	// Configure gossipsub
+	// Specify the gossip filter algorithm
+	let filter_fn = gossipsub_filter_fn;
+	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
+
+	// Add data state
+	let builder = builder.with_state(Game {
+		node: 1,
+		score: 0,
+		current_guess: -1,
+	});
+
+	// Build
+	builder.build().await.unwrap()
 }
 
 /// Setup node 2.
-async fn setup_node_2(
-	node_1_ports: (Port, Port),
-	ports: (Port, Port),
-) -> (Core<FileServer>, PeerId) {
-	let app_state = FileServer;
-
+async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<Game>, PeerId) {
 	// The PeerId of the node 1
 	let peer_id = Keypair::from_protobuf_encoding(&PROTOBUF_KEYPAIR)
 		.unwrap()
@@ -155,7 +165,12 @@ async fn setup_node_2(
 
 	// Set up network
 	(
-		CoreBuilder::with_config(config, app_state)
+		CoreBuilder::with_config(config)
+			.with_state(Game {
+				node: 2,
+				score: 0,
+				current_guess: -1,
+			})
 			.build()
 			.await
 			.unwrap(),
@@ -163,98 +178,243 @@ async fn setup_node_2(
 	)
 }
 
-/// Run node 1.
+/// Run node 1
 async fn run_node_1() {
 	// Set up node
-	let mut node = setup_node_1((49666, 49606)).await;
+	let mut node_1 = setup_node_1((49666, 49606)).await;
 
-	// Sleep for a few seconds to allow node 2 to reach out
-	async_std::task::sleep(Duration::from_secs(NODE_1_WAIT_TIME)).await;
+	// Read all currently buffered network events
+	let events = node_1.events().await;
 
-	// What are we writing to the DHT?
-	// A file we have on the fs and the location of the file, so it can be easily retrieved
+	let _ = events
+		.map(|e| {
+			match e {
+				NetworkEvent::NewListenAddr {
+					local_peer_id,
+					listener_id: _,
+					address,
+				} => {
+					// Announce interfaces we're listening on
+					let game_state = node_1.state().unwrap();
 
-	println!("[1] >>>> Writing file location to DHT: {}", String::from_utf8_lossy(KADEMLIA_KEY.as_bytes()));
+					println!("[[Node {}]] >> Peer id: {}", game_state.node, local_peer_id);
+					println!(
+						"[[Node {}]] >> We're listening on the {}",
+						game_state.node, address
+					);
+				},
+				_ => {},
+			}
+		})
+		.collect::<Vec<_>>();
 
-	// Prepare a query to write to the DHT
-	let (key, value, expiration_time, explicit_peers) = (
-		KADEMLIA_KEY.as_bytes().to_vec(),
-		KADEMLIA_VALUE.as_bytes().to_vec(),
-		None,
-		None,
-	);
+	// Join a network (subscribe to a topic)
+	let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
 
-	let kad_request = AppData::KademliaStoreRecord {
-		key,
-		value,
-		expiration_time,
-		explicit_peers,
-	};
+	// Send request to network
+	let stream_id = node_1.send_to_network(gossip_request).await.unwrap();
+	if let Ok(_) = node_1.recv_from_network(stream_id).await {
+		// Wait for a few seconds
+		tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
 
-	// Submit query to the network
-	node.query_network(kad_request).await.unwrap();
+		// We will be looping forever to generate new numbers, send them and compare them.
+		// The loop stops when we have a winner
+		loop {
+			let mut game_state = node_1.state().unwrap();
+			let mut rng = rand::thread_rng();
+			let random_u32: i32 = rng.gen_range(1..=20);
 
-	loop {}
-}
+			// Save as current
+			game_state.current_guess = random_u32;
 
-/// Run node 2.
-async fn run_node_2() {
-	// Set up node 2 and initiate connection to node 1
-	let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
-
-	// Sleep for a few seconds to allow node 1 write to the DHT
-	async_std::task::sleep(Duration::from_secs(NODE_2_WAIT_TIME)).await;
-
-	// Prepare a query to read from the DHT
-	let kad_request = AppData::KademliaLookupRecord {
-		key: KADEMLIA_KEY.as_bytes().to_vec(),
-	};
-
-	// Submit query to the network
-	if let Ok(result) = node_2.query_network(kad_request).await {
-		// We have our response
-		if let AppResponse::KademliaLookupSuccess(value) = result {
-			println!("[2] >>>> File read from DHT: {}", String::from_utf8_lossy(&value));
-			// Now prepare an RPC query to fetch the file from the remote node
-			let fetch_key = vec![value];
-
-			// prepare fetch request
-			let fetch_request = AppData::FetchData {
-				keys: fetch_key.clone(),
-				peer: node_1_peer_id.clone(), // The peer to query for data
+			// Prepare a gossip request
+			let gossip_request = AppData::GossipsubBroadcastMessage {
+				topic: GOSSIP_NETWORK.to_string(),
+				message: vec!["guess".to_string(), random_u32.to_string()],
 			};
 
-			// We break the flow into send and recv explicitly here
-			let stream_id = node_2.send_to_network(fetch_request).await.unwrap();
+			// Gossip our random value to our peers
+			let _ = node_1.query_network(gossip_request).await;
 
-			// If we used `query_network(0)`, we won't have been able to print here
-			println!(
-				"[2] >>>> A fetch request has been sent to peer: {:?}",
-				node_1_peer_id
-			);
+			// Check score
+			// If the remote has won, our handler will set our score to -1
+			if game_state.score == HIGH_SCORE {
+				// We've won!
+				println!(
+					"[[Node {}]] >> Congratulations! Node 1 is the winner.",
+					game_state.node
+				);
 
-			// Poll the network for the result
-			if let Ok(response) = node_2.recv_from_network(stream_id).await {
-				if let AppResponse::FetchData(response_file) = response {
-					// Get the file
-					let file = response_file[0].clone();
+				// Inform Node 2
 
-					// Convert it to string
-					let file_str = String::from_utf8_lossy(&file);
+				// Prepare a gossip request
+				let gossip_request = AppData::GossipsubBroadcastMessage {
+					topic: GOSSIP_NETWORK.to_string(),
+					message: vec!["win".to_string(), random_u32.to_string()],
+				};
 
-					// Print to stdout
-					println!("[2] >>>> Here is the file delivered from the remote peer:");
-					println!();
-					println!("{}", file_str);
-				}
-			} else {
-				println!("An error occured");
+				// Gossip our random value to our peers
+				let _ = node_1.query_network(gossip_request).await;
+
+				break;
+			} else if game_state.score == -1 {
+				// We lost :(
+				println!(
+					"[[Node {}]] >> Game Over! Node 2 is the winner.",
+					game_state.node
+				);
+				break;
 			}
+
+			// Save game state
+			node_1.add_state(game_state);
+
+			// check for gossip events
+			let _ = node_1
+				.events()
+				.await
+				.map(|e| {
+					match e {
+						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
+							// Get current data state
+							let mut game = node_1.state().unwrap();
+							// Call handler
+							handle_gossipsub_incoming_message(&mut game, source, data);
+							// Save new game state
+							node_1.add_state(game);
+						},
+						_ => {},
+					}
+				})
+				.collect::<Vec<_>>();
+
+			// sleep for a few seconds
+			tokio::time::sleep(Duration::from_secs(GAME_SLEEP_TIME)).await;
 		}
+	} else {
+		panic!("Could not join mesh network");
 	}
 }
 
-#[async_std::main]
+/// Run node 2
+async fn run_node_2() {
+	// Set up node 2 and initiate connection to node 1
+	let (mut node_2, _) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+	// Read all currently buffered network events
+	let events = node_2.events().await;
+
+	let _ = events
+		.map(|e| {
+			match e {
+				NetworkEvent::NewListenAddr {
+					local_peer_id,
+					listener_id: _,
+					address,
+				} => {
+					// Announce interfaces we're listening on
+					let game_state = node_2.state().unwrap();
+
+					println!("[[Node {}]] >> Peer id: {}", game_state.node, local_peer_id);
+					println!(
+						"[[Node {}]] >> We're listening on the {}",
+						game_state.node, address
+					);
+				},
+				_ => {},
+			}
+		})
+		.collect::<Vec<_>>();
+
+	// Join a network (subscribe to a topic)
+	let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
+
+	// Send request to network
+	let stream_id = node_2.send_to_network(gossip_request).await.unwrap();
+	if let Ok(_) = node_2.recv_from_network(stream_id).await {
+		// Wait for a few seconds
+		tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+
+		// We will be looping forever to generate new numbers, send them and compare them.
+		// The loop stops when we have a winner
+		loop {
+			let mut game_state = node_2.state().unwrap();
+			let mut rng = rand::thread_rng();
+			let random_u32: i32 = rng.gen_range(1..=20);
+
+			// Save as current
+			game_state.current_guess = random_u32;
+
+			// Prepare a gossip request
+			let gossip_request = AppData::GossipsubBroadcastMessage {
+				topic: GOSSIP_NETWORK.to_string(),
+				message: vec!["guess".to_string(), random_u32.to_string()],
+			};
+
+			// Gossip our random value to our peers
+			let _ = node_2.query_network(gossip_request).await;
+
+			// Check score
+			// If the remote has won, our handler will set our score to -1
+			if game_state.score == HIGH_SCORE {
+				// We've won!
+				println!(
+					"[[Node {}]] >> Congratulations! Node 2 is the winner.",
+					game_state.node
+				);
+
+				// Inform Node 2
+
+				// Prepare a gossip request
+				let gossip_request = AppData::GossipsubBroadcastMessage {
+					topic: GOSSIP_NETWORK.to_string(),
+					message: vec!["win".to_string(), random_u32.to_string()],
+				};
+
+				// Gossip our random value to our peers
+				let _ = node_2.query_network(gossip_request).await;
+
+				break;
+			} else if game_state.score == -1 {
+				// We lost :(
+				println!(
+					"[[Node {}]] >> Game Over! Node 1 is the winner.",
+					game_state.node
+				);
+				break;
+			}
+
+			// Save game state
+			node_2.add_state(game_state);
+
+			// check for gossip events
+			let _ = node_2
+				.events()
+				.await
+				.map(|e| {
+					match e {
+						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
+							// Get current data state
+							let mut game = node_2.state().unwrap();
+							// Call handler
+							handle_gossipsub_incoming_message(&mut game, source, data);
+							// Save new game state
+							node_2.add_state(game);
+						},
+						_ => {},
+					}
+				})
+				.collect::<Vec<_>>();
+
+			// sleep for a few seconds
+			tokio::time::sleep(Duration::from_secs(GAME_SLEEP_TIME)).await;
+		}
+	} else {
+		panic!("Could not join mesh network");
+	}
+}
+
+#[tokio::main]
 async fn main() {
 	#[cfg(feature = "first-node")]
 	run_node_1().await;
