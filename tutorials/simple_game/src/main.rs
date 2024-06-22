@@ -113,7 +113,7 @@ fn handle_gossipsub_incoming_message(game: &mut Game, _source: PeerId, data: Vec
 }
 
 /// Used to create a detereministic node 1.
-async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
+async fn setup_node_1(ports: (Port, Port)) -> Core {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
 
 	// First, we want to configure our node by specifying a static keypair (for easy connection by
@@ -136,7 +136,7 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
 }
 
 /// Setup node 2.
-async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<Game>, PeerId) {
+async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core, PeerId) {
 	// The PeerId of the node 1
 	let peer_id = Keypair::from_protobuf_encoding(&PROTOBUF_KEYPAIR)
 		.unwrap()
@@ -175,7 +175,7 @@ async fn run_node_1() {
 	// Set up node
 	let mut node_1 = setup_node_1((49666, 49606)).await;
 
-	// Read events for the new listen addresses
+	// Read events generated at setup
 	while let Some(event) = node_1.next_event().await {
 		match event {
 			NetworkEvent::NewListenAddr {
@@ -189,6 +189,15 @@ async fn run_node_1() {
 					"[[Node {}]] >> We're listening on the {}",
 					game_state.node, address
 				);
+			},
+			NetworkEvent::ConnectionEstablished {
+				peer_id,
+				connection_id: _,
+				endpoint: _,
+				num_established: _,
+				established_in: _,
+			} => {
+				println!("Connection established with peer: {:?}", peer_id);
 			},
 			_ => {},
 		}
@@ -303,6 +312,15 @@ async fn run_node_2() {
 						"[[Node {}]] >> We're listening on the {}",
 						game_state.node, address
 					);
+				},
+				NetworkEvent::ConnectionEstablished {
+					peer_id,
+					connection_id: _,
+					endpoint: _,
+					num_established: _,
+					established_in: _,
+				} => {
+					println!("Connection established with peer: {:?}", peer_id);
 				},
 				_ => {},
 			}

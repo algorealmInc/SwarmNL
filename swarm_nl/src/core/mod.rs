@@ -280,16 +280,22 @@ impl CoreBuilder {
 	}
 
 	/// Configure the RPC protocol for the network.
-	pub fn with_rpc<F>(self, config: RpcConfig, handler: fn(RpcData) -> RpcData) -> Self {
+	pub fn with_rpc(self, config: RpcConfig, handler: fn(RpcData) -> RpcData) -> Self {
 		// Set the request-response protocol
 		CoreBuilder {
 			request_response: (
-				Behaviour::new(
-					[(self.network_id.clone(), ProtocolSupport::Full)],
-					request_response::Config::default()
-						.with_request_timeout(config.timeout)
-						.with_max_concurrent_streams(config.max_concurrent_streams),
-				),
+				match config {
+					RpcConfig::Default => self.request_response.0,
+					RpcConfig::Custom {
+						timeout,
+						max_concurrent_streams,
+					} => Behaviour::new(
+						[(self.network_id.clone(), ProtocolSupport::Full)],
+						request_response::Config::default()
+							.with_request_timeout(timeout)
+							.with_max_concurrent_streams(max_concurrent_streams),
+					),
+				},
 				handler,
 			),
 			..self

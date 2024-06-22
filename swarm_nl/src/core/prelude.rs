@@ -260,11 +260,14 @@ pub(super) enum Rpc {
 }
 
 /// The configuration for the RPC protocol.
-pub struct RpcConfig {
-	/// Timeout for inbound and outbound requests.
-	pub timeout: Duration,
-	/// Maximum number of concurrent inbound + outbound streams.
-	pub max_concurrent_streams: usize,
+pub enum RpcConfig {
+	Default,
+	Custom {
+		/// Timeout for inbound and outbound requests.
+		timeout: Duration,
+		/// Maximum number of concurrent inbound + outbound streams.
+		max_concurrent_streams: usize,
+	},
 }
 
 /// Enum that represents the events generated in the network layer
