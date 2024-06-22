@@ -51,20 +51,18 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 #### Example
 
   ```rust
-        //! Using the default node setup configuration and the default network event handler
+        //! Using the default node setup configuration
 
         // Default config
         let config = BootstrapConfig::default();
-        // Default network handler
-        let handler = DefaultHandler;
         // Build node or network core
-        let node = CoreBuilder::with_config(config, handler)
+        let node = CoreBuilder::with_config(config)
             .build()
             .await
             .unwrap();
 
 
-        //! Using a custom node setup configuration and a custom network event handler
+        //! Using a custom node setup configuration
 
         // Custom configuration
         // a. Using config from an `.ini` file
@@ -84,40 +82,13 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
             .with_tcp(ports.0)
             .with_udp(ports.1);
 
-        // Custom event handler
-        use swarm_nl::core::EventHandler;
-
         #[derive(Clone)]
         struct ApplicationState{
             name: String,
             version: f32,
         }
 
-        // Define custom behaviour to respond to network events
-        impl EventHandler for AppState {
-            fn new_listen_addr(
-                &mut self,
-                local_peer_id: PeerId,
-                listener_id: ListenerId,
-                addr: Multiaddr,
-            ) {
-                // Announce interfaces we're listening on
-                println!("Peer id: {}", local_peer_id);
-                println!("We're listening on the {}", addr);
-            }
-
-            // Echo data recieved from a RPC
-            fn rpc_handle_incoming_message(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-                println!("Recvd incoming RPC: {:?}", data);
-                data
-            }
-
-            // Handle the incoming gossip message
-            fn gossipsub_handle_incoming_message(&mut self, source: PeerId, data: Vec<String>) {
-                println!("Recvd incoming gossip: {:?}", data);
-            }
-        }
-
+       
         // Define custom event handler
         let state = ApplicationState {
             name: String::from("SwarmNL"),
@@ -134,96 +105,6 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 
   Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
-  ### Making application state changes
-
-  SwarmNL provides two ways to make application state changes:
-
-  - **Event Handlers**: Registered event handlers can modify state in response to network events.
-  - **Network Core (or Node)**: The node construct is the primary way to change internal application state. The application state is accessible through the `state` field of the node or network core.
-
-  This setup ensures proper synchronization using effective synchronization primitives. Network events are non-deterministic, so they can change state at any time. To manage this, we use a `Mutex` to lock the state during changes.
-
-  #### Event handlers
-
-  When an event handler method runs, it has already acquired the application state `Mutex`. The entire duration of the handler's execution is a critical section. It is important to avoid long computations or delays in releasing the `Mutex`, keeping the function simple and quick.
-
-  ```rust
-      // A simple event handler method that modifies application state
-      // ...
-          /// Event that announces the arrival of a gossip message.
-          fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, data: Vec<String>) {
-              println!(
-                  "[[Node {}]] >> incoming data from peer -> {}: {}",
-                  self.node, data[0], data[1]
-              );
-
-              // Parse our data
-              match data[0].as_str() {
-                  "guess" => {
-                      // Our remote peer has made a guess
-                      let remote_peer_guess = data[1].parse::<i32>().unwrap();
-
-                      // Compare
-                      if self.current_guess > remote_peer_guess {
-                          // Modify app state
-                          self.score += 1;
-                      }
-                  },
-                  "win" => {
-                      // Set our score to -1
-                      // Game over
-                      self.score = -1;
-                  },
-                  _ => {},
-              }
-
-              if self.score != -1 && self.score != HIGH_SCORE {
-                  println!(
-                      "[[Node {}]] >> Node ({}) score: {}",
-                      self.node, self.node, self.score
-                  );
-              }
-          }
-      // ...
-  ```
-
-  #### Network Core
-
-  The application state is exposed through the `state` field in the network core (or node). This field is protected by a `Mutex` to prevent race conditions when network event handlers are triggered. To access or modify the application state, the `Mutex` must be acquired first.
-
-  ```rust
-      // Snippet from the game example that modifies internal application state
-      // ...
-      // If the remote has won, our handler will set our score to -1
-      if node_2.state.lock().await.score == HIGH_SCORE {
-          // We've won!
-          println!(
-              "[[Node {}]] >> Congratulations! Node 2 is the winner.",
-              node_2.state.lock().await.node
-          );
-
-          // Inform Node 1
-
-          // Prepare a gossip request
-          let gossip_request = AppData::GossipsubBroadcastMessage {
-              topic: GOSSIP_NETWORK.to_string(),
-              message: vec!["win".to_string(), random_u32.to_string()],
-          };
-
-          // Gossip our random value to our peers
-          let _ = node_2.query_network(gossip_request).await;
-
-          break;
-      } else if node_2.state.lock().await.score == -1 {
-          // We lost :(
-          println!(
-              "[[Node {}]] >> Game Over! Node 1 is the winner.",
-              node_2.state.lock().await.node
-          );
-          break;
-      }
-      // ...
-  ```
 
 ### Node communication
 
