@@ -12,7 +12,7 @@ use std::fs::File;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 // Set up a default node helper
-pub fn setup_core_builder() -> CoreBuilder<()> {
+pub fn setup_core_builder() -> CoreBuilder {
 	let config = BootstrapConfig::default().with_tcp(49158).with_udp(49159);
 
 	// Return default network core builder
@@ -69,7 +69,7 @@ fn node_default_behavior_works() {
 	let default_state = ();
 
 	// Return default network core builder
-	let builder: CoreBuilder<()> = CoreBuilder::with_config(config);
+	let builder = CoreBuilder::with_config(config);
 
 	// Default tcp/udp port is MIN_PORT and MAX_PORT
 	assert_eq!(builder.tcp_udp_port, (MIN_PORT, MAX_PORT));
@@ -150,7 +150,7 @@ fn node_custom_behavior_with_network_id_fails() {
 #[test]
 fn node_save_keypair_offline_works_tokio() {
 	// Build a node with the default network id
-	let default_node: CoreBuilder<()> = setup_core_builder();
+	let default_node = setup_core_builder();
 
 	// Use tokio runtime to test async function
 	let result = tokio::runtime::Runtime::new()

@@ -29,7 +29,7 @@ use libp2p::{
 	noise,
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
-	swarm::{behaviour, ConnectionError, NetworkBehaviour, SwarmEvent},
+	swarm::{behaviour, NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
 
@@ -109,7 +109,7 @@ impl From<gossipsub::Event> for CoreEvent {
 }
 
 /// Structure containing necessary data to build [`Core`].
-pub struct CoreBuilder<T: Clone + Send + Sync + 'static> {
+pub struct CoreBuilder {
 	/// The network ID of the network.
 	network_id: StreamProtocol,
 	/// The cryptographic keypair of the node.
@@ -120,8 +120,6 @@ pub struct CoreBuilder<T: Clone + Send + Sync + 'static> {
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
 	/// The blacklist of peers to ignore.
 	blacklist: Blacklist,
-	/// The network data state
-	state: Option<T>,
 	/// The size of the stream buffers to use to track application requests to the network layer
 	/// internally.
 	stream_size: usize,
@@ -149,7 +147,7 @@ pub struct CoreBuilder<T: Clone + Send + Sync + 'static> {
 	),
 }
 
-impl<T: Clone + Send + Sync + 'static> CoreBuilder<T> {
+impl CoreBuilder {
 	/// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
 	/// Here, it is certain that [`BootstrapConfig`] contains valid data.
 	/// A type that implements [`EventHandler`] is passed to handle and responde to network events.
@@ -205,7 +203,6 @@ impl<T: Clone + Send + Sync + 'static> CoreBuilder<T> {
 			tcp_udp_port: config.ports(),
 			boot_nodes: config.bootnodes(),
 			blacklist: config.blacklist(),
-			state: None,
 			stream_size: usize::MAX,
 			// Default is to listen on all interfaces (ipv4).
 			ip_address: IpAddr::V4(DEFAULT_IP_ADDRESS),
@@ -342,21 +339,13 @@ impl<T: Clone + Send + Sync + 'static> CoreBuilder<T> {
 		self.network_id.to_string()
 	}
 
-	/// Configure the application data state to manage
-	pub fn with_state(self, state: T) -> Self {
-		CoreBuilder {
-			state: Some(state),
-			..self
-		}
-	}
-
 	/// Build the [`Core`] data structure.
 	///
 	/// Handles the configuration of the libp2p Swarm structure and the selected transport
 	/// protocols, behaviours and node identity for tokio and async-std runtimes. The Swarm is
 	/// wrapped in the Core construct which serves as the interface to interact with the internal
 	/// networking layer.
-	pub async fn build(self) -> SwarmNlResult<Core<T>> {
+	pub async fn build(self) -> SwarmNlResult<Core> {
 		#[cfg(feature = "async-std-runtime")]
 		let mut swarm = {
 			// Configure transports for default and custom configurations
@@ -634,8 +623,6 @@ impl<T: Clone + Send + Sync + 'static> CoreBuilder<T> {
 			stream_request_buffer: stream_request_buffer.clone(),
 			stream_response_buffer: stream_response_buffer.clone(),
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
-			// Save handler as the state of the application
-			state: self.state,
 			// Initialize an empty event queue
 			event_queue: DataQueue::new(),
 		};
@@ -688,7 +675,7 @@ impl<T: Clone + Send + Sync + 'static> CoreBuilder<T> {
 
 /// The core interface for the application layer to interface with the networking layer.
 #[derive(Clone)]
-pub struct Core<T: Clone + Send + Sync + 'static> {
+pub struct Core {
 	keypair: Keypair,
 	/// The producing end of the stream that sends data to the network layer from the
 	/// application.
@@ -706,13 +693,11 @@ pub struct Core<T: Clone + Send + Sync + 'static> {
 	stream_request_buffer: Arc<Mutex<StreamRequestBuffer>>,
 	/// Current stream id. Useful for opening new streams, we just have to bump the number by 1
 	current_stream_id: Arc<Mutex<StreamId>>,
-	/// The state of the application
-	state: Option<T>,
 	/// The network event queue
 	event_queue: DataQueue<NetworkEvent>,
 }
 
-impl<T: Clone + Send + Sync + 'static> Core<T> {
+impl Core {
 	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful
 	/// for saving a keypair for future use when going offline.
 	///
@@ -893,7 +878,7 @@ impl<T: Clone + Send + Sync + 'static> Core<T> {
 
 	/// Handle the responses coming from the network layer. This is usually as a result of a request
 	/// from the application layer
-	async fn handle_network_response(mut receiver: Receiver<StreamData>, network_core: Core<T>) {
+	async fn handle_network_response(mut receiver: Receiver<StreamData>, network_core: Core) {
 		loop {
 			select! {
 				response = receiver.select_next_some() => {
@@ -938,7 +923,7 @@ impl<T: Clone + Send + Sync + 'static> Core<T> {
 		mut network_info: NetworkInfo,
 		mut network_sender: Sender<StreamData>,
 		mut receiver: Receiver<StreamData>,
-		network_core: Core<T>,
+		network_core: Core,
 	) {
 		// Network queue that tracks the execution of application requests in the network layer.
 		let data_queue_1 = DataQueue::new();

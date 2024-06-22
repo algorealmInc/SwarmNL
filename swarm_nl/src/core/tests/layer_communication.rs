@@ -24,7 +24,7 @@ pub const GOSSIP_NETWORK: &str = "avada";
 pub struct AppState;
 
 /// Used to create a detereministic node.
-async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
+async fn setup_node_1(ports: (Port, Port)) -> Core {
 	// Our test keypair for the first node
 	let mut protobuf = vec![
 		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
@@ -43,7 +43,7 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<AppState> {
 }
 
 /// Used to create a node to peer with node_1.
-async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<AppState>, PeerId) {
+async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core, PeerId) {
 	let app_state = AppState;
 
 	// Our test keypair for the node_1
@@ -85,7 +85,7 @@ async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<
 	)
 }
 
-async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core<AppState> {
+async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core {
 	let app_state = AppState;
 
 	// First, we want to configure our node with the bootstrap config file on disk

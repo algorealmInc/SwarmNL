@@ -10,14 +10,13 @@ use swarm_nl::{PeerId, Port};
 use std::io::{self, BufRead};
 
 /// Setup first node using default config.
-pub async fn setup_node(ports: (Port, Port)) -> Core<()> {
+pub async fn setup_node(ports: (Port, Port)) -> Core {
 	// Use the default config parameters and override a few configurations e.g ports, keypair
 	let config = BootstrapConfig::default()
 		.with_tcp(ports.0)
 		.with_udp(ports.1);
 
 	// Set up network
-	// Here, we are not saving any application state data 
 	CoreBuilder::with_config(config)
 		.build()
 		.await
