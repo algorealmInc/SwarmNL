@@ -93,7 +93,7 @@ Please look at a template `.ini` file [here](https://github.com/algorealmInc/Swa
 
 ### Event Handling
 
-During the period of network operations, many events are generated. These events help us to know anf track the happenings in th network layer. When the events are genrated during netowrk operations, they are stored in an internal buffer until they are explicitly polled and consumed or if the queue if full. It is important to consume important events as soon as possible to prevent loss in case of the buffer getting full.
+During network operations, various events are generated. These events help us track the activities in the network layer. When generated, they are stored in an internal buffer until they are explicitly polled and consumed, or until the queue is full. It is important to consume critical events promptly to prevent loss if the buffer becomes full.
 
 ```rust
     //! Consuming the events by retrieving it as a iterator
