@@ -123,20 +123,13 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
 		.with_tcp(ports.0)
 		.with_udp(ports.1);
 
-	// Set up network
+	// Set up network with default configuration
 	let builder = CoreBuilder::with_config(config);
 
 	// Configure gossipsub
 	// Specify the gossip filter algorithm
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
-
-	// Add data state
-	let builder = builder.with_state(Game {
-		node: 1,
-		score: 0,
-		current_guess: -1,
-	});
 
 	// Build
 	builder.build().await.unwrap()
@@ -165,48 +158,41 @@ async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<
 
 	// Set up network
 	(
-		CoreBuilder::with_config(config)
-			.with_state(Game {
-				node: 2,
-				score: 0,
-				current_guess: -1,
-			})
-			.build()
-			.await
-			.unwrap(),
+		CoreBuilder::with_config(config).build().await.unwrap(),
 		peer_id,
 	)
 }
 
 /// Run node 1
 async fn run_node_1() {
+	// Application state
+	let mut game_state = Game {
+		node: 1,
+		score: 0,
+		current_guess: -1,
+	};
+
 	// Set up node
 	let mut node_1 = setup_node_1((49666, 49606)).await;
 
-	// Read all currently buffered network events
-	let events = node_1.events().await;
-
-	let _ = events
-		.map(|e| {
-			match e {
-				NetworkEvent::NewListenAddr {
-					local_peer_id,
-					listener_id: _,
-					address,
-				} => {
-					// Announce interfaces we're listening on
-					let game_state = node_1.state().unwrap();
-
-					println!("[[Node {}]] >> Peer id: {}", game_state.node, local_peer_id);
-					println!(
-						"[[Node {}]] >> We're listening on the {}",
-						game_state.node, address
-					);
-				},
-				_ => {},
-			}
-		})
-		.collect::<Vec<_>>();
+	// Read events for the new listen addresses
+	while let Some(event) = node_1.next_event().await {
+		match event {
+			NetworkEvent::NewListenAddr {
+				local_peer_id,
+				listener_id: _,
+				address,
+			} => {
+				// Announce interfaces we're listening on
+				println!("[[Node {}]] >> Peer id: {}", game_state.node, local_peer_id);
+				println!(
+					"[[Node {}]] >> We're listening on the {}",
+					game_state.node, address
+				);
+			},
+			_ => {},
+		}
+	}
 
 	// Join a network (subscribe to a topic)
 	let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
@@ -220,7 +206,6 @@ async fn run_node_1() {
 		// We will be looping forever to generate new numbers, send them and compare them.
 		// The loop stops when we have a winner
 		loop {
-			let mut game_state = node_1.state().unwrap();
 			let mut rng = rand::thread_rng();
 			let random_u32: i32 = rng.gen_range(1..=20);
 
@@ -266,9 +251,6 @@ async fn run_node_1() {
 				break;
 			}
 
-			// Save game state
-			node_1.add_state(game_state);
-
 			// check for gossip events
 			let _ = node_1
 				.events()
@@ -276,12 +258,8 @@ async fn run_node_1() {
 				.map(|e| {
 					match e {
 						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
-							// Get current data state
-							let mut game = node_1.state().unwrap();
 							// Call handler
-							handle_gossipsub_incoming_message(&mut game, source, data);
-							// Save new game state
-							node_1.add_state(game);
+							handle_gossipsub_incoming_message(&mut game_state, source, data);
 						},
 						_ => {},
 					}
@@ -298,6 +276,13 @@ async fn run_node_1() {
 
 /// Run node 2
 async fn run_node_2() {
+	// Application state
+	let mut game_state = Game {
+		node: 2,
+		score: 0,
+		current_guess: -1,
+	};
+
 	// Set up node 2 and initiate connection to node 1
 	let (mut node_2, _) = setup_node_2((49666, 49606), (49667, 49607)).await;
 
@@ -313,8 +298,6 @@ async fn run_node_2() {
 					address,
 				} => {
 					// Announce interfaces we're listening on
-					let game_state = node_2.state().unwrap();
-
 					println!("[[Node {}]] >> Peer id: {}", game_state.node, local_peer_id);
 					println!(
 						"[[Node {}]] >> We're listening on the {}",
@@ -338,7 +321,6 @@ async fn run_node_2() {
 		// We will be looping forever to generate new numbers, send them and compare them.
 		// The loop stops when we have a winner
 		loop {
-			let mut game_state = node_2.state().unwrap();
 			let mut rng = rand::thread_rng();
 			let random_u32: i32 = rng.gen_range(1..=20);
 
@@ -384,9 +366,6 @@ async fn run_node_2() {
 				break;
 			}
 
-			// Save game state
-			node_2.add_state(game_state);
-
 			// check for gossip events
 			let _ = node_2
 				.events()
@@ -394,12 +373,8 @@ async fn run_node_2() {
 				.map(|e| {
 					match e {
 						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
-							// Get current data state
-							let mut game = node_2.state().unwrap();
 							// Call handler
-							handle_gossipsub_incoming_message(&mut game, source, data);
-							// Save new game state
-							node_2.add_state(game);
+							handle_gossipsub_incoming_message(&mut game_state, source, data);
 						},
 						_ => {},
 					}

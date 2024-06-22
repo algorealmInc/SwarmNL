@@ -750,17 +750,7 @@ impl<T: Clone + Send + Sync + 'static> Core<T> {
 		self.keypair.public().to_peer_id()
 	}
 
-	/// Return a reference to the data state stored by the network
-	pub fn state(&self) -> Option<T> {
-		self.state.clone()
-	}
-
-	/// Modifies the state of the application data passed to the network
-	pub fn add_state(&mut self, state: T) {
-		self.state = Some(state);
-	}
-
-	/// Return an iterator to the buffered network layer events and clears the queue of them
+	/// Return an iterator to the buffered network layer events and consumes them
 	pub async fn events(&mut self) -> IntoIter<NetworkEvent> {
 		let events = self.event_queue.into_inner().await.into_iter();
 

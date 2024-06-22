@@ -4,41 +4,21 @@
 /// recieves inout from stdin, writes it to the network layer and then recieves it
 /// back from the network.
 
-use swarm_nl::core::{AppData, AppResponse, Core, CoreBuilder, EventHandler};
+use swarm_nl::core::{AppData, AppResponse, Core, CoreBuilder};
 use swarm_nl::setup::BootstrapConfig;
 use swarm_nl::{PeerId, Port};
 use std::io::{self, BufRead};
 
-/// Our application state.
-#[derive(Clone)]
-struct EchoServer;
-
-/// Define custom handler for application state.
-impl EventHandler for EchoServer {
-	// We're just echoing the data back
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-		println!("Recvd incoming RPC: {:?}", data);
-		data
-	}
-
-	// Handle the incoming gossip message
-	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, data: Vec<String>) {
-		println!("Recvd incoming gossip: {:?}", data);
-	}
-}
-
 /// Setup first node using default config.
-pub async fn setup_node(ports: (Port, Port)) -> Core<EchoServer> {
-	// Application state
-	let state = EchoServer;
-
+pub async fn setup_node(ports: (Port, Port)) -> Core<()> {
 	// Use the default config parameters and override a few configurations e.g ports, keypair
 	let config = BootstrapConfig::default()
 		.with_tcp(ports.0)
 		.with_udp(ports.1);
 
 	// Set up network
-	CoreBuilder::with_config(config, state)
+	// Here, we are not saving any application state data 
+	CoreBuilder::with_config(config)
 		.build()
 		.await
 		.unwrap()
