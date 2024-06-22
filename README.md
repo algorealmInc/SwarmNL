@@ -82,21 +82,8 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
             .with_tcp(ports.0)
             .with_udp(ports.1);
 
-        #[derive(Clone)]
-        struct ApplicationState{
-            name: String,
-            version: f32,
-        }
-
-       
-        // Define custom event handler
-        let state = ApplicationState {
-            name: String::from("SwarmNL"),
-            version: 0.1
-        }
-
         // Build node or network core
-        let node = CoreBuilder::with_config(config, state)
+        let node = CoreBuilder::with_config(config)
             .build()
             .await
             .unwrap();
@@ -104,6 +91,10 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
   ```
 
   Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
+
+### Event Handling
+
+During the period of network operations, many events are generated. These events help us to 
 
 
 ### Node communication
