@@ -107,7 +107,7 @@ During network operations, various events are generated. These events help us tr
         .unwrap();
 
 	// Read all currently buffered network events
-	let events = node_2.events().await;
+	let events = node.events().await;
 
 	let _ = events
 		.map(|e| {
