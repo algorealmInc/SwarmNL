@@ -270,110 +270,264 @@ pub enum RpcConfig {
 	},
 }
 
-/// Enum that represents the events generated in the network layer
+/// Enum that represents the events generated in the network layer.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum NetworkEvent {
-	/// Event that informs the application that we have started listening on a new multiaddr.
-	NewListenAddr {
-		local_peer_id: PeerId,
-		listener_id: ListenerId,
-		address: Multiaddr,
-	},
-	/// Event that informs the application that a new peer (with its location details) has just
-	/// been added to the routing table.
-	RoutingTableUpdated { peer_id: PeerId },
-	/// Event that informs the application about a newly established connection to a peer.
-	ConnectionEstablished {
-		peer_id: PeerId,
-		connection_id: ConnectionId,
-		endpoint: ConnectedPoint,
-		num_established: NonZeroU32,
-		established_in: Duration,
-	},
-	/// Event that informs the application about a closed connection to a peer.
-	ConnectionClosed {
-		peer_id: PeerId,
-		connection_id: ConnectionId,
-		endpoint: ConnectedPoint,
-		num_established: u32,
-	},
-	/// Event that announces expired listen address.
-	ExpiredListenAddr {
-		listener_id: ListenerId,
-		address: Multiaddr,
-	},
-	/// Event that announces a closed listener.
-	ListenerClosed {
-		listener_id: ListenerId,
-		addresses: Vec<Multiaddr>,
-	},
-	/// Event that announces a listener error.
-	ListenerError { listener_id: ListenerId },
-	/// Event that announces a dialing attempt.
-	Dialing {
-		peer_id: Option<PeerId>,
-		connection_id: ConnectionId,
-	},
-	/// Event that announces a new external address candidate.
-	NewExternalAddrCandidate { address: Multiaddr },
-	/// Event that announces a confirmed external address.
-	ExternalAddrConfirmed { address: Multiaddr },
-	/// Event that announces an expired external address.
-	ExternalAddrExpired { address: Multiaddr },
-	/// Event that announces a new connection arriving on a listener and in the process of
-	/// protocol negotiation.
-	IncomingConnection {
-		connection_id: ConnectionId,
-		local_addr: Multiaddr,
-		send_back_addr: Multiaddr,
-	},
-	/// Event that announces an error happening on an inbound connection during its initial
-	/// handshake.
-	IncomingConnectionError {
-		connection_id: ConnectionId,
-		local_addr: Multiaddr,
-		send_back_addr: Multiaddr,
-	},
-	/// Event that announces an error happening on an outbound connection during its initial
-	/// handshake.
-	OutgoingConnectionError {
-		connection_id: ConnectionId,
-		peer_id: Option<PeerId>,
-	},
-	/// Event that announces the arrival of a pong message from a peer.
-	/// The duration it took for a round trip is also returned.
-	OutboundPingSuccess { peer_id: PeerId, duration: Duration },
-	/// Event that announces a `Ping` error.
-	OutboundPingError { peer_id: PeerId },
-	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol.
-	IdentifyInfoReceived { peer_id: PeerId, info: IdentifyInfo },
-	/// Event that announces the successful write of a record to the DHT.
-	KademliaPutRecordSuccess { key: Vec<u8> },
-	/// Event that announces the failure of a node to save a record.
-	KademliaPutRecordError,
-	/// Event that announces a node as a provider of a record in the DHT.
-	KademliaStartProvidingSuccess { key: Vec<u8> },
-	/// Event that announces the failure of a node to become a provider of a record in the DHT.
-	KademliaStartProvidingError,
-	/// Event that announces the arrival of an RPC message.
-	RpcIncomingMessageHandled { data: RpcData },
-	/// Event that announces that a peer has just left a network.
-	GossipsubUnsubscribeMessageReceived { peer_id: PeerId, topic: String },
-	/// Event that announces that a peer has just joined a network.
-	GossipsubSubscribeMessageReceived { peer_id: PeerId, topic: String },
-	/// Event that announces the arrival of a gossip message.
-	GossipsubIncomingMessageHandled { source: PeerId, data: Vec<String> },
-	/// Event that announces the beginning of the filtering and authentication of the incoming
-	/// gossip message. It returns a boolean to specify whether the message should be dropped or
-	/// should reach the application. All incoming messages are allowed in by default.
-	GossipsubIncomingMessageFiltered {
-		propagation_source: PeerId,
-		message_id: MessageId,
-		source: Option<PeerId>,
-		topic: String,
-		data: Vec<String>,
-	},
+    /// Event that informs the application that we have started listening on a new multiaddr.
+    ///
+    /// # Fields
+    ///
+    /// - `local_peer_id`: The `PeerId` of the local peer.
+    /// - `listener_id`: The ID of the listener.
+    /// - `address`: The new `Multiaddr` where the local peer is listening.
+    NewListenAddr {
+        local_peer_id: PeerId,
+        listener_id: ListenerId,
+        address: Multiaddr,
+    },
+    /// Event that informs the application that a new peer (with its location details) has just
+    /// been added to the routing table.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the new peer added to the routing table.
+    RoutingTableUpdated { 
+        peer_id: PeerId 
+    },
+    /// Event that informs the application about a newly established connection to a peer.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the connected peer.
+    /// - `connection_id`: The ID of the connection.
+    /// - `endpoint`: The `ConnectedPoint` information about the connection's endpoint.
+    /// - `num_established`: The number of established connections with this peer.
+    /// - `established_in`: The duration it took to establish the connection.
+    ConnectionEstablished {
+        peer_id: PeerId,
+        connection_id: ConnectionId,
+        endpoint: ConnectedPoint,
+        num_established: NonZeroU32,
+        established_in: Duration,
+    },
+    /// Event that informs the application about a closed connection to a peer.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the peer.
+    /// - `connection_id`: The ID of the connection.
+    /// - `endpoint`: The `ConnectedPoint` information about the connection's endpoint.
+    /// - `num_established`: The number of remaining established connections with this peer.
+    ConnectionClosed {
+        peer_id: PeerId,
+        connection_id: ConnectionId,
+        endpoint: ConnectedPoint,
+        num_established: u32,
+    },
+    /// Event that announces an expired listen address.
+    ///
+    /// # Fields
+    ///
+    /// - `listener_id`: The ID of the listener.
+    /// - `address`: The expired `Multiaddr`.
+    ExpiredListenAddr {
+        listener_id: ListenerId,
+        address: Multiaddr,
+    },
+    /// Event that announces a closed listener.
+    ///
+    /// # Fields
+    ///
+    /// - `listener_id`: The ID of the listener.
+    /// - `addresses`: The list of `Multiaddr` where the listener was listening.
+    ListenerClosed {
+        listener_id: ListenerId,
+        addresses: Vec<Multiaddr>,
+    },
+    /// Event that announces a listener error.
+    ///
+    /// # Fields
+    ///
+    /// - `listener_id`: The ID of the listener that encountered the error.
+    ListenerError { 
+        listener_id: ListenerId 
+    },
+    /// Event that announces a dialing attempt.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the peer being dialed, if known.
+    /// - `connection_id`: The ID of the connection attempt.
+    Dialing {
+        peer_id: Option<PeerId>,
+        connection_id: ConnectionId,
+    },
+    /// Event that announces a new external address candidate.
+    ///
+    /// # Fields
+    ///
+    /// - `address`: The new external address candidate.
+    NewExternalAddrCandidate { 
+        address: Multiaddr 
+    },
+    /// Event that announces a confirmed external address.
+    ///
+    /// # Fields
+    ///
+    /// - `address`: The confirmed external address.
+    ExternalAddrConfirmed { 
+        address: Multiaddr 
+    },
+    /// Event that announces an expired external address.
+    ///
+    /// # Fields
+    ///
+    /// - `address`: The expired external address.
+    ExternalAddrExpired { 
+        address: Multiaddr 
+    },
+    /// Event that announces a new connection arriving on a listener and in the process of
+    /// protocol negotiation.
+    ///
+    /// # Fields
+    ///
+    /// - `connection_id`: The ID of the incoming connection.
+    /// - `local_addr`: The local `Multiaddr` where the connection is received.
+    /// - `send_back_addr`: The remote `Multiaddr` of the peer initiating the connection.
+    IncomingConnection {
+        connection_id: ConnectionId,
+        local_addr: Multiaddr,
+        send_back_addr: Multiaddr,
+    },
+    /// Event that announces an error happening on an inbound connection during its initial
+    /// handshake.
+    ///
+    /// # Fields
+    ///
+    /// - `connection_id`: The ID of the incoming connection.
+    /// - `local_addr`: The local `Multiaddr` where the connection was received.
+    /// - `send_back_addr`: The remote `Multiaddr` of the peer initiating the connection.
+    IncomingConnectionError {
+        connection_id: ConnectionId,
+        local_addr: Multiaddr,
+        send_back_addr: Multiaddr,
+    },
+    /// Event that announces an error happening on an outbound connection during its initial
+    /// handshake.
+    ///
+    /// # Fields
+    ///
+    /// - `connection_id`: The ID of the outbound connection.
+    /// - `peer_id`: The `PeerId` of the peer being connected to, if known.
+    OutgoingConnectionError {
+        connection_id: ConnectionId,
+        peer_id: Option<PeerId>,
+    },
+    /// Event that announces the arrival of a pong message from a peer.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the peer that sent the pong message.
+    /// - `duration`: The duration it took for the round trip.
+    OutboundPingSuccess { 
+        peer_id: PeerId, 
+        duration: Duration 
+    },
+    /// Event that announces a `Ping` error.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the peer that encountered the ping error.
+    OutboundPingError { 
+        peer_id: PeerId 
+    },
+    /// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the peer that sent the identify info.
+    /// - `info`: The `IdentifyInfo` received from the peer.
+    IdentifyInfoReceived { 
+        peer_id: PeerId, 
+        info: IdentifyInfo 
+    },
+    /// Event that announces the successful write of a record to the DHT.
+    ///
+    /// # Fields
+    ///
+    /// - `key`: The key of the record that was successfully written.
+    KademliaPutRecordSuccess { 
+        key: Vec<u8> 
+    },
+    /// Event that announces the failure of a node to save a record.
+    KademliaPutRecordError,
+    /// Event that announces a node as a provider of a record in the DHT.
+    ///
+    /// # Fields
+    ///
+    /// - `key`: The key of the record being provided.
+    KademliaStartProvidingSuccess { 
+        key: Vec<u8> 
+    },
+    /// Event that announces the failure of a node to become a provider of a record in the DHT.
+    KademliaStartProvidingError,
+    /// Event that announces the arrival of an RPC message.
+    ///
+    /// # Fields
+    ///
+    /// - `data`: The `RpcData` of the received message.
+    RpcIncomingMessageHandled { 
+        data: RpcData 
+    },
+    /// Event that announces that a peer has just left a network.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the peer that left.
+    /// - `topic`: The topic the peer unsubscribed from.
+    GossipsubUnsubscribeMessageReceived { 
+        peer_id: PeerId, 
+        topic: String 
+    },
+    /// Event that announces that a peer has just joined a network.
+    ///
+    /// # Fields
+    ///
+    /// - `peer_id`: The `PeerId` of the peer that joined.
+    /// - `topic`: The topic the peer subscribed to.
+    GossipsubSubscribeMessageReceived { 
+        peer_id: PeerId, 
+        topic: String 
+    },
+    /// Event that announces the arrival of a gossip message.
+    ///
+    /// # Fields
+    ///
+    /// - `source`: The `PeerId` of the source peer.
+    /// - `data`: The data contained in the gossip message.
+    GossipsubIncomingMessageHandled { 
+        source: PeerId, 
+        data: Vec<String> 
+    },
+    /// Event that announces the beginning of the filtering and authentication of the incoming
+    /// gossip message.
+    ///
+    /// # Fields
+    ///
+    /// - `propagation_source`: The `PeerId` of the peer from whom the message was received.
+    /// - `message_id`: The ID of the incoming message.
+    /// - `source`: The `PeerId` of the original sender, if known.
+    /// - `topic`: The topic of the message.
+    /// - `data`: The data contained in the message.
+    GossipsubIncomingMessageFiltered {
+        propagation_source: PeerId,
+        message_id: MessageId,
+        source: Option<PeerId>,
+        topic: String,
+        data: Vec<String>,
+    },
 }
+
 
 /// The struct that contains incoming information about a peer returned by the `Identify` protocol.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
