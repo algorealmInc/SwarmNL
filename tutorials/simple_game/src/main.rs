@@ -61,8 +61,8 @@ impl EventHandler for Game {
 		addr: Multiaddr,
 	) {
 		// announce interfaces we're listening on
-		println!("[[Node {}]] >> 😎 Peer id: {}", self.node, local_peer_id);
-		println!("[[Node {}]] >> 📢 We're listening on the {}", self.node, addr);
+		println!("[[Node {}]] >> Peer id: {}", self.node, local_peer_id);
+		println!("[[Node {}]] >> We're listening on the {}", self.node, addr);
 	}
 
 	fn connection_established(
@@ -74,7 +74,7 @@ impl EventHandler for Game {
 		_established_in: Duration,
 	) {
 		println!(
-			"[[Node {}]] >> ✅ Connection established with peer: {:?}",
+			"[[Node {}]] >> Connection established with peer: {:?}",
 			self.node, peer_id
 		);
 	}
@@ -82,7 +82,7 @@ impl EventHandler for Game {
 	/// Event that announces that a peer has just joined a network.
 	fn gossipsub_subscribe_message_recieved(&mut self, peer_id: PeerId, topic: String) {
 		println!(
-			"[[Node {}]] >> 🥳 Peer {:?} just joined the mesh network for topic: {}",
+			"[[Node {}]] >> Peer {:?} just joined the mesh network for topic: {}",
 			self.node, peer_id, topic
 		);
 	}
@@ -256,7 +256,7 @@ async fn run_node_1() {
 			if node_1.state.lock().await.score == HIGH_SCORE {
 				// We've won!
 				println!(
-					"[[Node {}]] >> 🏆 Congratulations! Node 1 is the winner.",
+					"[[Node {}]] >> Congratulations! Node 1 is the winner.",
 					node_1.state.lock().await.node
 				);
 
@@ -275,7 +275,7 @@ async fn run_node_1() {
 			} else if node_1.state.lock().await.score == -1 {
 				// We lost :(
 				println!(
-					"[[Node {}]] >> 👏 Game Over! Node 2 is the winner.",
+					"[[Node {}]] >> Game Over! Node 2 is the winner.",
 					node_1.state.lock().await.node
 				);
 				break;
@@ -326,7 +326,7 @@ async fn run_node_2() {
 			if node_2.state.lock().await.score == HIGH_SCORE {
 				// We've won!
 				println!(
-					"[[Node {}]] >> 🏆 Congratulations! Node 2 is the winner.",
+					"[[Node {}]] >> Congratulations! Node 2 is the winner.",
 					node_2.state.lock().await.node
 				);
 
@@ -345,7 +345,7 @@ async fn run_node_2() {
 			} else if node_2.state.lock().await.score == -1 {
 				// We lost :(
 				println!(
-					"[[Node {}]] >> 👏 Game Over! Node 1 is the winner.",
+					"[[Node {}]] >> Game Over! Node 1 is the winner.",
 					node_2.state.lock().await.node
 				);
 				break;
