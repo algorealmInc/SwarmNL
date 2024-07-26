@@ -552,7 +552,7 @@ pub(super) struct NetworkInfo {
 	pub ping: PingInfo,
 	/// Important information to manage `Gossipsub` operations.
 	pub gossipsub: gossipsub_cfg::GossipsubInfo,
-	/// The function that handles incoming rpc data request and produces a response
+	/// The function that handles incoming RPC data request and produces a response
 	pub rpc_handler_fn: fn(RpcData) -> RpcData,
 	/// The function to filter incoming gossip messages
 	pub gossip_filter_fn: fn(PeerId, MessageId, Option<PeerId>, String, Vec<String>) -> bool,

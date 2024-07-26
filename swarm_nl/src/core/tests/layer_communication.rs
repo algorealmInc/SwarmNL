@@ -438,7 +438,7 @@ fn rpc_fetch_works() {
 		// Set up the node that will be dialled
 		setup_node_1((49666, 49606)).await;
 
-		println!("This is the server node for rpc testing");
+		println!("This is the server node for RPC testing");
 		// Loop for the listening node to keep running
 		loop {}
 	});
@@ -451,7 +451,7 @@ fn rpc_fetch_works() {
 		// Set up the second node that will dial
 		let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
 
-		println!("This is the client node for rpc testing");
+		println!("This is the client node for RPC testing");
 
 		let fetch_key = vec!["SomeFetchKey".as_bytes().to_vec()];
 
