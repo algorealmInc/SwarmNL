@@ -38,8 +38,8 @@ const NODE_1_WAIT_TIME: u64 = 10;
 /// Node 2 wait time (for node 1 to write to the DHT).
 const NODE_2_WAIT_TIME: u64 = 10;
 
-// We need to handle the incoming rpc here
-// What we're going to do is to look at out file system for the file specified in the rpc data and
+// We need to handle the incoming RPC here
+// What we're going to do is to look in our file system for the file specified in the RPC data and
 // return it's binary content
 fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 	println!("Received incoming RPC: {:?}", data);
