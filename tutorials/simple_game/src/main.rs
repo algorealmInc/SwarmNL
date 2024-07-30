@@ -260,7 +260,7 @@ async fn run_node_1() {
 				break;
 			}
 
-			// check for gossip events
+			// Check for gossip events
 			let _ = node_1
 				.events()
 				.await
