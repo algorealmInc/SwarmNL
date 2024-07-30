@@ -616,11 +616,16 @@ pub mod gossipsub_cfg {
 		pub list: HashSet<PeerId>,
 	}
 
-	/// GossipSub configuration
+	/// GossipSub configuration.
 	pub enum GossipsubConfig {
-		/// Default
+		/// A default configuration.
 		Default,
-		/// Custom
+		/// A custom configuration.
+		/// 
+		/// # Fields
+		/// 
+	        /// - `config`: The custom configuration for gossipsub.
+	        /// - `auth`: The signature authenticity check.
 		Custom {
 			config: gossipsub::Config,
 			auth: gossipsub::MessageAuthenticity,
