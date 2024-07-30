@@ -46,7 +46,8 @@ fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 
 	// Extract the file name from the incoming data
 	let file_name = String::from_utf8_lossy(&data[0]);
-	let file_name = file_name.trim(); // Trim any potential whitespace
+	// Trim any potential whitespace
+	let file_name = file_name.trim();
 
 	// Read the file content
 	let mut file_content = Vec::new();
