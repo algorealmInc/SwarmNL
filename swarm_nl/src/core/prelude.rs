@@ -677,7 +677,7 @@ where
 		buffer.push_back(item);
 	}
 
-	/// Return the inner data structure of the queue
+	/// Return the inner data structure of the queue.
 	pub async fn into_inner(&self) -> VecDeque<T> {
 		self.buffer.lock().await.clone()
 	}
