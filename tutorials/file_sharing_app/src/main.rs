@@ -136,7 +136,7 @@ async fn run_node_1() {
 				listener_id: _,
 				address,
 			} => {
-				// announce interfaces we're listening on
+				// Announce interfaces we're listening on
 				println!("Peer id: {}", local_peer_id);
 				println!("We're listening on the {}", address);
 			},
