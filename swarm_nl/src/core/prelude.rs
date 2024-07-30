@@ -682,7 +682,7 @@ where
 		self.buffer.lock().await.clone()
 	}
 
-	/// Drain the queue of its content
+	/// Drain the contents of the queue.
 	pub async fn drain(&mut self) {
 		self.buffer.lock().await.drain(..);
 	}
