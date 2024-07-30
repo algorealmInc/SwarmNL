@@ -49,7 +49,7 @@ fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 	// Trim any potential whitespace
 	let file_name = file_name.trim();
 
-	// Read the file content
+	// Read the contents of the file
 	let mut file_content = Vec::new();
 	match File::open(&file_name) {
 		Ok(mut file) => match file.read_to_end(&mut file_content) {
