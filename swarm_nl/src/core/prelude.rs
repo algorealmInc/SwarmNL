@@ -646,7 +646,7 @@ pub mod gossipsub_cfg {
 	}
 }
 
-/// Queue that stores and removes data in a FIFO manner
+/// Queue that stores and removes data in a FIFO manner.
 #[derive(Clone)]
 pub(super) struct DataQueue<T: Debug + Clone + Eq + PartialEq + Hash> {
 	buffer: Arc<Mutex<VecDeque<T>>>,
