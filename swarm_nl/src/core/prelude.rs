@@ -656,7 +656,7 @@ impl<T> DataQueue<T>
 where
 	T: Debug + Clone + Eq + PartialEq + Hash,
 {
-	/// Create new queue
+	/// Create new queue.
 	pub fn new() -> Self {
 		Self {
 			buffer: Arc::new(Mutex::new(VecDeque::new())),
