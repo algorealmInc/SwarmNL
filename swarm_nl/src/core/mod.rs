@@ -883,7 +883,7 @@ impl Core {
 	}
 
 	/// Handle the responses coming from the network layer. This is usually as a result of a request
-	/// from the application layer
+	/// from the application layer.
 	async fn handle_network_response(mut receiver: Receiver<StreamData>, network_core: Core) {
 		loop {
 			select! {
