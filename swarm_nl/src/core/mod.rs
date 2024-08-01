@@ -193,7 +193,7 @@ impl CoreBuilder {
 		let gossip_filter_fn = |_, _, _, _, _| true;
 
 		// Set up default config for RPC handling.
-		// The incoming RPC will simply be forwarded back to it's sender
+		// The incoming RPC will simply be forwarded back to its sender.
 		let rpc_handler_fn = |incoming_data: RpcData| incoming_data;
 
 		// Initialize struct with information from `BootstrapConfig`
