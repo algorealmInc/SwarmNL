@@ -189,7 +189,7 @@ impl CoreBuilder {
 		.unwrap();
 
 		// The filter function to handle incoming gossip data.
-		// The default behaviour is to allow all incoming messages
+		// The default behaviour is to allow all incoming messages.
 		let gossip_filter_fn = |_, _, _, _, _| true;
 
 		// Set up default config for RPC handling.
