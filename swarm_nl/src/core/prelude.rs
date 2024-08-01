@@ -27,7 +27,7 @@ const MAX_QUEUE_ELEMENTS: usize = 30;
 /// Type that represents the response of the network layer to the application layer's event handler.
 pub type AppResponseResult = Result<AppResponse, NetworkError>;
 
-/// Type that represents the data exchanged during RPC operations
+/// Type that represents the data exchanged during RPC operations.
 pub type RpcData = Vec<Vec<u8>>;
 
 /// The delimeter that separates the messages to gossip
