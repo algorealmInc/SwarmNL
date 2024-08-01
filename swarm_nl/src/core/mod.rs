@@ -741,7 +741,7 @@ impl Core {
 		self.keypair.public().to_peer_id()
 	}
 
-	/// Return an iterator to the buffered network layer events and consumes them
+	/// Return an iterator to the buffered network layer events and consume them.
 	pub async fn events(&mut self) -> IntoIter<NetworkEvent> {
 		let events = self.event_queue.into_inner().await.into_iter();
 
