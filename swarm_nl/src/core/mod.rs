@@ -140,7 +140,7 @@ pub struct CoreBuilder {
 	/// to handle an incoming request from a peer.
 	request_response: (Behaviour<Rpc, Rpc>, fn(RpcData) -> RpcData),
 	/// The `Behaviour` of the `GossipSub` protocol. The second tuple value is a filter function
-	/// that filters incoming gossip before passing it to the application
+	/// that filters incoming gossip messages before passing them to the application.
 	gossipsub: (
 		gossipsub::Behaviour,
 		fn(PeerId, MessageId, Option<PeerId>, String, Vec<String>) -> bool,
