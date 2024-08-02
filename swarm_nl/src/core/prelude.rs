@@ -21,7 +21,7 @@ pub const NETWORK_READ_TIMEOUT: Seconds = 30;
 pub const TASK_SLEEP_DURATION: Seconds = 3;
 
 /// The height of the internal queue. This represents the maximum number of elements that a queue
-/// can accommodate without losing its oldest elements
+/// can accommodate without losing its oldest elements.
 const MAX_QUEUE_ELEMENTS: usize = 30;
 
 /// Type that represents the response of the network layer to the application layer's event handler.
