@@ -17,7 +17,7 @@ use super::*;
 pub const NETWORK_READ_TIMEOUT: Seconds = 30;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
-/// the response buffer
+/// the response buffer.
 pub const TASK_SLEEP_DURATION: Seconds = 3;
 
 /// The height of the internal queue. This represents the maximum number of elements that a queue
