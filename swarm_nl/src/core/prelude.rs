@@ -22,7 +22,7 @@ pub const TASK_SLEEP_DURATION: Seconds = 3;
 
 /// The height of the internal queue. This represents the maximum number of elements that a queue
 /// can accommodate without losing its oldest elements.
-const MAX_QUEUE_ELEMENTS: usize = 30;
+const MAX_QUEUE_ELEMENTS: usize = 300;
 
 /// Type that represents the response of the network layer to the application layer's event handler.
 pub type AppResponseResult = Result<AppResponse, NetworkError>;
