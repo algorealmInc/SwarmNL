@@ -39,6 +39,9 @@ pub(super) const BOOT_WAIT_TIME: Seconds = 1;
 /// The buffer capacity of an mpsc stream.
 pub(super) const STREAM_BUFFER_CAPACITY: usize = 100;
 
+/// The initial buffer capacity, to optimize for speed and defer allocation
+pub(super) const INITIAL_BUFFER_CAPACITY: usize = 30;
+
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug, Clone)]
 pub(super) enum StreamData {
@@ -659,7 +662,7 @@ where
 	/// Create new queue.
 	pub fn new() -> Self {
 		Self {
-			buffer: Arc::new(Mutex::new(VecDeque::new())),
+			buffer: Arc::new(Mutex::new(VecDeque::with_capacity(INITIAL_BUFFER_CAPACITY))),
 		}
 	}
 

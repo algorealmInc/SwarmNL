@@ -27,7 +27,7 @@ optional = true
 [features]
 tokio-runtime = ["tokio"]
 async-std-runtime = ["async-std"]
-# default = ["async-std-runtime"]
+default = ["async-std-runtime"]
 
 test-listening-node = []
 test-dialing-node = []
