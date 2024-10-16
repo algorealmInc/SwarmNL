@@ -512,23 +512,23 @@ pub enum NetworkEvent {
         source: PeerId, 
         data: Vec<String> 
     },
-    /// Event that announces the beginning of the filtering and authentication of the incoming
-    /// gossip message.
-    ///
-    /// # Fields
-    ///
-    /// - `propagation_source`: The `PeerId` of the peer from whom the message was received.
-    /// - `message_id`: The ID of the incoming message.
-    /// - `source`: The `PeerId` of the original sender, if known.
-    /// - `topic`: The topic of the message.
-    /// - `data`: The data contained in the message.
-    GossipsubIncomingMessageFiltered {
-        propagation_source: PeerId,
-        message_id: MessageId,
-        source: Option<PeerId>,
-        topic: String,
-        data: Vec<String>,
-    },
+    // /// Event that announces the beginning of the filtering and authentication of the incoming
+    // /// gossip message.
+    // ///
+    // /// # Fields
+    // ///
+    // /// - `propagation_source`: The `PeerId` of the peer from whom the message was received.
+    // /// - `message_id`: The ID of the incoming message.
+    // /// - `source`: The `PeerId` of the original sender, if known.
+    // /// - `topic`: The topic of the message.
+    // /// - `data`: The data contained in the message.
+    // GossipsubIncomingMessageFiltered {
+    //     propagation_source: PeerId,
+    //     message_id: MessageId,
+    //     source: Option<PeerId>,
+    //     topic: String,
+    //     data: Vec<String>,
+    // },
 }
 
 
