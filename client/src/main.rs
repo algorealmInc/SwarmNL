@@ -96,6 +96,7 @@ async fn run_node(
 	peer_ids: (PeerId, PeerId),
 	keypair: [u8; 68],
 	http_port: Port,
+	storage_addr: String,
 ) {
 	// Define node information
 	let mut node_info = NodeInfo {
@@ -104,8 +105,11 @@ async fn run_node(
 		nonce: Vec::new(),
 	};
 
-	// Setup HTTP server component
-	util::setup_server(name, http_port).await;
+	// Spawn an HTTP server task
+	let node_name = name.to_owned();
+	tokio::task::spawn(async move {
+		util::setup_server(storage_addr, node_name, http_port).await;
+	});
 
 	// Bootnodes
 	let mut bootnodes = HashMap::new();
@@ -363,8 +367,12 @@ async fn main() {
 	let ports_3: (Port, Port) = (49154, 55002);
 
 	// HTTP Ports
-	let http_ports = (4000, 4001, 4002);
+	let http_ports = [4000, 4001, 4002];
 
+	// Storage addresses
+	let storage_addrs = ["node-1/file.txt", "node-2/file.txt", "node-3/file.txt"];
+
+	// Spin up first server
 	#[cfg(feature = "first-node")]
 	{
 		run_node(
@@ -374,11 +382,13 @@ async fn main() {
 			ports_3,
 			(peer_id_2, peer_id_3),
 			node_1_keypair,
-			http_ports.0,
+			http_ports[0],
+			storage_addrs[0].to_string(),
 		)
 		.await;
 	}
 
+	// Spin up second server
 	#[cfg(feature = "second-node")]
 	{
 		run_node(
@@ -388,11 +398,13 @@ async fn main() {
 			ports_3,
 			(peer_id_1, peer_id_3),
 			node_2_keypair,
-			http_ports.1,
+			http_ports[1],
+			storage_addrs[1].to_string(),
 		)
 		.await;
 	}
 
+	// Spin up third server
 	#[cfg(feature = "third-node")]
 	{
 		run_node(
@@ -402,17 +414,38 @@ async fn main() {
 			ports_2,
 			(peer_id_1, peer_id_2),
 			node_3_keypair,
-			http_ports.2,
+			http_ports[2],
+			storage_addrs[2].to_string(),
 		)
 		.await;
+	}
+
+	// Spin up client
+	#[cfg(feature = "client")]
+	{
+		// Initialize client
+		let file_name = "client/file.txt";
+		// Run
+		util::run_client(file_name, http_ports).await;
 	}
 }
 
 /// Module containing utility functions
 mod util {
+	use std::{
+		fs::{File, OpenOptions},
+		io::{self, BufRead},
+		io::{Result as IoResult, Write},
+		path::Path,
+	};
+
 	use super::*;
 	use rand::Rng;
-	use warp::{hyper::body::Bytes, Filter};
+	use reqwest::Client;
+	use warp::{
+		hyper::{body::Bytes, StatusCode},
+		Filter,
+	};
 
 	/// Generate random number
 	pub fn generate_random_number() -> u8 {
@@ -426,26 +459,146 @@ mod util {
 	}
 
 	/// Setup a HTTP server to recieve data from outside the network
-	pub async fn setup_server(name: &str, http_port: Port) {
+	pub async fn setup_server(storage_addr: String, node_name: String, http_port: Port) {
+		// Allow CORS
+		let cors = warp::cors()
+			.allow_origin("http://127.0.0.1")
+			.allow_methods(vec!["GET", "POST", "DELETE"]);
+
 		// Define a POST route that accepts binary data
 		let upload_route = warp::post()
 			.and(warp::path("upload"))
-			.and(warp::body::content_length_limit(1024 * 32))
 			.and(warp::body::bytes()) // Accept raw bytes as the body
-			.map(|bytes: Bytes| {
-				// Print the binary data (you may want to log or process it)
-				println!("Received binary data of length: {}", bytes.len());
-				println!("{:?}", bytes);
+			.map(move |bytes: Bytes| {
+				// Convert bytes to string
+				let data = String::from_utf8(bytes.to_vec()).expect("Invalid UTF-8");
 
-				// Return a success response
-				warp::reply::with_status("Binary data received", warp::http::StatusCode::OK)
-			});
+				// Print the received string data
+				println!("[{node_name}]>>> Received data of length: {}", data.len());
+
+				// Write to file
+				match write_to_file(&storage_addr, &data) {
+					Ok(_) => {
+						println!("[{node_name}]>>> Incomiong data successfully saved to storage");
+
+						// Gossip to peers
+						// Prepare message
+						let gossip_request = AppData::GossipsubBroadcastMessage {
+							topic: GOSSIP_NETWORK.to_string(),
+							message: vec![data.to_string()],
+						};
+
+						// Send request
+						if let Ok(_) = node.query_network(gossip_request).await {
+							println!("[{name}]>>> Random number sent to peers: {}", random_number);
+
+							// Wait a little for broadcasts to come in
+							util::sleep_for(WAIT_TIME).await;
+						}
+
+						// Return a success response
+						warp::reply::with_status("String data received", StatusCode::OK)
+					},
+					Err(e) => {
+						println!("[{node_name}]>>> Error saving data: {e}");
+
+						warp::reply::with_status("Failed to write to storage", StatusCode::INTERNAL_SERVER_ERROR)
+					},
+				}
+			})
+			.with(cors);
+
+		println!("Setting up HTTP server, listening on port {http_port}");
 
 		// Start the server on specified port
 		warp::serve(upload_route)
 			.run(([127, 0, 0, 1], http_port))
 			.await;
+	}
 
-		println!("[{name}]>>> HTTP server ready!");
+	/// Write text to a file
+	pub fn write_to_file(filename: &str, text: &str) -> IoResult<()> {
+		// Open the file in append mode, create if it doesn't exist
+		let mut file = OpenOptions::new()
+			.write(true)
+			.append(true)
+			.create(true)
+			.open(filename)?;
+
+		// Write the text into the file
+		writeln!(file, "{}", text)?;
+
+		Ok(())
+	}
+
+	/// Setup a client that would send requests to the network
+	pub async fn run_client(file_path: &str, ports: [Port; 3]) {
+		let file_path = file_path.to_owned();
+
+		// Spin up a task that consistently writes data to the network
+		let handle = tokio::task::spawn(async move {
+			// Initialize the reqwest client
+			let client = Client::new();
+			let mut i = 0;
+
+			loop {
+				if let Ok(lines) = read_lines(&file_path) {
+					// Read the file line by line
+					for line in lines {
+						if let Ok(content) = line {
+							// Send the line content to the server
+							match send_to_server(&client, &content, ports[i]).await {
+								Ok(response) => println!("Server responded: {}", response),
+								Err(e) => eprintln!("Error sending data: {:?}", e),
+							}
+
+							// Simulate some delay to avoid overwhelming the server
+							sleep_for(2).await;
+						}
+
+						// Modify the counter to balance load on the servers
+						i = (i + 1) % 3;
+					}
+				}
+				// After finishing the file, start over again
+				println!("Finished reading the file. Starting over...");
+			}
+		});
+
+		// Await the task to ensure it runs to completion
+		if let Err(e) = handle.await {
+			eprintln!("Task failed with error: {:?}", e);
+		}
+	}
+
+	// Send data to the server
+	async fn send_to_server(
+		client: &Client,
+		data: &str,
+		port: Port,
+	) -> Result<String, reqwest::Error> {
+		// Format the URL using the provided port
+		let url = format!("http://127.0.0.1:{}/upload", port);
+
+		// Send the POST request
+		let res = client
+			.post(&url) // Use the formatted URL
+			.body(data.to_string())
+			.send()
+			.await?;
+
+		println!("Response status: {:?}", res.status());
+
+		// Return the server response as text
+		Ok(res.text().await?)
+	}
+
+	// Read lines from a file
+	fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+	where
+		P: AsRef<Path>,
+	{
+		let file = File::open(filename)?;
+		Ok(io::BufReader::new(file).lines())
 	}
 }
