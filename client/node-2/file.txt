@@ -1,50 +1,218 @@
-2. A dime a dozen
-5. A penny for your thoughts
-8. Add fuel to the fire
-11. An arm and a leg
-14. Back to the drawing board
-17. Beating around the bush
-20. Bite the bullet
-23. Break the ice
-26. Call it a day
-29. Close but no cigar
-32. Cut corners
-35. Don’t count your chickens before they hatch
-38. Down in the dumps
-41. Get a taste of your own medicine
-44. Give someone the cold shoulder
-47. Hang in there
-50. In the heat of the moment
-53. Keep an eye on
-56. Let the cat out of the bag
-59. Miss the boat
-62. On thin ice
+66. Over the moon
+66. Over the moon
+67. Pull someone’s leg
 65. Out of the frying pan and into the fire
-68. Pull yourself together
-71. Saved by the bell
-74. Sleep on it
-77. Steal someone's thunder
-80. The ball is in your court
-83. The last straw
-86. Time flies when you’re having fun
-89. Up in the air
-92. Your guess is as good as mine
-95. A leopard can’t change its spots
-98. All bark and no bite
-101. Back to square one
-104. Burn the candle at both ends
-107. Caught red-handed
-110. Don’t judge a book by its cover
-113. Feeling under the weather
-116. Get the show on the road
-119. Go out on a limb
-122. Head over heels
-125. It’s a small world
-128. Leave no stone unturned
-131. Make ends meet
-134. Off the hook
-137. Out of sight, out of mind
-140. Practice makes perfect
-143. Slow and steady wins the race
-146. The whole nine yards
+65. Out of the frying pan and into the fire
+62. On thin ice
+62. On thin ice
+63. Once in a blue moon
+63. Once in a blue moon
+64. Out of the blue
+60. My hands are tied
+60. My hands are tied
+61. Off the top of my head
+59. Miss the boat
+59. Miss the boat
+56. Let the cat out of the bag
+56. Let the cat out of the bag
+57. Let the chips fall where they may
+57. Let the chips fall where they may
+58. Make a long story short
+54. Keep your chin up
+54. Keep your chin up
+55. Kill two birds with one stone
+53. Keep an eye on
+53. Keep an eye on
+150. You can’t have your cake and eat it too
+50. In the heat of the moment
+50. In the heat of the moment
+51. It takes two to tango
+51. It takes two to tango
+52. Jump on the bandwagon
+48. Hit the nail on the head
+148. Too many cooks spoil the broth
+48. Hit the nail on the head
+49. Hit the sack
+147. Throw in the towel
+47. Hang in there
+47. Hang in there
+144. Strike while the iron is hot
+44. Give someone the cold shoulder
+44. Give someone the cold shoulder
+45. Go back to the drawing board
+145. The early bird catches the worm
+45. Go back to the drawing board
+46. Go the extra mile
+42. Get out of hand
+142. Read between the lines
+42. Get out of hand
+43. Get your act together
+141. Put your best foot forward
+41. Get a taste of your own medicine
+41. Get a taste of your own medicine
+138. Piece of cake
+38. Down in the dumps
+38. Down in the dumps
+39. Easier said than done
+139. Play it by ear
+39. Easier said than done
+40. Every cloud has a silver lining
+36. Don’t cry over spilled milk
+136. Once bitten, twice shy
+36. Don’t cry over spilled milk
+37. Don’t give up your day job
+135. On the ball
+35. Don’t count your chickens before they hatch
+35. Don’t count your chickens before they hatch
+132. Method to my madness
+32. Cut corners
+32. Cut corners
+33. Cut to the chase
+133. No pain, no gain
+33. Cut to the chase
+34. Devil’s advocate
+30. Come rain or shine
+130. Make a mountain out of a molehill
+30. Come rain or shine
+31. Costs an arm and a leg
+129. Let sleeping dogs lie
+29. Close but no cigar
+29. Close but no cigar
+126. Jump the gun
+26. Call it a day
+26. Call it a day
+27. Can't judge a book by its cover
+127. Keep your friends close and your enemies closer
+27. Can't judge a book by its cover
+28. Caught between a rock and a hard place
+24. Burn the midnight oil
+124. In a nutshell
+24. Burn the midnight oil
+25. Burning bridges
+123. Hit the books
+23. Break the ice
+23. Break the ice
+120. Go with the flow
+20. Bite the bullet
+20. Bite the bullet
+21. Bite the dust
+121. Have your cake and eat it too
+21. Bite the dust
+22. Break a leg
+18. Best of both worlds
+118. Give someone a run for their money
+18. Best of both worlds
+19. Bite off more than you can chew
+117. Get wind of something
+17. Beating around the bush
+17. Beating around the bush
+114. Fit as a fiddle
 149. Two heads are better than one
+146. The whole nine yards
+143. Slow and steady wins the race
+140. Practice makes perfect
+14. Back to the drawing board
+14. Back to the drawing board
+15. Ball is in your court
+115. Fortune favors the bold
+15. Ball is in your court
+16. Barking up the wrong tree
+112. Face the music
+12. An axe to grind
+128. Leave no stone unturned
+125. It’s a small world
+122. Head over heels
+12. An axe to grind
+13. At the drop of a hat
+119. Go out on a limb
+116. Get the show on the road
+113. Feeling under the weather
+110. Don’t judge a book by its cover
+111. Every dog has its day
+11. An arm and a leg
+11. An arm and a leg
+98. All bark and no bite
+89. Up in the air
+86. Time flies when you’re having fun
+68. Pull yourself together
+85. Through thick and thin
+58. Make a long story short
+82. The elephant in the room
+28. Caught between a rock and a hard place
+83. The last straw
+108. Curiosity killed the cat
+80. The ball is in your court
+87. To make matters worse
+88. Under the weather
+84. The tip of the iceberg
+81. The best of both worlds
+78. Take it with a grain of salt
+8. Add fuel to the fire
+8. Add fuel to the fire
+9. All ears
+96. A penny saved is a penny earned
+69. Rain on someone's parade
+95. A leopard can’t change its spots
+92. Your guess is as good as mine
+93. A bird in the hand is worth two in the bush
+109. Don’t bite the hand that feeds you
+90. When pigs fly
+99. All that glitters is not gold
+97. Add insult to injury
+94. A hot potato
+91. Wrap your head around something
+79. Take the bull by the horns
+49. Hit the sack
+19. Bite off more than you can chew
+9. All ears
+10. All in the same boat
+6. A piece of cake
+106. By the skin of your teeth
+76. Spill the beans
+67. Pull someone’s leg
+64. Out of the blue
+61. Off the top of my head
+46. Go the extra mile
+16. Barking up the wrong tree
+6. A piece of cake
+7. Actions speak louder than words
+52. Jump on the bandwagon
+25. Burning bridges
+105. Burn your bridges
+75. Speak of the devil
+55. Kill two birds with one stone
+5. A penny for your thoughts
+5. A penny for your thoughts
+102. Better late than never
+72. See eye to eye
+22. Break a leg
+2. A dime a dozen
+2. A dime a dozen
+3. A drop in the bucket
+103. Between a rock and a hard place
+137. Out of sight, out of mind
+134. Off the hook
+131. Make ends meet
+73. Sit on the fence
+43. Get your act together
+37. Don’t give up your day job
+34. Devil’s advocate
+31. Costs an arm and a leg
+13. At the drop of a hat
+3. A drop in the bucket
+4. A fish out of water
+107. Caught red-handed
+104. Burn the candle at both ends
+101. Back to square one
+100. At the end of your rope
+70. Rule of thumb
+40. Every cloud has a silver lining
+10. All in the same boat
+1. A blessing in disguise
+77. Steal someone's thunder
+74. Sleep on it
+71. Saved by the bell
+7. Actions speak louder than words
+4. A fish out of water
+1. A blessing in disguise
+68. Pull yourself together
