@@ -1,4 +1,4 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
 //! Data structures and functions to setup a node and configure it for networking.
