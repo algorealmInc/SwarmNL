@@ -39,9 +39,6 @@ pub(super) const BOOT_WAIT_TIME: Seconds = 1;
 /// The buffer capacity of an mpsc stream.
 pub(super) const STREAM_BUFFER_CAPACITY: usize = 100;
 
-/// The initial buffer capacity, to optimize for speed and defer allocation
-pub(super) const INITIAL_BUFFER_CAPACITY: usize = 30;
-
 /// Data exchanged over a stream between the application and network layer
 #[derive(Debug, Clone)]
 pub(super) enum StreamData {
@@ -659,10 +656,13 @@ impl<T> DataQueue<T>
 where
 	T: Debug + Clone + Eq + PartialEq + Hash,
 {
+	/// The initial buffer capacity, to optimize for speed and defer allocation
+	const INITIAL_BUFFER_CAPACITY: usize = 300;
+
 	/// Create new queue.
 	pub fn new() -> Self {
 		Self {
-			buffer: Arc::new(Mutex::new(VecDeque::with_capacity(INITIAL_BUFFER_CAPACITY))),
+			buffer: Arc::new(Mutex::new(VecDeque::with_capacity(DataQueue::<T>::INITIAL_BUFFER_CAPACITY))),
 		}
 	}
 

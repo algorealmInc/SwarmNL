@@ -87,7 +87,7 @@ async fn setup_node(
 	builder.build().await.unwrap()
 }
 
-// Consume buffer and perform operations on the data retrieved
+/// Consume buffer and perform operations on the data retrieved
 async fn consume_buffer(
 	mut node: Core,
 	name: String,
