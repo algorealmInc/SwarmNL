@@ -1,3 +1,38 @@
+88. Under the weather
+88. Under the weather
+89. Up in the air
+87. To make matters worse
+87. To make matters worse
+85. Through thick and thin
+85. Through thick and thin
+86. Time flies when you’re having fun
+84. The tip of the iceberg
+84. The tip of the iceberg
+82. The elephant in the room
+82. The elephant in the room
+83. The last straw
+81. The best of both worlds
+81. The best of both worlds
+79. Take the bull by the horns
+79. Take the bull by the horns
+80. The ball is in your court
+78. Take it with a grain of salt
+78. Take it with a grain of salt
+76. Spill the beans
+76. Spill the beans
+77. Steal someone's thunder
+75. Speak of the devil
+75. Speak of the devil
+73. Sit on the fence
+73. Sit on the fence
+74. Sleep on it
+72. See eye to eye
+72. See eye to eye
+70. Rule of thumb
+70. Rule of thumb
+71. Saved by the bell
+69. Rain on someone's parade
+69. Rain on someone's parade
 67. Pull someone’s leg
 67. Pull someone’s leg
 68. Pull yourself together
@@ -142,9 +177,7 @@
 10. All in the same boat
 11. An arm and a leg
 97. Add insult to injury
-79. Take the bull by the horns
 96. A penny saved is a penny earned
-69. Rain on someone's parade
 94. A hot potato
 93. A bird in the hand is worth two in the bush
 91. Wrap your head around something
@@ -158,21 +191,14 @@
 29. Close but no cigar
 9. All ears
 9. All ears
-76. Spill the beans
 7. Actions speak louder than words
 147. Throw in the towel
 74. Sleep on it
 47. Hang in there
-73. Sit on the fence
 117. Get wind of something
 71. Saved by the bell
 17. Beating around the bush
-70. Rule of thumb
-87. To make matters worse
-78. Take it with a grain of salt
 77. Steal someone's thunder
-75. Speak of the devil
-72. See eye to eye
 7. Actions speak louder than words
 8. Add fuel to the fire
 86. Time flies when you’re having fun
@@ -189,7 +215,6 @@
 114. Fit as a fiddle
 41. Get a taste of your own medicine
 14. Back to the drawing board
-84. The tip of the iceberg
 44. Give someone the cold shoulder
 4. A fish out of water
 5. A penny for your thoughts
@@ -203,16 +228,13 @@
 3. A drop in the bucket
 1. A blessing in disguise
 111. Every dog has its day
-81. The best of both worlds
 11. An arm and a leg
 1. A blessing in disguise
 2. A dime a dozen
 80. The ball is in your court
 50. In the heat of the moment
 20. Bite the bullet
-88. Under the weather
-85. Through thick and thin
-82. The elephant in the room
 8. Add fuel to the fire
 5. A penny for your thoughts
 2. A dime a dozen
+90. When pigs fly

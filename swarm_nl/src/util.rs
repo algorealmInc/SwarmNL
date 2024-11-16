@@ -7,7 +7,7 @@ use crate::{prelude::*, setup::BootstrapConfig};
 use base58::FromBase58;
 use ini::Ini;
 use libp2p_identity::PeerId;
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, path::Path, str::FromStr};
 
 /// Read an INI file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
@@ -74,7 +74,12 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 }
 
 /// Write value into config file.
-pub fn write_config(section: &str, key: &str, new_value: &str, file_path: &str) -> bool {
+pub fn write_config<T: AsRef<Path> + ?Sized>(
+	section: &str,
+	key: &str,
+	new_value: &str,
+	file_path: &T,
+) -> bool {
 	if let Ok(mut conf) = Ini::load_from_file(file_path) {
 		// Set a value:
 		conf.set_to(Some(section), key.into(), new_value.into());
