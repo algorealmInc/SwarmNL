@@ -11,8 +11,9 @@ use std::{
 	fs,
 	net::IpAddr,
 	num::NonZeroU32,
+	path::Path,
 	sync::Arc,
-	time::Duration, path::Path,
+	time::Duration,
 };
 
 use base58::FromBase58;
@@ -709,7 +710,7 @@ impl Core {
 	///
 	/// It returns a boolean to indicate success of operation. Only key types other than RSA can be
 	/// serialized to protobuf format and only a single keypair can be saved at a time.
-	pub fn save_keypair_offline<T: AsRef<Path>>(&self, config_file_path: &T) -> bool {
+	pub fn save_keypair_offline<T: AsRef<Path> + ?Sized>(&self, config_file_path: &T) -> bool {
 		// Check the file exists, and create one if not
 		if let Err(_) = fs::metadata(config_file_path) {
 			fs::File::create(config_file_path).expect("could not create config file");
