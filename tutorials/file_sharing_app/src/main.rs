@@ -1,4 +1,4 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 
 /// This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing
 /// application using two nodes. One nodes writes a record to the DHT and specifies itself as a

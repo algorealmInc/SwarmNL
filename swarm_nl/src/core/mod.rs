@@ -32,6 +32,7 @@ use libp2p::{
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
 	swarm::{NetworkBehaviour, SwarmEvent},
+	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
 use prelude::replica_cfg::ReplBufferData;
@@ -156,6 +157,7 @@ pub struct CoreBuilder {
 impl CoreBuilder {
 	/// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
 	/// Here, it is certain that [`BootstrapConfig`] contains valid data.
+	/// A type that implements [`EventHandler`] is passed to handle and respond to network events.
 	pub fn with_config(config: BootstrapConfig) -> Self {
 		// The default network id
 		let network_id = DEFAULT_NETWORK_ID;
@@ -799,7 +801,7 @@ impl Core {
 		events
 	}
 
-	/// Return the next event in the network event queue
+	/// Return the next event in the network event queue.
 	pub async fn next_event(&mut self) -> Option<NetworkEvent> {
 		self.event_queue.pop().await
 	}

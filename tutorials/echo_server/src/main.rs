@@ -1,4 +1,4 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 
 use std::io::{self, BufRead};
 /// This crate demonstrates how to use SwarmNl. Here, we build a simple echo server that
