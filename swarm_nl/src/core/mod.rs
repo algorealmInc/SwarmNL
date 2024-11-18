@@ -146,12 +146,13 @@ pub struct CoreBuilder {
 		gossipsub::Behaviour,
 		fn(PeerId, MessageId, Option<PeerId>, String, Vec<String>) -> bool,
 	),
+	/// The nodes for static replication
+	static_replica_nodes: Nodes,
 }
 
 impl CoreBuilder {
 	/// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
 	/// Here, it is certain that [`BootstrapConfig`] contains valid data.
-	/// A type that implements [`EventHandler`] is passed to handle and responde to network events.
 	pub fn with_config(config: BootstrapConfig) -> Self {
 		// The default network id
 		let network_id = DEFAULT_NETWORK_ID;
@@ -218,6 +219,7 @@ impl CoreBuilder {
 			identify,
 			request_response: (request_response_behaviour, rpc_handler_fn),
 			gossipsub: (gossipsub_behaviour, gossip_filter_fn),
+			static_replica_nodes: config.static_repl_nodes(),
 		}
 	}
 
@@ -632,7 +634,19 @@ impl CoreBuilder {
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
 			// Initialize an empty event queue
 			event_queue: DataQueue::new(),
+			static_repl_nodes: self.static_replica_nodes,
+			static_replication_network_key: util::generate_random_string(10),
 		};
+
+		// Ensure there are configured nodes for static replication
+		if !network_core.static_repl_nodes.is_empty() {
+			// Spin up task to handle static replication to nodes
+			#[cfg(feature = "async-std-runtime")]
+			async_std::task::spawn(Core::handle_static_replication(network_core.clone()));
+
+			#[cfg(feature = "tokio-runtime")]
+			tokio::task::spawn(Core::handle_static_replication(network_core.clone()));
+		}
 
 		// Spin up task to handle async operations and data on the network
 		#[cfg(feature = "async-std-runtime")]
@@ -702,6 +716,10 @@ pub struct Core {
 	current_stream_id: Arc<Mutex<StreamId>>,
 	/// The network event queue
 	event_queue: DataQueue<NetworkEvent>,
+	/// The list of nodes for static replication
+	static_repl_nodes: Nodes,
+	/// The unique key that would privatalize the static replication network
+	static_replication_network_key: String,
 }
 
 impl Core {
@@ -883,6 +901,33 @@ impl Core {
 		}
 	}
 
+	/// Handle all operations concerning static replication
+	async fn handle_static_replication(mut core: Core) {
+		// On setup, we added the static replica nodes to our list of bootstrap nodes, so we can
+		// assume they have been dialed and a connection has been established
+
+		// Join private replication network
+		let gossip_request =
+			AppData::GossipsubJoinNetwork(core.static_replication_network_key.clone());
+
+		// Send request to static replica nodes
+		if let Ok(_) = core.query_network(gossip_request).await {
+			// We have successfully joined the gossip network
+		}
+	}
+
+	/// Send data to static replica nodes
+	pub async fn statically_replicate(&mut self, replica_data: ByteVector) {
+		// Prepare a gossip request
+		let gossip_request = AppData::GossipsubBroadcastMessage {
+			topic: self.static_replication_network_key.clone(),
+			message: replica_data,
+		};
+
+		// Gossip data to static replica nodes
+		let _ = self.query_network(gossip_request).await;
+	}
+
 	/// Handle the responses coming from the network layer. This is usually as a result of a request
 	/// from the application layer.
 	async fn handle_network_response(mut receiver: Receiver<StreamData>, network_core: Core) {
@@ -904,9 +949,12 @@ impl Core {
 							res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaNoProvidersFound => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaGetRoutingTableInfo { .. } => buffer_guard.insert(stream_id, Ok(res)),
-							res @ AppResponse::FetchData(..) => buffer_guard.insert(stream_id, Ok(res)),
+							AppResponse::FetchData(rpc_data) => {
+								// 
+								buffer_guard.insert(stream_id, Ok(res))
+							},
 							res @ AppResponse::GetNetworkInfo{..} => buffer_guard.insert(stream_id, Ok(res)),
-							res @ AppResponse::GossipsubBroadcastSuccess => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::GossipsubBroadcastSuccess(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::GossipsubJoinSuccess => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::GossipsubExitSuccess => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::GossipsubBlacklistSuccess => buffer_guard.insert(stream_id, Ok(res)),
@@ -1055,7 +1103,7 @@ impl Core {
 											let topic_hash = TopicHash::from_raw(topic);
 
 											// Marshall message into a single string
-											let message = message.join(GOSSIP_MESSAGE_SEPARATOR);
+											let message = message.join(GOSSIP_MESSAGE_SEPARATOR.as_bytes());
 
 											// Check if we're already subscribed to the topic
 											let is_subscribed = swarm.behaviour().gossipsub.mesh_peers(&topic_hash).any(|peer| peer == swarm.local_peer_id());
@@ -1063,7 +1111,7 @@ impl Core {
 											// Gossip
 											if swarm
 												.behaviour_mut().gossipsub
-												.publish(topic_hash, message.as_bytes()).is_ok() && !is_subscribed {
+												.publish(topic_hash, message).is_ok() && !is_subscribed {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBroadcastSuccess)).await;
 											} else {

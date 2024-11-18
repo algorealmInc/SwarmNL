@@ -4,8 +4,11 @@
 //! Types and traits that are used throughout SwarmNL.
 
 use libp2p_identity::KeyType;
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, collections::HashMap};
 use thiserror::Error;
+
+/// Type respresenting data for static replication configuration
+pub type StaticReplConfigData = Vec<HashMap<String, HashMap<String, String>>>;
 
 /// Default IP address when no address is specified.
 pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
@@ -46,6 +49,8 @@ pub type Seconds = u64;
 pub type PeerIdString = String;
 /// The stringified `Multiaddr` type.
 pub type MultiaddrString = String;
+/// A collection of nodes described purely by their addresses
+pub type Nodes = HashMap<PeerIdString, MultiaddrString>;
 
 /// Lower bound port range (u16::MIN).
 pub const MIN_PORT: u16 = 49152;

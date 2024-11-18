@@ -4,7 +4,6 @@
 //! Data structures and functions to setup a node and configure it for networking.
 
 #![doc = include_str!("../doc/setup/NodeSetup.md")]
-
 use std::collections::HashMap;
 
 use crate::core::gossipsub_cfg::Blacklist;
@@ -24,9 +23,11 @@ pub struct BootstrapConfig {
 	/// The Cryptographic Keypair for node identification and message auth.
 	keypair: Keypair,
 	/// Bootstrap peers.
-	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+	boot_nodes: Nodes,
 	/// Blacklisted peers
 	blacklist: Blacklist,
+	/// Configuration data for static replication
+	static_replica_cfg: StaticReplConfigData,
 }
 
 impl BootstrapConfig {
@@ -52,12 +53,15 @@ impl BootstrapConfig {
 			// Default node keypair type i.e Ed25519.
 			keypair: Keypair::generate_ed25519(),
 			boot_nodes: Default::default(),
+			// List of blacklisted peers
 			blacklist: Default::default(),
+			// List containing static replication nodes
+			static_replicas: Default::default(),
 		}
 	}
 
 	/// Configure available bootnodes.
-	pub fn with_bootnodes(mut self, boot_nodes: HashMap<PeerIdString, MultiaddrString>) -> Self {
+	pub fn with_bootnodes(mut self, boot_nodes: Nodes) -> Self {
 		// Additive operation
 		self.boot_nodes.extend(boot_nodes.into_iter());
 		self
@@ -89,6 +93,28 @@ impl BootstrapConfig {
 			BootstrapConfig { udp_port, ..self }
 		} else {
 			self
+		}
+	}
+
+	/// Configure nodes for static replication.
+	pub fn with_static_replication(self, cfg_data: StaticReplConfigData) -> Self {
+		// A connection request must be sent to the replica nodes on startup, so we will add it to
+		// our list of bootnodes
+
+		let bootnodes = cfg_data
+			.into_iter()
+			.flat_map(|outer_map| {
+				outer_map
+					.into_iter()
+					.flat_map(|(_, inner_map)| inner_map.into_iter())
+			})
+			.collect();
+
+		let node = self.with_bootnodes(bootnodes);
+
+		Self {
+			static_replica_cfg: cfg_data,
+			..node
 		}
 	}
 
@@ -174,13 +200,18 @@ impl BootstrapConfig {
 	}
 
 	/// Return the configured bootnodes for the network.
-	pub fn bootnodes(&self) -> HashMap<PeerIdString, MultiaddrString> {
+	pub fn bootnodes(&self) -> Nodes {
 		self.boot_nodes.clone()
 	}
 
 	/// Return the 	`PeerId`'s of nodes that are to be blacklisted.
 	pub fn blacklist(&self) -> Blacklist {
 		self.blacklist.clone()
+	}
+
+	/// Return the configured nodes for static replication
+	pub fn static_repl_nodes(&self) -> &StaticReplConfigData {
+		&self.static_replica_cfg
 	}
 }
 
@@ -272,7 +303,7 @@ mod tests {
 	#[test]
 	fn new_config_with_bootnodes_works() {
 		// Setup test data
-		let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
+		let mut bootnodes: Nodes = HashMap::new();
 		let key_1 = "12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
 		let val_1 = "/ip4/192.168.1.205/tcp/1509".to_string();
 		let key_2 = "12A0ZooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
