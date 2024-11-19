@@ -107,7 +107,7 @@ async fn consume_buffer(
 					// Prepare message
 					let gossip_request = AppData::GossipsubBroadcastMessage {
 						topic: GOSSIP_NETWORK.to_string(),
-						message: vec![data.clone()],
+						message: vec![data.clone().into()],
 					};
 
 					// Send request

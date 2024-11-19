@@ -7,7 +7,7 @@ use libp2p_identity::KeyType;
 use std::{net::Ipv4Addr, collections::HashMap};
 use thiserror::Error;
 
-/// Type respresenting data for static replication configuration
+/// Type respresenting data for replication configuration
 pub type ReplConfigData = Vec<HashMap<String, HashMap<String, String>>>;
 
 /// Default IP address when no address is specified.

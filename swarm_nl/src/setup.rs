@@ -26,7 +26,7 @@ pub struct BootstrapConfig {
 	boot_nodes: Nodes,
 	/// Blacklisted peers
 	blacklist: Blacklist,
-	/// Configuration data for static replication
+	/// Configuration data for replication
 	replication_cfg: Rc<ReplConfigData>,
 }
 
@@ -55,7 +55,7 @@ impl BootstrapConfig {
 			boot_nodes: Default::default(),
 			// List of blacklisted peers
 			blacklist: Default::default(),
-			// List containing static replication nodes
+			// List containing replication nodes
 			replication_cfg: Default::default(),
 		}
 	}
@@ -96,7 +96,7 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Configure nodes for static replication.
+	/// Configure nodes for replication and add them to bootnodes for early connection
 	pub fn with_replication(self, cfg_data: ReplConfigData) -> Self {
 		// A connection request must be sent to the replica nodes on startup, so we will add it to
 		// our list of bootnodes
@@ -210,7 +210,7 @@ impl BootstrapConfig {
 		self.blacklist.clone()
 	}
 
-	/// Return the configuration data for static replication
+	/// Return the configuration data for replication
 	pub fn repl_cfg(&self) -> Rc<ReplConfigData> {
 		self.replication_cfg.clone()
 	}

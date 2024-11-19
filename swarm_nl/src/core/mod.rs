@@ -284,8 +284,8 @@ impl CoreBuilder {
 		}
 	}
 
-	/// Configure the 'Replication` protocol for the network. Here we accept the (gossip) group key
-	/// for a replication network and the handler to be called when replicated data comes in
+	/// Configure the 'Replication` protocol for the network. Here we accept the key for the
+	/// freplication network and the handler to be called when the replicated data comes in
 	pub fn with_replication(
 		mut self,
 		repl_group_key: String,
@@ -748,12 +748,12 @@ pub struct Core {
 }
 
 impl Core {
-	/// The RPC key used to set up the static data replication protocol. When replica nodes recieve
-	/// an RPC with the key as the first parameter, they then join the replication network whose
+	/// The flag used to initialize the replication protocol. When replica nodes recieve
+	/// an RPC with the flag as the first parameter, they then join the replication network whose
 	/// key is specified in the second field
 	pub const REPL_CFG: &'static str = "REPL_CFG_@@";
 
-	/// The gossip flag to indicate that incoming gossipsub message is actually data send for
+	/// The gossip flag to indicate that incoming gossipsub message is actually data sent for
 	/// replication
 	pub const REPL_GOSSIP: &'static str = "REPL_GOSSIP_@@";
 
@@ -950,17 +950,18 @@ impl Core {
 
 		for replication_data in repl_data.iter() {
 			for (key, addresses) in replication_data.iter() {
-				for (peer_id_str, _) in addresses.iter() {
-					// Clone variables before moving then into a task
-					let key = key.to_owned();
-					let peer_id_str = peer_id_str.to_owned();
-					let mut core = core.clone();
+				// Clone variables before moving them into a task
+				let mut core = core.clone();
+				let key = key.clone();
+				let addresses = addresses.clone();
 
-					#[cfg(feature = "async-std-runtime")]
-					async_std::task::spawn(async move {
-						// Join private replication network
-						let gossip_request = AppData::GossipsubJoinNetwork(key.clone());
-						if let Ok(_) = core.query_network(gossip_request).await {
+				// Spawn an async-std task to join replica network and propel others to join aswell
+				#[cfg(feature = "async-std-runtime")]
+				async_std::task::spawn(async move {
+					// Join private replication network
+					let gossip_request = AppData::GossipsubJoinNetwork(key.clone());
+					if let Ok(_) = core.query_network(gossip_request).await {
+						for (peer_id_str, _) in addresses.iter() {
 							// Parse the peer ID
 							match peer_id_str.parse::<PeerId>() {
 								Ok(peer_id) => {
@@ -988,16 +989,18 @@ impl Core {
 									);
 								},
 							}
-						} else {
-							eprintln!("Failed to send gossip request for key: {}", key);
 						}
-					});
+					} else {
+						eprintln!("Failed to send gossip request for key: {}", key);
+					}
+				});
 
-					#[cfg(feature = "tokio-runtime")]
-					tokio::task::spawn(async move {
-						// Join private replication network
-						let gossip_request = AppData::GossipsubJoinNetwork(key.clone());
-						if let Ok(_) = core.query_network(gossip_request).await {
+				#[cfg(feature = "tokio-runtime")]
+				tokio::task::spawn(async move {
+					// Join private replication network
+					let gossip_request = AppData::GossipsubJoinNetwork(key.clone());
+					if let Ok(_) = core.query_network(gossip_request).await {
+						for (peer_id_str, _) in addresses.iter() {
 							// Parse the peer ID
 							match peer_id_str.parse::<PeerId>() {
 								Ok(peer_id) => {
@@ -1025,11 +1028,11 @@ impl Core {
 									);
 								},
 							}
-						} else {
-							eprintln!("Failed to send gossip request for key: {}", key);
 						}
-					});
-				}
+					} else {
+						eprintln!("Failed to send gossip request for key: {}", key);
+					}
+				});
 			}
 		}
 	}
@@ -1609,6 +1612,7 @@ impl Core {
 													// Parse request
 													match request {
 														Rpc::ReqResponse { data } => {
+															// Check if it a request to join a replication network
 															let response_rpc = if &data[0][..] == Core::REPL_CFG.as_bytes() {
 																// Attempt to decode the key
 																if let Ok(key_string) = String::from_utf8(data[1].clone()) {
@@ -1661,18 +1665,18 @@ impl Core {
 											let data_string = String::from_utf8(message.data).unwrap_or_default();
 											let gossip_data = data_string.split(GOSSIP_MESSAGE_SEPARATOR).map(|msg| msg.to_string()).collect::<Vec<_>>();
 
-											// First trigger the configured application filter event
-											if (network_info.gossip_filter_fn)(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
-												// Check whether it is a replication message
-												if gossip_data[0] == Core::REPL_GOSSIP {
-													// Configured functions will be called on incoming data specific to each replica group
-													Core::handle_incoming_repl_data(network_info.clone(), gossip_data[1..].to_owned());
-												} else {
+											// Check whether it is a replication message
+											if gossip_data[0] == Core::REPL_GOSSIP {
+												// Configured functions will be called on incoming data specific to each replica group
+												Core::handle_incoming_repl_data(network_info.clone(), gossip_data[1..].to_owned());
+											} else {
+												// First trigger the configured application filter event
+												if (network_info.gossip_filter_fn)(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
 													// Append to network event queue
 													network_core.event_queue.push(NetworkEvent::GossipsubIncomingMessageHandled { source: propagation_source, data: gossip_data }).await;
 												}
+												// else { // drop message }
 											}
-											// else { // drop message }
 										},
 										// A peer just subscribed
 										gossipsub::Event::Subscribed { peer_id, topic } => {
