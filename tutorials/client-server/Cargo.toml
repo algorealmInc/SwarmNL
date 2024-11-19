@@ -1,0 +1,21 @@
+[package]
+name = "model"
+version = "0.2.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rust-ini = "0.20.0"
+swarm_nl = { path = "../../swarm_nl", features = ["async-std-runtime"] }
+tokio = { version = "1.37.0", features = ["full"] }
+# async-std = { version = "1.12", features = ["attributes"] }
+rand = "0.8.5"
+warp = "0.3.7"
+reqwest = "0.12.8"
+
+[features]
+client = []
+first-node = []
+second-node = []
+third-node = []

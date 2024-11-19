@@ -65,7 +65,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 		// Now, read static replication config data if any
 		let replica_nodes = if let Some(section) = config.section(Some("repl")) {
 			// Get the configured replica nodes
-			parse_static_replication_data(section.get("replica_nodes").unwrap_or_default())
+			parse_replication_data(section.get("replica_nodes").unwrap_or_default())
 		} else {
 			Default::default()
 		};
@@ -73,7 +73,7 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 		Ok(BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type, &mut serialized_keypair)
 			.with_bootnodes(boot_nodes)
-			.with_static_replication(replica_nodes)
+			.with_replication(replica_nodes)
 			.with_blacklist(blacklist)
 			.with_tcp(tcp_port)
 			.with_udp(udp_port))
@@ -130,7 +130,7 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 }
 
 /// Parse replica nodes specified in the `bootstrap_config.ini` config file
-fn parse_static_replication_data(input: &str) -> StaticReplConfigData {
+fn parse_replication_data(input: &str) -> ReplConfigData {
 	let mut result = Vec::new();
 
 	// Remove brackets and split by '@'

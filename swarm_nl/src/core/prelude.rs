@@ -33,6 +33,9 @@ pub type RpcData = ByteVector;
 /// Type that represents a vector of vector of bytes
 pub type ByteVector = Vec<Vec<u8>>;
 
+/// Type that represents a vector of string
+pub type StringVector = Vec<String>;
+
 /// The delimeter that separates the messages to gossip
 pub(super) const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
 
@@ -129,8 +132,8 @@ pub enum AppResponse {
 		connected_peers: Vec<PeerId>,
 		external_addresses: Vec<MultiaddrString>,
 	},
-	/// Successfully broadcast to the network. The data broadcast is returned.
-	GossipsubBroadcastSuccess(ByteVector),
+	/// Successfully broadcast to the network.
+	GossipsubBroadcastSuccess,
 	/// Successfully joined a mesh network.
 	GossipsubJoinSuccess,
 	/// Successfully exited a mesh network.
@@ -525,6 +528,8 @@ pub(super) struct NetworkInfo {
 	pub rpc_handler_fn: fn(RpcData) -> RpcData,
 	/// The function to filter incoming gossip messages
 	pub gossip_filter_fn: fn(PeerId, MessageId, Option<PeerId>, String, Vec<String>) -> bool,
+	/// Important information to manage `Replication` operations.
+	pub replication: replica_cfg::ReplInfo,
 }
 
 /// Module that contains important data structures to manage `Ping` operations on the network.
@@ -571,6 +576,22 @@ pub mod ping_config {
 	pub struct PingInfo {
 		pub policy: PingErrorPolicy,
 		pub manager: PingManager,
+	}
+}
+
+/// Module that contains important data structures to manage `Replication` operations on the network
+pub mod replica_cfg {
+	use super::*;
+	use crate::ReplConfigData;
+	use std::{collections::HashMap, sync::Arc};
+
+	/// Struct containing important information for replication
+	#[derive(Clone)]
+	pub struct ReplInfo {
+		/// Internal state for replication
+		pub state: Arc<ReplConfigData>,
+		/// Mapping between replication group keys and the handlers for their incoming data
+		pub replication_handlers: Arc<HashMap<String, fn(&StringVector)>>,
 	}
 }
 

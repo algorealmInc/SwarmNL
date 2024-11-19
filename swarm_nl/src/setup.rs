@@ -4,7 +4,7 @@
 //! Data structures and functions to setup a node and configure it for networking.
 
 #![doc = include_str!("../doc/setup/NodeSetup.md")]
-use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::core::gossipsub_cfg::Blacklist;
 pub use crate::prelude::*;
@@ -27,7 +27,7 @@ pub struct BootstrapConfig {
 	/// Blacklisted peers
 	blacklist: Blacklist,
 	/// Configuration data for static replication
-	static_replica_cfg: StaticReplConfigData,
+	replication_cfg: Rc<ReplConfigData>,
 }
 
 impl BootstrapConfig {
@@ -56,7 +56,7 @@ impl BootstrapConfig {
 			// List of blacklisted peers
 			blacklist: Default::default(),
 			// List containing static replication nodes
-			static_replicas: Default::default(),
+			replication_cfg: Default::default(),
 		}
 	}
 
@@ -97,11 +97,12 @@ impl BootstrapConfig {
 	}
 
 	/// Configure nodes for static replication.
-	pub fn with_static_replication(self, cfg_data: StaticReplConfigData) -> Self {
+	pub fn with_replication(self, cfg_data: ReplConfigData) -> Self {
 		// A connection request must be sent to the replica nodes on startup, so we will add it to
 		// our list of bootnodes
 
 		let bootnodes = cfg_data
+			.clone()
 			.into_iter()
 			.flat_map(|outer_map| {
 				outer_map
@@ -113,7 +114,7 @@ impl BootstrapConfig {
 		let node = self.with_bootnodes(bootnodes);
 
 		Self {
-			static_replica_cfg: cfg_data,
+			replication_cfg: Rc::new(cfg_data),
 			..node
 		}
 	}
@@ -209,9 +210,9 @@ impl BootstrapConfig {
 		self.blacklist.clone()
 	}
 
-	/// Return the configured nodes for static replication
-	pub fn static_repl_nodes(&self) -> &StaticReplConfigData {
-		&self.static_replica_cfg
+	/// Return the configuration data for static replication
+	pub fn repl_cfg(&self) -> Rc<ReplConfigData> {
+		self.replication_cfg.clone()
 	}
 }
 
@@ -225,6 +226,7 @@ impl Default for BootstrapConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::collections::HashMap;
 	use std::fs;
 	use std::panic;
 	use std::process::Command;

@@ -8,7 +8,7 @@ use std::{net::Ipv4Addr, collections::HashMap};
 use thiserror::Error;
 
 /// Type respresenting data for static replication configuration
-pub type StaticReplConfigData = Vec<HashMap<String, HashMap<String, String>>>;
+pub type ReplConfigData = Vec<HashMap<String, HashMap<String, String>>>;
 
 /// Default IP address when no address is specified.
 pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
