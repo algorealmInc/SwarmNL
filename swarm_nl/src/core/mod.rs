@@ -1054,7 +1054,7 @@ impl Core {
 	}
 
 	/// Consume data in replication buffer
-	async fn consume_repl_data(&mut self) -> Option<ReplBufferData> {
+	pub async fn consume_repl_data(&mut self) -> Option<ReplBufferData> {
 		self.replica_buffer.pop_front().await
 	}
 
