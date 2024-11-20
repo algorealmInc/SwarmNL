@@ -963,7 +963,7 @@ impl Core {
 								let fetch_request = AppData::FetchData {
 									keys: vec![
 										Core::REPL_CFG.to_owned().into(),
-										key.clone().into(),
+										repl_data.network_key.clone().into(),
 									],
 									peer: peer_id,
 								};
@@ -985,7 +985,10 @@ impl Core {
 						}
 					}
 				} else {
-					eprintln!("Failed to send gossip request for key: {}", key);
+					eprintln!(
+						"Failed to send gossip request for key: {}",
+						repl_data.network_key
+					);
 				}
 			});
 
