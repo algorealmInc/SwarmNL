@@ -1048,7 +1048,7 @@ impl Core {
 				sender: replica_data.sender,
 			})
 			.await; 
-
+ 
 		// Then push into buffer queue
 		self.replica_buffer.push(repl_data).await;
 	}

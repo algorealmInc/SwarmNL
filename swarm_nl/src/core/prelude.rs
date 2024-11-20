@@ -704,7 +704,7 @@ pub mod replica_cfg {
 				config,
 			}
 		}
- 
+  
 		/// Push a new [ReplBufferData] item into the buffer
 		pub async fn push(&self, data: ReplBufferData) {
 			let mut queue = self.queue.lock().await; // Lock the queue to modify it
