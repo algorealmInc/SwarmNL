@@ -695,7 +695,7 @@ pub mod replica_cfg {
 		const EXPIRY_TIME: Seconds = 60;
 
 		/// Epoch to attempt network synchronization of data in the buffer
-		const SYNCH_EPOCH: Seconds = 5;
+		const SYNC_EPOCH: Seconds = 5;
 
 		/// Create a new instance of [ReplicaBufferQueue]
 		pub fn new(config: ReplNetworkConfig) -> Self {

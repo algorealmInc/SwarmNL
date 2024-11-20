@@ -153,7 +153,7 @@ fn parse_replication_data(input: &str) -> Vec<ReplConfigData> {
 			}
 
 			// Create outer map
-			let mut cfg = ReplConfigData {
+			let cfg = ReplConfigData {
 				network_key: outer_id.trim().to_string(),
 				nodes: inner_map,
 			};
