@@ -8,7 +8,7 @@ use base58::FromBase58;
 use ini::Ini;
 use libp2p_identity::PeerId;
 use rand::{distributions::Alphanumeric, Rng};
-use std::{collections::HashMap, path::Path, str::FromStr};
+use std::{collections::HashMap, path::Path, str::FromStr, time::{SystemTime, UNIX_EPOCH}};
 
 /// Read an INI file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
@@ -130,7 +130,7 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 }
 
 /// Parse replica nodes specified in the `bootstrap_config.ini` config file
-fn parse_replication_data(input: &str) -> ReplConfigData {
+fn parse_replication_data(input: &str) -> Vec<ReplConfigData> {
 	let mut result = Vec::new();
 
 	// Remove brackets and split by '@'
@@ -153,9 +153,11 @@ fn parse_replication_data(input: &str) -> ReplConfigData {
 			}
 
 			// Create outer map
-			let mut outer_map = HashMap::new();
-			outer_map.insert(outer_id.trim().to_string(), inner_map);
-			result.push(outer_map);
+			let mut cfg = ReplConfigData {
+				network_key: outer_id.trim().to_string(),
+				nodes: inner_map,
+			};
+			result.push(cfg);
 		}
 	}
 
@@ -173,6 +175,16 @@ pub fn generate_random_string(length: usize) -> String {
 	(0..length)
 		.map(|_| rng.sample(Alphanumeric) as char)
 		.collect()
+}
+
+// Get unix timestamp as string
+pub fn get_unix_timestamp() -> Seconds {
+    // Get the current system time
+    let now = SystemTime::now();
+    // Calculate the duration since the Unix epoch
+    let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    // Return the Unix timestamp in seconds as a string
+    duration_since_epoch.as_secs()
 }
 
 #[cfg(test)]

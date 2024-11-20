@@ -4,7 +4,7 @@
 //! Data structures and functions to setup a node and configure it for networking.
 
 #![doc = include_str!("../doc/setup/NodeSetup.md")]
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::core::gossipsub_cfg::Blacklist;
 pub use crate::prelude::*;
@@ -27,7 +27,7 @@ pub struct BootstrapConfig {
 	/// Blacklisted peers
 	blacklist: Blacklist,
 	/// Configuration data for replication
-	replication_cfg: Rc<ReplConfigData>,
+	replication_cfg: Rc<Vec<ReplConfigData>>,
 }
 
 impl BootstrapConfig {
@@ -97,20 +97,13 @@ impl BootstrapConfig {
 	}
 
 	/// Configure nodes for replication and add them to bootnodes for early connection
-	pub fn with_replication(self, cfg_data: ReplConfigData) -> Self {
+	pub fn with_replication(self, cfg_data: Vec<ReplConfigData>) -> Self {
 		// A connection request must be sent to the replica nodes on startup, so we will add it to
 		// our list of bootnodes
-
-		let bootnodes = cfg_data
-			.clone()
-			.into_iter()
-			.flat_map(|outer_map| {
-				outer_map
-					.into_iter()
-					.flat_map(|(_, inner_map)| inner_map.into_iter())
-			})
+		let bootnodes: HashMap<String, String> = cfg_data
+			.iter()
+			.flat_map(|cfg| cfg.nodes.iter().map(|(k, v)| (k.clone(), v.clone())))
 			.collect();
-
 		let node = self.with_bootnodes(bootnodes);
 
 		Self {
@@ -211,7 +204,7 @@ impl BootstrapConfig {
 	}
 
 	/// Return the configuration data for replication
-	pub fn repl_cfg(&self) -> Rc<ReplConfigData> {
+	pub fn repl_cfg(&self) -> Rc<Vec<ReplConfigData>> {
 		self.replication_cfg.clone()
 	}
 }

@@ -36,6 +36,9 @@ pub type ByteVector = Vec<Vec<u8>>;
 /// Type that represents a vector of string
 pub type StringVector = Vec<String>;
 
+/// Type that represents a nonce
+pub type Nonce = u64;
+
 /// The delimeter that separates the messages to gossip
 pub(super) const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
 
@@ -141,9 +144,9 @@ pub enum AppResponse {
 	/// Gossipsub information about node.
 	GossipsubGetInfo {
 		/// Topics that the node is currently subscribed to
-		topics: Vec<String>,
+		topics: StringVector,
 		/// Peers we know about and their corresponding topics
-		mesh_peers: Vec<(PeerId, Vec<String>)>,
+		mesh_peers: Vec<(PeerId, StringVector)>,
 		/// Peers we have blacklisted
 		blacklist: HashSet<PeerId>,
 	},
@@ -475,13 +478,31 @@ pub enum NetworkEvent {
 	/// - `peer_id`: The `PeerId` of the peer that joined.
 	/// - `topic`: The topic the peer subscribed to.
 	GossipsubSubscribeMessageReceived { peer_id: PeerId, topic: String },
+	/// Event that announces the arrival of a replicated data content
+	///
+	/// # Fields
+	///
+	/// - `source`: The `PeerId` of the source peer.
+	/// - `data`: The data contained in the gossip message.
+	ReplicaDataIncoming {
+		/// Data
+		data: StringVector,
+		/// Timestamp at which the message left the sending node
+		outgoing_timestamp: Seconds,
+		/// Timestamp at which the message arrived
+		incoming_timestamp: Seconds,
+		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		message_id: String,
+		/// Sender PeerId
+		sender: PeerId,
+	},
 	/// Event that announces the arrival of a gossip message.
 	///
 	/// # Fields
 	///
 	/// - `source`: The `PeerId` of the source peer.
 	/// - `data`: The data contained in the gossip message.
-	GossipsubIncomingMessageHandled { source: PeerId, data: Vec<String> },
+	GossipsubIncomingMessageHandled { source: PeerId, data: StringVector },
 	// /// Event that announces the beginning of the filtering and authentication of the incoming
 	// /// gossip message.
 	// ///
@@ -497,7 +518,7 @@ pub enum NetworkEvent {
 	//     message_id: MessageId,
 	//     source: Option<PeerId>,
 	//     topic: String,
-	//     data: Vec<String>,
+	//     data: StringVector,
 	// },
 }
 
@@ -527,7 +548,7 @@ pub(super) struct NetworkInfo {
 	/// The function that handles incoming RPC data request and produces a response
 	pub rpc_handler_fn: fn(RpcData) -> RpcData,
 	/// The function to filter incoming gossip messages
-	pub gossip_filter_fn: fn(PeerId, MessageId, Option<PeerId>, String, Vec<String>) -> bool,
+	pub gossip_filter_fn: fn(PeerId, MessageId, Option<PeerId>, String, StringVector) -> bool,
 	/// Important information to manage `Replication` operations.
 	pub replication: replica_cfg::ReplInfo,
 }
@@ -583,15 +604,211 @@ pub mod ping_config {
 pub mod replica_cfg {
 	use super::*;
 	use crate::ReplConfigData;
-	use std::{collections::HashMap, sync::Arc};
+	use std::{cmp::Ordering, sync::Arc, time::SystemTime};
 
 	/// Struct containing important information for replication
 	#[derive(Clone)]
 	pub struct ReplInfo {
 		/// Internal state for replication
-		pub state: Arc<ReplConfigData>,
-		/// Mapping between replication group keys and the handlers for their incoming data
-		pub replication_handlers: Arc<HashMap<String, fn(&StringVector)>>,
+		pub state: Arc<Vec<ReplConfigData>>,
+	}
+
+	/// Struct containing configurations for replication
+	#[derive(Clone)]
+	pub enum ReplNetworkConfig {
+		/// No expiry, queue operates in a FIFO manner and message are dropped
+		/// when the buffer is full
+		NoExpiry,
+		/// A custom configuration.
+		///
+		/// # Fields
+		///
+		/// - `queue_length`: Max capacity for transient storage
+		/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full
+		/// - `sync_epoch`: Epoch to attempt network synchronization of data in the buffer
+		Custom {
+			queue_length: u64,
+			expiry_time: Seconds,
+			sync_epoch: Seconds,
+		},
+		/// A default Configuration (queue_length = 100, expiry_time = 60 seconds,
+		/// sychronization_epoch = 5 seconds)
+		Default,
+	}
+
+	/// Important data to marshall from incoming relication payload and store in the transient
+	/// buffer
+	#[derive(Clone, Debug)]
+	pub struct ReplBufferData {
+		/// Raw incoming data
+		pub data: StringVector,
+		/// Timestamp at which the message left the sending node
+		pub outgoing_timestamp: Seconds,
+		/// Timestamp at which the message arrived
+		pub incoming_timestamp: Seconds,
+		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		pub message_id: String,
+		/// Sender PeerId
+		pub sender: PeerId,
+	}
+
+	/// Implement Ord
+	impl Ord for ReplBufferData {
+		fn cmp(&self, other: &Self) -> Ordering {
+			self.outgoing_timestamp
+				.cmp(&other.outgoing_timestamp) // Compare by outgoing_timestamp first
+				.then_with(|| self.message_id.cmp(&other.message_id)) // Then compare by message_id
+		}
+	}
+
+	/// Implement PartialOrd
+	impl PartialOrd for ReplBufferData {
+		fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+			Some(self.cmp(other))
+		}
+	}
+
+	/// Implement Eq
+	impl Eq for ReplBufferData {}
+
+	/// Implement PartialEq
+	impl PartialEq for ReplBufferData {
+		fn eq(&self, other: &Self) -> bool {
+			self.outgoing_timestamp == other.outgoing_timestamp
+				&& self.message_id == other.message_id
+		}
+	}
+
+	/// Transient buffer queue where incoming replicated data are stored
+	pub struct ReplicaBufferQueue {
+		/// Configuration
+		config: ReplNetworkConfig,
+		/// Internal queue implementation
+		queue: Mutex<BTreeSet<ReplBufferData>>,
+	}
+
+	impl ReplicaBufferQueue {
+		/// The max capacity of the buffer
+		const MAX_CAPACITY: u64 = 150;
+
+		/// Expiry time of data in the buffer if the buffer is full
+		const EXPIRY_TIME: Seconds = 60;
+
+		/// Epoch to attempt network synchronization of data in the buffer
+		const SYNCH_EPOCH: Seconds = 5;
+
+		/// Create a new instance of [ReplicaBufferQueue]
+		pub fn new(config: ReplNetworkConfig) -> Self {
+			Self {
+				queue: Mutex::new(BTreeSet::new()),
+				config,
+			}
+		}
+
+		/// Push a new [ReplBufferData] item into the buffer
+		pub async fn push(&self, data: ReplBufferData) {
+			let mut queue = self.queue.lock().await; // Lock the queue to modify it
+
+			// The behaviour of the push operation and its corresponding actions e.g removing an
+			// item from the queue is based on configuration
+
+			match self.config {
+				// Default implementation supports expiry of buffer items and values are based on
+				// structs contants
+				ReplNetworkConfig::Default => {
+					// If the queue is full, remove expired data first
+					while queue.len() as u64 >= Self::MAX_CAPACITY {
+						// Check and remove expired data
+						let current_time = SystemTime::now()
+							.duration_since(SystemTime::UNIX_EPOCH)
+							.unwrap()
+							.as_secs();
+						let mut expired_items = Vec::new();
+
+						// Identify expired items and collect them for removal
+						for entry in queue.iter() {
+							if current_time - entry.outgoing_timestamp >= Self::EXPIRY_TIME {
+								expired_items.push(entry.clone());
+							}
+						}
+
+						// Remove expired items
+						for expired in expired_items {
+							queue.remove(&expired);
+						}
+
+						// If no expired items were removed, pop the front (oldest) item
+						if queue.len() as u64 >= Self::MAX_CAPACITY {
+							if let Some(first) = queue.iter().next().cloned() {
+								queue.remove(&first);
+							}
+						}
+					}
+				},
+				// There is no expiry time for buffer items and removal is only done when buffer us full
+				ReplNetworkConfig::NoExpiry => {
+					while queue.len() as u64 >= Self::MAX_CAPACITY {
+						// Pop the front (oldest) item
+						if queue.len() as u64 >= Self::MAX_CAPACITY {
+							if let Some(first) = queue.iter().next().cloned() {
+								queue.remove(&first);
+							}
+						}
+					}
+				},
+				// Here decay applies in addition to removal of excess buffer content
+				ReplNetworkConfig::Custom {
+					queue_length,
+					expiry_time,
+					..
+				} => {
+					// If the queue is full, remove expired data first
+					while queue.len() as u64 >= queue_length {
+						// Check and remove expired data
+						let current_time = SystemTime::now()
+							.duration_since(SystemTime::UNIX_EPOCH)
+							.unwrap()
+							.as_secs();
+						let mut expired_items = Vec::new();
+
+						// Identify expired items and collect them for removal
+						for entry in queue.iter() {
+							if current_time - entry.outgoing_timestamp >= expiry_time {
+								expired_items.push(entry.clone());
+							}
+						}
+
+						// Remove expired items
+						for expired in expired_items {
+							queue.remove(&expired);
+						}
+
+						// If no expired items were removed, pop the front (oldest) item
+						if queue.len() as u64 >= Self::MAX_CAPACITY {
+							if let Some(first) = queue.iter().next().cloned() {
+								queue.remove(&first);
+							}
+						}
+					}
+				},
+			}
+
+			// Finally, insert the new data into the queue
+			queue.insert(data);
+		}
+
+		// Pop the front (smallest element) from the queue
+		pub async fn pop_front(&self) -> Option<ReplBufferData> {
+			let mut queue = self.queue.lock().await;
+			if let Some(first) = queue.iter().next().cloned() {
+				// Remove the front element (smallest)
+				queue.remove(&first);
+				Some(first)
+			} else {
+				// Empty queue
+				None
+			}
+		}
 	}
 }
 

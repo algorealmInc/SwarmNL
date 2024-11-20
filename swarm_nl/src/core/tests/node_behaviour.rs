@@ -1,4 +1,4 @@
-//! Node setup and behavor tests.
+//! Node setup and behaviour tests.
 
 #![allow(dead_code)]
 #![allow(unused_variables)]

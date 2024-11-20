@@ -7,7 +7,7 @@
 #![doc = include_str!("../../doc/core/ApplicationInteraction.md")]
 
 use std::{
-	collections::{vec_deque::IntoIter, HashMap, HashSet},
+	collections::{vec_deque::IntoIter, BTreeSet, HashMap, HashSet},
 	fs,
 	net::IpAddr,
 	num::NonZeroU32,
@@ -34,15 +34,16 @@ use libp2p::{
 	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
+use prelude::replica_cfg::ReplBufferData;
 
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
-	replica_cfg::ReplInfo,
+	replica_cfg::{ReplInfo, ReplNetworkConfig, ReplicaBufferQueue},
 };
 
 use super::*;
-use crate::{setup::BootstrapConfig, util::string_to_peer_id};
+use crate::{setup::BootstrapConfig, util::*};
 
 #[cfg(feature = "async-std-runtime")]
 use async_std::sync::Mutex;
@@ -149,7 +150,7 @@ pub struct CoreBuilder {
 		fn(PeerId, MessageId, Option<PeerId>, String, Vec<String>) -> bool,
 	),
 	/// The network data for replication accross nodes
-	replication_cfg: (Rc<ReplConfigData>, HashMap<String, fn(&StringVector)>),
+	replication_cfg: (Rc<Vec<ReplConfigData>>, ReplNetworkConfig),
 }
 
 impl CoreBuilder {
@@ -221,7 +222,7 @@ impl CoreBuilder {
 			identify,
 			request_response: (request_response_behaviour, rpc_handler_fn),
 			gossipsub: (gossipsub_behaviour, gossip_filter_fn),
-			replication_cfg: (config.repl_cfg(), Default::default()),
+			replication_cfg: (config.repl_cfg(), ReplNetworkConfig::Default),
 		}
 	}
 
@@ -285,17 +286,10 @@ impl CoreBuilder {
 	}
 
 	/// Configure the 'Replication` protocol for the network. Here we accept the key for the
-	/// freplication network and the handler to be called when the replicated data comes in
-	pub fn with_replication(
-		mut self,
-		repl_group_key: String,
-		repl_msg_handler: fn(&StringVector),
-	) -> Self {
+	/// replication network and the handler to be called when the replicated data comes in
+	pub fn with_replication(mut self, repl_cfg: ReplNetworkConfig) -> Self {
 		// Save the event handler and map it to the replica group key
-		self.replication_cfg
-			.1
-			.insert(repl_group_key, repl_msg_handler);
-
+		self.replication_cfg.1 = repl_cfg;
 		Self { ..self }
 	}
 
@@ -630,7 +624,6 @@ impl CoreBuilder {
 		let repl_cfg = self.replication_cfg.0;
 		let repl_info = ReplInfo {
 			state: Arc::new((*repl_cfg).clone()),
-			replication_handlers: Arc::new(self.replication_cfg.1),
 		};
 
 		// Initials stream id
@@ -659,6 +652,7 @@ impl CoreBuilder {
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
 			// Initialize an empty event queue
 			event_queue: DataQueue::new(),
+			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.1)),
 		};
 
 		// Ensure there is support for replication
@@ -730,9 +724,9 @@ pub struct Core {
 	/// The producing end of the stream that sends data to the network layer from the
 	/// application.
 	application_sender: Sender<StreamData>,
-	/// The consuming end of the stream that recieves data from the network layer.
+	// The consuming end of the stream that recieves data from the network layer.
 	// application_receiver: Receiver<StreamData>,
-	/// The producing end of the stream that sends data from the network layer to the application.
+	// The producing end of the stream that sends data from the network layer to the application.
 	// network_sender: Sender<StreamData>,
 	/// This serves as a buffer for the results of the requests to the network layer.
 	/// With this, applications can make async requests and fetch their results at a later time
@@ -745,6 +739,8 @@ pub struct Core {
 	current_stream_id: Arc<Mutex<StreamId>>,
 	/// The network event queue
 	event_queue: DataQueue<NetworkEvent>,
+	/// The internal buffer storing incoming replicated content before they are expired or consumed
+	replica_buffer: Arc<ReplicaBufferQueue>,
 }
 
 impl Core {
@@ -949,127 +945,168 @@ impl Core {
 		let repl_data = network_info.replication.state.clone();
 
 		for replication_data in repl_data.iter() {
-			for (key, addresses) in replication_data.iter() {
-				// Clone variables before moving them into a task
-				let mut core = core.clone();
-				let key = key.clone();
-				let addresses = addresses.clone();
+			// Clone variables before moving them into a task
+			let repl_data = replication_data.clone();
+			let mut core = core.clone();
 
-				// Spawn an async-std task to join replica network and propel others to join aswell
-				#[cfg(feature = "async-std-runtime")]
-				async_std::task::spawn(async move {
-					// Join private replication network
-					let gossip_request = AppData::GossipsubJoinNetwork(key.clone());
-					if let Ok(_) = core.query_network(gossip_request).await {
-						for (peer_id_str, _) in addresses.iter() {
-							// Parse the peer ID
-							match peer_id_str.parse::<PeerId>() {
-								Ok(peer_id) => {
-									// Prepare fetch request
-									let fetch_request = AppData::FetchData {
-										keys: vec![
-											Core::REPL_CFG.to_owned().into(),
-											key.clone().into(),
-										],
-										peer: peer_id,
-									};
+			// Spawn an async-std task to join replica network and propel others to join aswell
+			#[cfg(feature = "tokio-runtime")]
+			tokio::task::spawn(async move {
+				// Join private replication network
+				let gossip_request = AppData::GossipsubJoinNetwork(repl_data.network_key.clone());
+				if let Ok(_) = core.query_network(gossip_request).await {
+					for (peer_id_str, _) in repl_data.nodes.iter() {
+						// Parse the peer ID
+						match peer_id_str.parse::<PeerId>() {
+							Ok(peer_id) => {
+								// Prepare fetch request
+								let fetch_request = AppData::FetchData {
+									keys: vec![
+										Core::REPL_CFG.to_owned().into(),
+										key.clone().into(),
+									],
+									peer: peer_id,
+								};
 
-									// Send the fetch request
-									if let Err(e) = core.query_network(fetch_request).await {
-										eprintln!(
-											"Failed to query network for peer {}: {:?}",
-											peer_id_str, e
-										);
-									}
-								},
-								Err(_) => {
+								// Send the fetch request
+								if let Err(e) = core.query_network(fetch_request).await {
 									eprintln!(
-										"Failed to parse peer ID specified as replica node: {}",
-										peer_id_str
+										"Failed to query network for peer {}: {:?}",
+										peer_id_str, e
 									);
-								},
-							}
+								}
+							},
+							Err(_) => {
+								eprintln!(
+									"Failed to parse peer ID specified as replica node: {}",
+									peer_id_str
+								);
+							},
 						}
-					} else {
-						eprintln!("Failed to send gossip request for key: {}", key);
 					}
-				});
+				} else {
+					eprintln!("Failed to send gossip request for key: {}", key);
+				}
+			});
 
-				#[cfg(feature = "tokio-runtime")]
-				tokio::task::spawn(async move {
-					// Join private replication network
-					let gossip_request = AppData::GossipsubJoinNetwork(key.clone());
-					if let Ok(_) = core.query_network(gossip_request).await {
-						for (peer_id_str, _) in addresses.iter() {
-							// Parse the peer ID
-							match peer_id_str.parse::<PeerId>() {
-								Ok(peer_id) => {
-									// Prepare fetch request
-									let fetch_request = AppData::FetchData {
-										keys: vec![
-											Core::REPL_CFG.to_owned().into(),
-											key.clone().into(),
-										],
-										peer: peer_id,
-									};
+			#[cfg(feature = "async-std-runtime")]
+			async_std::task::spawn(async move {
+				// Join private replication network
+				let gossip_request = AppData::GossipsubJoinNetwork(repl_data.network_key.clone());
+				if let Ok(_) = core.query_network(gossip_request).await {
+					for (peer_id_str, _) in repl_data.nodes.iter() {
+						// Parse the peer ID
+						match peer_id_str.parse::<PeerId>() {
+							Ok(peer_id) => {
+								// Prepare fetch request
+								let fetch_request = AppData::FetchData {
+									keys: vec![
+										Core::REPL_CFG.to_owned().into(),
+										repl_data.network_key.clone().into(),
+									],
+									peer: peer_id,
+								};
 
-									// Send the fetch request
-									if let Err(e) = core.query_network(fetch_request).await {
-										eprintln!(
-											"Failed to query network for peer {}: {:?}",
-											peer_id_str, e
-										);
-									}
-								},
-								Err(_) => {
+								// Send the fetch request
+								if let Err(e) = core.query_network(fetch_request).await {
 									eprintln!(
-										"Failed to parse peer ID specified as replica node: {}",
-										peer_id_str
+										"Failed to query network for peer {}: {:?}",
+										peer_id_str, e
 									);
-								},
-							}
+								}
+							},
+							Err(_) => {
+								eprintln!(
+									"Failed to parse peer ID specified as replica node: {}",
+									peer_id_str
+								);
+							},
 						}
-					} else {
-						eprintln!("Failed to send gossip request for key: {}", key);
 					}
-				});
-			}
+				} else {
+					eprintln!(
+						"Failed to send gossip request for key: {}",
+						repl_data.network_key
+					);
+				}
+			});
 		}
 	}
 
 	/// Handle incoming replicated data.
 	/// The first element of the incoming data vector contains the replica group key
-	fn handle_incoming_repl_data(network_info: NetworkInfo, repl_data: Vec<String>) {
-		// Index into the replication map and call the appropriate handler for the network
-		if let Some(repl_fn) = network_info
-			.replication
-			.replication_handlers
-			.get(&repl_data[0])
-		{
-			let data: &Vec<String> = &repl_data[1..].into();
-			(*repl_fn)(data);
-		}
+	async fn handle_incoming_repl_data(&mut self, repl_data: ReplBufferData) {
+		// First we generate an event announcing the arrival of a replica.
+		// Application developers can listen for this
+		let replica_data = repl_data.clone();
+		self.event_queue
+			.push(NetworkEvent::ReplicaDataIncoming {
+				data: replica_data.data,
+				outgoing_timestamp: replica_data.outgoing_timestamp,
+				incoming_timestamp: replica_data.incoming_timestamp,
+				message_id: replica_data.message_id,
+				sender: replica_data.sender,
+			})
+			.await;
+
+		// Then push into buffer queue
+		self.replica_buffer.push(repl_data).await;
+	}
+
+	/// Consume data in replication buffer
+	async fn consume_repl_data(&mut self) -> Option<ReplBufferData> {
+		self.replica_buffer.pop_front().await
 	}
 
 	/// Send data to replica nodes
-	pub async fn replicate(&mut self, mut replica_data: ByteVector, replication_key: &str) {
+	pub async fn replicate(&mut self, mut replica_data: ByteVector, repl_key: &str) {
+		// So that we do not block the foreground operations, we will spawn a task to handle it and
+		// then return immediately
+
 		// Prepare the replication message
-		// Add the replication flag as the first element of the message and the replication key as
-		// the second one
-		let mut message = vec![
-			Core::REPL_GOSSIP.as_bytes().to_vec(),
-			replication_key.to_owned().into(),
-		];
-		message.append(&mut replica_data);
+		let mut node = self.clone();
+		let replication_key = repl_key.to_owned();
 
-		// Prepare a gossip request
-		let gossip_request = AppData::GossipsubBroadcastMessage {
-			topic: replication_key.to_owned(),
-			message,
-		};
+		#[cfg(feature = "tokio-runtime")]
+		tokio::task::spawn(async move {
+			// Add the replication flag as the first element of the message and the replication key
+			// as the second one
+			let mut message = vec![
+				Core::REPL_GOSSIP.as_bytes().to_vec(),
+				replication_key.clone().into(),
+			];
+			message.append(&mut replica_data);
 
-		// Gossip data to replica nodes
-		let _ = self.query_network(gossip_request).await;
+			// Prepare a gossip request
+			let gossip_request = AppData::GossipsubBroadcastMessage {
+				topic: replication_key.to_owned(),
+				message,
+			};
+
+			// Gossip data to replica nodes
+			let _ = node.query_network(gossip_request).await;
+		});
+
+		#[cfg(feature = "async-std-runtime")]
+		async_std::task::spawn(async move {
+			// Construct replica message
+			let mut message = vec![
+				Core::REPL_GOSSIP.as_bytes().to_vec(),   // Replica Gossip Flag
+				get_unix_timestamp().to_string().into(), // Timestamp
+				replication_key.clone().into(),
+			];
+			// Then append data
+			message.append(&mut replica_data);
+
+			// Prepare a gossip request
+			let gossip_request = AppData::GossipsubBroadcastMessage {
+				topic: replication_key.to_owned(),
+				message,
+			};
+
+			// Gossip data to replica nodes
+			let _ = node.query_network(gossip_request).await;
+		});
 	}
 
 	/// Handle the responses coming from the network layer. This is usually as a result of a request
@@ -1119,7 +1156,7 @@ impl Core {
 		mut network_info: NetworkInfo,
 		mut network_sender: Sender<StreamData>,
 		mut receiver: Receiver<StreamData>,
-		network_core: Core,
+		mut network_core: Core,
 	) {
 		// Network queue that tracks the execution of application requests in the network layer.
 		let data_queue_1 = DataQueue::new();
@@ -1613,24 +1650,22 @@ impl Core {
 													match request {
 														Rpc::ReqResponse { data } => {
 															// Check if it a request to join a replication network
-															let response_rpc = if &data[0][..] == Core::REPL_CFG.as_bytes() {
+															if &data[0][..] == Core::REPL_CFG.as_bytes() {
+																// Send the response, so as to return the RPC immediately
+																let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
+
 																// Attempt to decode the key
 																if let Ok(key_string) = String::from_utf8(data[1].clone()) {
 																	// Join the replication (gossip) network
 																	let gossip_request = AppData::GossipsubJoinNetwork(key_string.clone());
 																	let _ = network_core.clone().query_network(gossip_request).await;
 																}
-
-																// Return the incoming data as the response to the replication request
-																Rpc::ReqResponse { data: data.clone() }
 															} else {
 																// Pass request data to configured request handler
 																let response_data = (network_info.rpc_handler_fn)(data);
-																Rpc::ReqResponse { data: response_data }
+																// Send the response
+																let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
 															};
-
-															// Send the response
-															let _ = swarm.behaviour_mut().request_response.send_response(channel, response_rpc);
 														}
 													}
 												},
@@ -1667,8 +1702,17 @@ impl Core {
 
 											// Check whether it is a replication message
 											if gossip_data[0] == Core::REPL_GOSSIP {
-												// Configured functions will be called on incoming data specific to each replica group
-												Core::handle_incoming_repl_data(network_info.clone(), gossip_data[1..].to_owned());
+												// Construct buffer data
+												let queue_data = ReplBufferData {
+													data: gossip_data[2..].to_owned(),
+													outgoing_timestamp: get_unix_timestamp(),
+													incoming_timestamp: gossip_data[1].parse::<u64>().unwrap_or(0),
+													message_id: message_id.to_string(),
+													sender: propagation_source.clone(),
+												};
+
+												// Handle incoming replicated data
+												network_core.handle_incoming_repl_data(queue_data).await;
 											} else {
 												// First trigger the configured application filter event
 												if (network_info.gossip_filter_fn)(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
