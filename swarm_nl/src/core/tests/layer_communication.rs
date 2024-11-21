@@ -77,10 +77,7 @@ async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core,
 
 	// Set up network
 	(
-		CoreBuilder::with_config(config)
-			.build()
-			.await
-			.unwrap(),
+		CoreBuilder::with_config(config).build().await.unwrap(),
 		peer_id,
 	)
 }
@@ -95,10 +92,23 @@ async fn setup_core_builder_1(buffer: &mut [u8], ports: (u16, u16)) -> Core {
 		.with_udp(ports.1);
 
 	// Set up network
-	CoreBuilder::with_config(config)
-		.build()
-		.await
-		.unwrap()
+	CoreBuilder::with_config(config).build().await.unwrap()
+}
+
+/// Sample network event for testing.
+fn sample_event() -> NetworkEvent {
+	NetworkEvent::NewListenAddr {
+		local_peer_id: PeerId::random(),
+		listener_id: ListenerId::next(),
+		address: Multiaddr::empty(),
+	}
+}
+
+/// Helper function to populate a queue.
+async fn populate_queue(queue: &DataQueue<NetworkEvent>, count: usize) {
+	for _ in 0..count {
+		queue.push(sample_event()).await;
+	}
 }
 
 #[test]
@@ -394,6 +404,112 @@ fn gossipsub_info_works() {
 				assert_eq!(peer_id, *blacklist.get(&peer_id).unwrap());
 			}
 		}
+	});
+}
+
+// Tests to add
+// - on event buffer / queue: flood, ..
+// - pop event off the queue and match it to that specific network event enum
+// - test max_que is correctly handled
+// - Test handler fns work and consume next event which could be nothing
+
+// -- Event queue tests --
+
+const MAX_QUEUE_ELEMENTS: usize = 300;
+
+#[test]
+fn test_event_queue_flood() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		let queue = DataQueue::new();
+
+		// Flood the queue
+		populate_queue(&queue, MAX_QUEUE_ELEMENTS + 10).await;
+
+		let inner = queue.into_inner().await;
+		assert_eq!(
+			inner.len(),
+			MAX_QUEUE_ELEMENTS,
+			"Queue size should not exceed MAX_QUEUE_ELEMENTS"
+		);
+	});
+}
+
+#[test]
+fn test_event_queue_pop_and_match() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		let queue = DataQueue::new();
+
+		// Push a known event
+		let event = sample_event();
+		queue.push(event.clone()).await;
+
+		// Pop the event
+		if let Some(popped_event) = queue.pop().await {
+			assert_eq!(
+				popped_event, event,
+				"Popped event should match the pushed event"
+			);
+		} else {
+			panic!("Queue should not be empty");
+		}
+	});
+}
+
+#[test]
+fn test_event_queue_max_size() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		let queue = DataQueue::new();
+
+		// Push events up to the max size
+		populate_queue(&queue, MAX_QUEUE_ELEMENTS).await;
+
+		// Push one more event to exceed the size
+		queue.push(sample_event()).await;
+
+		let inner = queue.into_inner().await;
+		assert_eq!(
+			inner.len(),
+			MAX_QUEUE_ELEMENTS,
+			"Queue should maintain its max size"
+		);
+
+		// Oldest item should have been removed
+		assert_ne!(
+			Some(inner.front()),
+			Some(Some(&sample_event())),
+			"Oldest event should have been removed"
+		);
+	});
+}
+
+#[test]
+fn test_event_handler_functions() {
+	tokio::runtime::Runtime::new().unwrap().block_on(async {
+		let queue = DataQueue::new();
+
+		// Test with no events
+		assert_eq!(
+			queue.pop().await,
+			None,
+			"Popping from empty queue should return None"
+		);
+
+		// Add an event and test handler function
+		let event = sample_event();
+		queue.push(event.clone()).await;
+
+		if let Some(popped_event) = queue.pop().await {
+			assert_eq!(popped_event, event, "Handler should consume the next event");
+		} else {
+			panic!("Queue should not be empty");
+		}
+
+		// Ensure queue is empty after consumption
+		assert_eq!(
+			queue.pop().await,
+			None,
+			"Queue should be empty after event is handled"
+		);
 	});
 }
 

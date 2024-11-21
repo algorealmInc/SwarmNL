@@ -883,7 +883,7 @@ where
 	/// Append an item to the queue.
 	pub async fn push(&self, item: T) {
 		let mut buffer = self.buffer.lock().await;
-		if buffer.len() > MAX_QUEUE_ELEMENTS {
+		if buffer.len() > MAX_QUEUE_ELEMENTS - 1 {
 			buffer.pop_front();
 		}
 		buffer.push_back(item);
