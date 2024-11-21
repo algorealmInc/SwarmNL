@@ -1,12 +1,14 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
+use self::ping_config::PingInfo;
 use libp2p::gossipsub::MessageId;
+use libp2p_identity::PublicKey;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::{collections::VecDeque, time::Instant};
 use thiserror::Error;
-
-use self::ping_config::PingInfo;
 
 use super::*;
 
@@ -15,11 +17,27 @@ use super::*;
 pub const NETWORK_READ_TIMEOUT: Seconds = 30;
 
 /// The time it takes for the task to sleep before it can recheck if an output has been placed in
-/// the repsonse buffer;
+/// the response buffer.
 pub const TASK_SLEEP_DURATION: Seconds = 3;
 
+/// The height of the internal queue. This represents the maximum number of elements that a queue
+/// can accommodate without losing its oldest elements.
+const MAX_QUEUE_ELEMENTS: usize = 300;
+
 /// Type that represents the response of the network layer to the application layer's event handler.
-type AppResponseResult = Result<AppResponse, NetworkError>;
+pub type AppResponseResult = Result<AppResponse, NetworkError>;
+
+/// Type that represents the data exchanged during RPC operations.
+pub type RpcData = ByteVector;
+
+/// Type that represents a vector of vector of bytes
+pub type ByteVector = Vec<Vec<u8>>;
+
+/// Type that represents a vector of string
+pub type StringVector = Vec<String>;
+
+/// Type that represents a nonce
+pub type Nonce = u64;
 
 /// The delimeter that separates the messages to gossip
 pub(super) const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
@@ -66,14 +84,14 @@ pub enum AppData {
 	/// Return important information about the local routing table.
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network.
-	FetchData { keys: Vec<Vec<u8>>, peer: PeerId },
+	FetchData { keys: RpcData, peer: PeerId },
 	/// Get network information about the node.
 	GetNetworkInfo,
 	/// Send message to gossip peers in a mesh network.
 	GossipsubBroadcastMessage {
 		/// Topic to send messages to
 		topic: String,
-		message: Vec<String>,
+		message: ByteVector,
 	},
 	/// Join a mesh network.
 	GossipsubJoinNetwork(String),
@@ -108,7 +126,7 @@ pub enum AppResponse {
 	/// Routing table information.
 	KademliaGetRoutingTableInfo { protocol_id: String },
 	/// Result of RPC operation.
-	FetchData(Vec<Vec<u8>>),
+	FetchData(RpcData),
 	/// A network error occured while executing the request.
 	Error(NetworkError),
 	/// Important information about the node.
@@ -126,9 +144,9 @@ pub enum AppResponse {
 	/// Gossipsub information about node.
 	GossipsubGetInfo {
 		/// Topics that the node is currently subscribed to
-		topics: Vec<String>,
+		topics: StringVector,
 		/// Peers we know about and their corresponding topics
-		mesh_peers: Vec<(PeerId, Vec<String>)>,
+		mesh_peers: Vec<(PeerId, StringVector)>,
 		/// Peers we have blacklisted
 		blacklist: HashSet<PeerId>,
 	},
@@ -247,214 +265,274 @@ impl StreamResponseBuffer {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) enum Rpc {
 	/// Using request-response.
-	ReqResponse { data: Vec<Vec<u8>> },
+	ReqResponse { data: RpcData },
 }
 
 /// The configuration for the RPC protocol.
-pub struct RpcConfig {
-	/// Timeout for inbound and outbound requests.
-	pub timeout: Duration,
-	/// Maximum number of concurrent inbound + outbound streams.
-	pub max_concurrent_streams: usize,
+pub enum RpcConfig {
+	Default,
+	Custom {
+		/// Timeout for inbound and outbound requests.
+		timeout: Duration,
+		/// Maximum number of concurrent inbound + outbound streams.
+		max_concurrent_streams: usize,
+	},
 }
 
-/// The high level trait that provides an interface for the application layer to respond to network
-/// events.
-pub trait EventHandler {
+/// Enum that represents the events generated in the network layer.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum NetworkEvent {
 	/// Event that informs the application that we have started listening on a new multiaddr.
-	fn new_listen_addr(
-		&mut self,
-
-		_local_peer_id: PeerId,
-		_listener_id: ListenerId,
-		_addr: Multiaddr,
-	) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `local_peer_id`: The `PeerId` of the local peer.
+	/// - `listener_id`: The ID of the listener.
+	/// - `address`: The new `Multiaddr` where the local peer is listening.
+	NewListenAddr {
+		local_peer_id: PeerId,
+		listener_id: ListenerId,
+		address: Multiaddr,
+	},
 	/// Event that informs the application that a new peer (with its location details) has just
 	/// been added to the routing table.
-	fn routing_table_updated(&mut self, _peer_id: PeerId) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the new peer added to the routing table.
+	RoutingTableUpdated { peer_id: PeerId },
 	/// Event that informs the application about a newly established connection to a peer.
-	fn connection_established(
-		&mut self,
-
-		_peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_established_in: Duration,
-	) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the connected peer.
+	/// - `connection_id`: The ID of the connection.
+	/// - `endpoint`: The `ConnectedPoint` information about the connection's endpoint.
+	/// - `num_established`: The number of established connections with this peer.
+	/// - `established_in`: The duration it took to establish the connection.
+	ConnectionEstablished {
+		peer_id: PeerId,
+		connection_id: ConnectionId,
+		endpoint: ConnectedPoint,
+		num_established: NonZeroU32,
+		established_in: Duration,
+	},
 	/// Event that informs the application about a closed connection to a peer.
-	fn connection_closed(
-		&mut self,
-
-		_peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: u32,
-		_cause: Option<ConnectionError>,
-	) {
-		// Default implementation
-	}
-
-	/// Event that announces expired listen address.
-	fn expired_listen_addr(&mut self, _listener_id: ListenerId, _address: Multiaddr) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the peer.
+	/// - `connection_id`: The ID of the connection.
+	/// - `endpoint`: The `ConnectedPoint` information about the connection's endpoint.
+	/// - `num_established`: The number of remaining established connections with this peer.
+	ConnectionClosed {
+		peer_id: PeerId,
+		connection_id: ConnectionId,
+		endpoint: ConnectedPoint,
+		num_established: u32,
+	},
+	/// Event that announces an expired listen address.
+	///
+	/// # Fields
+	///
+	/// - `listener_id`: The ID of the listener.
+	/// - `address`: The expired `Multiaddr`.
+	ExpiredListenAddr {
+		listener_id: ListenerId,
+		address: Multiaddr,
+	},
 	/// Event that announces a closed listener.
-	fn listener_closed(&mut self, _listener_id: ListenerId, _addresses: Vec<Multiaddr>) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `listener_id`: The ID of the listener.
+	/// - `addresses`: The list of `Multiaddr` where the listener was listening.
+	ListenerClosed {
+		listener_id: ListenerId,
+		addresses: Vec<Multiaddr>,
+	},
 	/// Event that announces a listener error.
-	fn listener_error(&mut self, _listener_id: ListenerId) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `listener_id`: The ID of the listener that encountered the error.
+	ListenerError { listener_id: ListenerId },
 	/// Event that announces a dialing attempt.
-	fn dialing(&mut self, _peer_id: Option<PeerId>, _connection_id: ConnectionId) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the peer being dialed, if known.
+	/// - `connection_id`: The ID of the connection attempt.
+	Dialing {
+		peer_id: Option<PeerId>,
+		connection_id: ConnectionId,
+	},
 	/// Event that announces a new external address candidate.
-	fn new_external_addr_candidate(&mut self, _address: Multiaddr) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `address`: The new external address candidate.
+	NewExternalAddrCandidate { address: Multiaddr },
 	/// Event that announces a confirmed external address.
-	fn external_addr_confirmed(&mut self, _address: Multiaddr) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `address`: The confirmed external address.
+	ExternalAddrConfirmed { address: Multiaddr },
 	/// Event that announces an expired external address.
-	fn external_addr_expired(&mut self, _address: Multiaddr) {
-		// Default implementation
-	}
-
-	/// Event that announces new connection arriving on a listener and in the process of
+	///
+	/// # Fields
+	///
+	/// - `address`: The expired external address.
+	ExternalAddrExpired { address: Multiaddr },
+	/// Event that announces a new connection arriving on a listener and in the process of
 	/// protocol negotiation.
-	fn incoming_connection(
-		&mut self,
-
-		_connection_id: ConnectionId,
-		_local_addr: Multiaddr,
-		_send_back_addr: Multiaddr,
-	) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `connection_id`: The ID of the incoming connection.
+	/// - `local_addr`: The local `Multiaddr` where the connection is received.
+	/// - `send_back_addr`: The remote `Multiaddr` of the peer initiating the connection.
+	IncomingConnection {
+		connection_id: ConnectionId,
+		local_addr: Multiaddr,
+		send_back_addr: Multiaddr,
+	},
 	/// Event that announces an error happening on an inbound connection during its initial
 	/// handshake.
-	fn incoming_connection_error(
-		&mut self,
-
-		_connection_id: ConnectionId,
-		_local_addr: Multiaddr,
-		_send_back_addr: Multiaddr,
-	) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `connection_id`: The ID of the incoming connection.
+	/// - `local_addr`: The local `Multiaddr` where the connection was received.
+	/// - `send_back_addr`: The remote `Multiaddr` of the peer initiating the connection.
+	IncomingConnectionError {
+		connection_id: ConnectionId,
+		local_addr: Multiaddr,
+		send_back_addr: Multiaddr,
+	},
 	/// Event that announces an error happening on an outbound connection during its initial
 	/// handshake.
-	fn outgoing_connection_error(
-		&mut self,
-
-		_connection_id: ConnectionId,
-		_peer_id: Option<PeerId>,
-	) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `connection_id`: The ID of the outbound connection.
+	/// - `peer_id`: The `PeerId` of the peer being connected to, if known.
+	OutgoingConnectionError {
+		connection_id: ConnectionId,
+		peer_id: Option<PeerId>,
+	},
 	/// Event that announces the arrival of a pong message from a peer.
-	/// The duration it took for a round trip is also returned.
-	fn outbound_ping_success(&mut self, _peer_id: PeerId, _duration: Duration) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the peer that sent the pong message.
+	/// - `duration`: The duration it took for the round trip.
+	OutboundPingSuccess { peer_id: PeerId, duration: Duration },
 	/// Event that announces a `Ping` error.
-	fn outbound_ping_error(&mut self, _peer_id: PeerId, _err_type: Failure) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the peer that encountered the ping error.
+	OutboundPingError { peer_id: PeerId },
 	/// Event that announces the arrival of a `PeerInfo` via the `Identify` protocol.
-	fn identify_info_recieved(&mut self, _peer_id: PeerId, _info: Info) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the peer that sent the identify info.
+	/// - `info`: The `IdentifyInfo` received from the peer.
+	IdentifyInfoReceived { peer_id: PeerId, info: IdentifyInfo },
 	/// Event that announces the successful write of a record to the DHT.
-	fn kademlia_put_record_success(&mut self, _key: Vec<u8>) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `key`: The key of the record that was successfully written.
+	KademliaPutRecordSuccess { key: Vec<u8> },
 	/// Event that announces the failure of a node to save a record.
-	fn kademlia_put_record_error(&mut self) {
-		// Default implementation
-	}
-
+	KademliaPutRecordError,
 	/// Event that announces a node as a provider of a record in the DHT.
-	fn kademlia_start_providing_success(&mut self, _key: Vec<u8>) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `key`: The key of the record being provided.
+	KademliaStartProvidingSuccess { key: Vec<u8> },
 	/// Event that announces the failure of a node to become a provider of a record in the DHT.
-	fn kademlia_start_providing_error(&mut self) {
-		// Default implementation
-	}
-
+	KademliaStartProvidingError,
 	/// Event that announces the arrival of an RPC message.
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>>;
-
+	///
+	/// # Fields
+	///
+	/// - `data`: The `RpcData` of the received message.
+	RpcIncomingMessageHandled { data: RpcData },
 	/// Event that announces that a peer has just left a network.
-	fn gossipsub_unsubscribe_message_recieved(&mut self, _peer_id: PeerId, _topic: String) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the peer that left.
+	/// - `topic`: The topic the peer unsubscribed from.
+	GossipsubUnsubscribeMessageReceived { peer_id: PeerId, topic: String },
 	/// Event that announces that a peer has just joined a network.
-	fn gossipsub_subscribe_message_recieved(&mut self, _peer_id: PeerId, _topic: String) {
-		// Default implementation
-	}
-
+	///
+	/// # Fields
+	///
+	/// - `peer_id`: The `PeerId` of the peer that joined.
+	/// - `topic`: The topic the peer subscribed to.
+	GossipsubSubscribeMessageReceived { peer_id: PeerId, topic: String },
+	/// Event that announces the arrival of a replicated data content
+	///
+	/// # Fields
+	///
+	/// - `source`: The `PeerId` of the source peer.
+	/// - `data`: The data contained in the gossip message.
+	ReplicaDataIncoming {
+		/// Data
+		data: StringVector,
+		/// Timestamp at which the message left the sending node
+		outgoing_timestamp: Seconds,
+		/// Timestamp at which the message arrived
+		incoming_timestamp: Seconds,
+		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		message_id: String,
+		/// Sender PeerId
+		sender: PeerId,
+	},
 	/// Event that announces the arrival of a gossip message.
-	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, _data: Vec<String>);
-
-	/// Event that announces the beginning of the filtering and authentication of the incoming
-	/// gossip message. It returns a boolean to specify whether the massage should be dropped or
-	/// should reach the application. All incoming messages are allowed in by default.
-	fn gossipsub_incoming_message_filtered(
-		&mut self,
-		_propagation_source: PeerId,
-		_message_id: MessageId,
-		_source: Option<PeerId>,
-		_topic: String,
-		_data: Vec<String>,
-	) -> bool {
-		true
-	}
+	///
+	/// # Fields
+	///
+	/// - `source`: The `PeerId` of the source peer.
+	/// - `data`: The data contained in the gossip message.
+	GossipsubIncomingMessageHandled { source: PeerId, data: StringVector },
+	// /// Event that announces the beginning of the filtering and authentication of the incoming
+	// /// gossip message.
+	// ///
+	// /// # Fields
+	// ///
+	// /// - `propagation_source`: The `PeerId` of the peer from whom the message was received.
+	// /// - `message_id`: The ID of the incoming message.
+	// /// - `source`: The `PeerId` of the original sender, if known.
+	// /// - `topic`: The topic of the message.
+	// /// - `data`: The data contained in the message.
+	// GossipsubIncomingMessageFiltered {
+	//     propagation_source: PeerId,
+	//     message_id: MessageId,
+	//     source: Option<PeerId>,
+	//     topic: String,
+	//     data: StringVector,
+	// },
 }
 
-/// Default network event handler.
-#[derive(Clone)]
-pub struct DefaultHandler;
-/// Implement [`EventHandler`] for [`DefaultHandler`]
-impl EventHandler for DefaultHandler {
-	/// Echo the message back to the sender.
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-		data
-	}
-
-	/// Echo the incoming gossip message to the console.
-	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, _data: Vec<String>) {
-		// Default implementation
-	}
+/// The struct that contains incoming information about a peer returned by the `Identify` protocol.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct IdentifyInfo {
+	/// The public key of the remote peer
+	pub public_key: PublicKey,
+	/// The address the remote peer is listening on
+	pub listen_addrs: Vec<Multiaddr>,
+	/// The protocols supported by the remote peer
+	pub protocols: Vec<StreamProtocol>,
+	/// The address we are listened on, observed by the remote peer
+	pub observed_addr: Multiaddr,
 }
 
 /// Important information to obtain from the [`CoreBuilder`], to properly handle network
@@ -467,6 +545,12 @@ pub(super) struct NetworkInfo {
 	pub ping: PingInfo,
 	/// Important information to manage `Gossipsub` operations.
 	pub gossipsub: gossipsub_cfg::GossipsubInfo,
+	/// The function that handles incoming RPC data request and produces a response
+	pub rpc_handler_fn: fn(RpcData) -> RpcData,
+	/// The function to filter incoming gossip messages
+	pub gossip_filter_fn: fn(PeerId, MessageId, Option<PeerId>, String, StringVector) -> bool,
+	/// Important information to manage `Replication` operations.
+	pub replication: replica_cfg::ReplInfo,
 }
 
 /// Module that contains important data structures to manage `Ping` operations on the network.
@@ -516,8 +600,220 @@ pub mod ping_config {
 	}
 }
 
+/// Module that contains important data structures to manage `Replication` operations on the network
+pub mod replica_cfg {
+	use super::*;
+	use crate::ReplConfigData;
+	use std::{cmp::Ordering, sync::Arc, time::SystemTime};
+
+	/// Struct containing important information for replication
+	#[derive(Clone)]
+	pub struct ReplInfo {
+		/// Internal state for replication
+		pub state: Arc<Vec<ReplConfigData>>,
+	}
+
+	/// Struct containing configurations for replication
+	#[derive(Clone)]
+	pub enum ReplNetworkConfig {
+		/// No expiry, queue operates in a FIFO manner and message are dropped
+		/// when the buffer is full
+		NoExpiry,
+		/// A custom configuration.
+		///
+		/// # Fields
+		///
+		/// - `queue_length`: Max capacity for transient storage
+		/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full
+		/// - `sync_epoch`: Epoch to attempt network synchronization of data in the buffer
+		Custom {
+			queue_length: u64,
+			expiry_time: Seconds,
+			sync_epoch: Seconds,
+		},
+		/// A default Configuration (queue_length = 100, expiry_time = 60 seconds,
+		/// sychronization_epoch = 5 seconds)
+		Default,
+	}
+
+	/// Important data to marshall from incoming relication payload and store in the transient
+	/// buffer
+	#[derive(Clone, Debug)]
+	pub struct ReplBufferData {
+		/// Raw incoming data
+		pub data: StringVector,
+		/// Timestamp at which the message left the sending node
+		pub outgoing_timestamp: Seconds,
+		/// Timestamp at which the message arrived
+		pub incoming_timestamp: Seconds,
+		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		pub message_id: String,
+		/// Sender PeerId
+		pub sender: PeerId,
+	}
+
+	/// Implement Ord
+	impl Ord for ReplBufferData {
+		fn cmp(&self, other: &Self) -> Ordering {
+			self.outgoing_timestamp
+				.cmp(&other.outgoing_timestamp) // Compare by outgoing_timestamp first
+				.then_with(|| self.message_id.cmp(&other.message_id)) // Then compare by message_id
+		}
+	}
+
+	/// Implement PartialOrd
+	impl PartialOrd for ReplBufferData {
+		fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+			Some(self.cmp(other))
+		}
+	}
+
+	/// Implement Eq
+	impl Eq for ReplBufferData {}
+
+	/// Implement PartialEq
+	impl PartialEq for ReplBufferData {
+		fn eq(&self, other: &Self) -> bool {
+			self.outgoing_timestamp == other.outgoing_timestamp
+				&& self.message_id == other.message_id
+		}
+	}
+
+	/// Transient buffer queue where incoming replicated data are stored
+	pub struct ReplicaBufferQueue {
+		/// Configuration
+		config: ReplNetworkConfig,
+		/// Internal queue implementation
+		queue: Mutex<BTreeSet<ReplBufferData>>,
+	}
+
+	impl ReplicaBufferQueue {
+		/// The max capacity of the buffer
+		const MAX_CAPACITY: u64 = 150;
+
+		/// Expiry time of data in the buffer if the buffer is full
+		const EXPIRY_TIME: Seconds = 60;
+
+		/// Epoch to attempt network synchronization of data in the buffer
+		const SYNC_EPOCH: Seconds = 5;
+
+		/// Create a new instance of [ReplicaBufferQueue]
+		pub fn new(config: ReplNetworkConfig) -> Self {
+			Self {
+				queue: Mutex::new(BTreeSet::new()),
+				config,
+			}
+		}
+  
+		/// Push a new [ReplBufferData] item into the buffer
+		pub async fn push(&self, data: ReplBufferData) {
+			let mut queue = self.queue.lock().await; // Lock the queue to modify it
+
+			// The behaviour of the push operation and its corresponding actions e.g removing an
+			// item from the queue is based on configuration
+
+			match self.config {
+				// Default implementation supports expiry of buffer items and values are based on
+				// structs contants
+				ReplNetworkConfig::Default => {
+					// If the queue is full, remove expired data first
+					while queue.len() as u64 >= Self::MAX_CAPACITY {
+						// Check and remove expired data
+						let current_time = SystemTime::now()
+							.duration_since(SystemTime::UNIX_EPOCH)
+							.unwrap()
+							.as_secs();
+						let mut expired_items = Vec::new();
+
+						// Identify expired items and collect them for removal
+						for entry in queue.iter() {
+							if current_time - entry.outgoing_timestamp >= Self::EXPIRY_TIME {
+								expired_items.push(entry.clone());
+							}
+						}
+
+						// Remove expired items
+						for expired in expired_items {
+							queue.remove(&expired);
+						}
+
+						// If no expired items were removed, pop the front (oldest) item
+						if queue.len() as u64 >= Self::MAX_CAPACITY {
+							if let Some(first) = queue.iter().next().cloned() {
+								queue.remove(&first);
+							}
+						}
+					}
+				},
+				// There is no expiry time for buffer items and removal is only done when buffer us full
+				ReplNetworkConfig::NoExpiry => {
+					while queue.len() as u64 >= Self::MAX_CAPACITY {
+						// Pop the front (oldest) item
+						if queue.len() as u64 >= Self::MAX_CAPACITY {
+							if let Some(first) = queue.iter().next().cloned() {
+								queue.remove(&first);
+							}
+						}
+					}
+				},
+				// Here decay applies in addition to removal of excess buffer content
+				ReplNetworkConfig::Custom {
+					queue_length,
+					expiry_time,
+					..
+				} => {
+					// If the queue is full, remove expired data first
+					while queue.len() as u64 >= queue_length {
+						// Check and remove expired data
+						let current_time = SystemTime::now()
+							.duration_since(SystemTime::UNIX_EPOCH)
+							.unwrap()
+							.as_secs();
+						let mut expired_items = Vec::new();
+
+						// Identify expired items and collect them for removal
+						for entry in queue.iter() {
+							if current_time - entry.outgoing_timestamp >= expiry_time {
+								expired_items.push(entry.clone());
+							}
+						}
+
+						// Remove expired items
+						for expired in expired_items {
+							queue.remove(&expired);
+						}
+
+						// If no expired items were removed, pop the front (oldest) item
+						if queue.len() as u64 >= Self::MAX_CAPACITY {
+							if let Some(first) = queue.iter().next().cloned() {
+								queue.remove(&first);
+							}
+						}
+					}
+				},
+			}
+
+			// Finally, insert the new data into the queue
+			queue.insert(data);
+		}
+
+		// Pop the front (smallest element) from the queue
+		pub async fn pop_front(&self) -> Option<ReplBufferData> {
+			let mut queue = self.queue.lock().await;
+			if let Some(first) = queue.iter().next().cloned() {
+				// Remove the front element (smallest)
+				queue.remove(&first);
+				Some(first)
+			} else {
+				// Empty queue
+				None
+			}
+		}
+	}
+}
+
 /// Module containing important state relating to the `Gossipsub` protocol.
-pub(crate) mod gossipsub_cfg {
+pub mod gossipsub_cfg {
 	use super::*;
 
 	/// The struct containing the list of blacklisted peers.
@@ -525,6 +821,22 @@ pub(crate) mod gossipsub_cfg {
 	pub struct Blacklist {
 		// Blacklist
 		pub list: HashSet<PeerId>,
+	}
+
+	/// GossipSub configuration.
+	pub enum GossipsubConfig {
+		/// A default configuration.
+		Default,
+		/// A custom configuration.
+		///
+		/// # Fields
+		///
+		/// - `config`: The custom configuration for gossipsub.
+		/// - `auth`: The signature authenticity check.
+		Custom {
+			config: gossipsub::Config,
+			auth: gossipsub::MessageAuthenticity,
+		},
 	}
 
 	impl Blacklist {
@@ -541,26 +853,49 @@ pub(crate) mod gossipsub_cfg {
 	}
 }
 
-/// Network queue that tracks the execution of application requests in the network layer.
-pub(super) struct ExecQueue {
-	buffer: Mutex<VecDeque<StreamId>>,
+/// Queue that stores and removes data in a FIFO manner.
+#[derive(Clone)]
+pub(super) struct DataQueue<T: Debug + Clone + Eq + PartialEq + Hash> {
+	buffer: Arc<Mutex<VecDeque<T>>>,
 }
 
-impl ExecQueue {
-	// Create new execution queue
+impl<T> DataQueue<T>
+where
+	T: Debug + Clone + Eq + PartialEq + Hash,
+{
+	/// The initial buffer capacity, to optimize for speed and defer allocation
+	const INITIAL_BUFFER_CAPACITY: usize = 300;
+
+	/// Create new queue.
 	pub fn new() -> Self {
 		Self {
-			buffer: Mutex::new(VecDeque::new()),
+			buffer: Arc::new(Mutex::new(VecDeque::with_capacity(
+				DataQueue::<T>::INITIAL_BUFFER_CAPACITY,
+			))),
 		}
 	}
 
-	// Remove a [`StreamId`] from the top of the queue.
-	pub async fn pop(&mut self) -> Option<StreamId> {
+	/// Remove an item from the top of the queue.
+	pub async fn pop(&self) -> Option<T> {
 		self.buffer.lock().await.pop_front()
 	}
 
-	// Append a [`StreamId`] to the queue.
-	pub async fn push(&mut self, stream_id: StreamId) {
-		self.buffer.lock().await.push_back(stream_id);
+	/// Append an item to the queue.
+	pub async fn push(&self, item: T) {
+		let mut buffer = self.buffer.lock().await;
+		if buffer.len() > MAX_QUEUE_ELEMENTS - 1 {
+			buffer.pop_front();
+		}
+		buffer.push_back(item);
+	}
+
+	/// Return the inner data structure of the queue.
+	pub async fn into_inner(&self) -> VecDeque<T> {
+		self.buffer.lock().await.clone()
+	}
+
+	/// Drain the contents of the queue.
+	pub async fn drain(&mut self) {
+		self.buffer.lock().await.drain(..);
 	}
 }

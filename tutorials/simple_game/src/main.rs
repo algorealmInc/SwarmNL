@@ -1,9 +1,9 @@
 //! Copyright (c) Algorealm 2024
 
 //! BEST GUESSER GAME!
-//! 
+//!
 //! This crate demonstrates how to use SwarmNl by building a simple game using two nodes.
-//! 
+//!
 //! The game's logic is as follows:
 //! - Node 1 and Node 2 connect to each other
 //! - Then at an interval, they each guess a value
@@ -14,13 +14,13 @@
 //! - The result is exchanged and the winner is announced on both nodes
 //! - Once the winner is announced, the game ends and both nodes exit
 
-use std::{collections::HashMap, num::NonZeroU32, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use rand::Rng;
 use swarm_nl::{
-	core::{AppData, Core, CoreBuilder, EventHandler},
+	core::{gossipsub_cfg::GossipsubConfig, AppData, Core, CoreBuilder, NetworkEvent},
 	setup::BootstrapConfig,
-	ConnectedPoint, ConnectionId, Keypair, ListenerId, MessageId, Multiaddr, PeerId, Port,
+	Keypair, MessageId, PeerId, Port,
 };
 
 /// High score to determine winner
@@ -52,121 +52,69 @@ struct Game {
 	pub current_guess: i32,
 }
 
-/// Handler and respond to network events
-impl EventHandler for Game {
-	fn new_listen_addr(
-		&mut self,
-		local_peer_id: PeerId,
-		_listener_id: ListenerId,
-		addr: Multiaddr,
-	) {
-		// announce interfaces we're listening on
-		println!("[[Node {}]] >> Peer id: {}", self.node, local_peer_id);
-		println!("[[Node {}]] >> We're listening on the {}", self.node, addr);
+/// Gossipsub incoming message filter function
+fn gossipsub_filter_fn(
+	propagation_source: PeerId,
+	message_id: MessageId,
+	source: Option<PeerId>,
+	topic: String,
+	data: Vec<String>,
+) -> bool {
+	// Drop all guesses that a greater than 10
+	// Parse our data
+	match data[0].as_str() {
+		"guess" => {
+			// Our remote peer has made a guess
+			let remote_peer_guess = data[1].parse::<i32>().unwrap();
+
+			if remote_peer_guess > 10 {
+				println!("Message dropped, remote guess: {}", remote_peer_guess);
+				return false;
+			}
+		},
+		_ => {},
 	}
 
-	fn connection_established(
-		&mut self,
-		peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_established_in: Duration,
-	) {
+	true
+}
+
+/// Handle the arrival of a gossip message.
+fn handle_gossipsub_incoming_message(game: &mut Game, _source: PeerId, data: Vec<String>) {
+	println!(
+		"[[Node {}]] >> incoming data from peer -> {}: {}",
+		game.node, data[0], data[1]
+	);
+
+	// Parse our data
+	match data[0].as_str() {
+		"guess" => {
+			// Our remote peer has made a guess
+			let remote_peer_guess = data[1].parse::<i32>().unwrap();
+
+			// Compare
+			if game.current_guess > remote_peer_guess {
+				game.score += 1;
+			}
+		},
+		"win" => {
+			// Set our score to -1
+			// Game over
+			game.score = -1;
+		},
+		_ => {},
+	}
+
+	if game.score != -1 && game.score != HIGH_SCORE {
 		println!(
-			"[[Node {}]] >> Connection established with peer: {:?}",
-			self.node, peer_id
+			"[[Node {}]] >> Node ({}) score: {}",
+			game.node, game.node, game.score
 		);
-	}
-
-	/// Event that announces that a peer has just joined a network.
-	fn gossipsub_subscribe_message_recieved(&mut self, peer_id: PeerId, topic: String) {
-		println!(
-			"[[Node {}]] >> Peer {:?} just joined the mesh network for topic: {}",
-			self.node, peer_id, topic
-		);
-	}
-
-	/// Event that announces the arrival of a gossip message.
-	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, data: Vec<String>) {
-		println!(
-			"[[Node {}]] >> incoming data from peer -> {}: {}",
-			self.node, data[0], data[1]
-		);
-
-		// Parse our data
-		match data[0].as_str() {
-			"guess" => {
-				// Our remote peer has made a guess
-				let remote_peer_guess = data[1].parse::<i32>().unwrap();
-
-				// Compare
-				if self.current_guess > remote_peer_guess {
-					self.score += 1;
-				}
-			},
-			"win" => {
-				// Set our score to -1
-				// Game over
-				self.score = -1;
-			},
-			_ => {},
-		}
-
-		if self.score != -1 && self.score != HIGH_SCORE {
-			println!(
-				"[[Node {}]] >> Node ({}) score: {}",
-				self.node, self.node, self.score
-			);
-		}
-	}
-
-	/// Event that announces the beginning of the filtering and authentication of the incoming
-	/// gossip message. It returns a boolean to specify whether the massage should be dropped or
-	/// should reach the application. All incoming messages are allowed in by default.
-	fn gossipsub_incoming_message_filtered(
-		&mut self,
-		propagation_source: PeerId,
-		message_id: MessageId,
-		source: Option<PeerId>,
-		topic: String,
-		data: Vec<String>,
-	) -> bool {
-		// Drop all guesses that a greater than 10
-		// Parse our data
-		match data[0].as_str() {
-			"guess" => {
-				// Our remote peer has made a guess
-				let remote_peer_guess = data[1].parse::<i32>().unwrap();
-
-				if remote_peer_guess > 10 {
-					println!(
-						"[[Node {}]] >> Message dropped, remote guess: {}",
-						self.node, remote_peer_guess
-					);
-					return false;
-				}
-			},
-			_ => {},
-		}
-
-		true
-	}
-
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-		// Just echo it back
-		data
 	}
 }
 
 /// Used to create a detereministic node 1.
-async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
+async fn setup_node_1(ports: (Port, Port)) -> Core {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
-	let game = Game {
-		node: 1,
-		score: 0,
-		current_guess: -1,
-	};
 
 	// First, we want to configure our node by specifying a static keypair (for easy connection by
 	// node 2)
@@ -175,21 +123,20 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<Game> {
 		.with_tcp(ports.0)
 		.with_udp(ports.1);
 
-	// Set up network
-	CoreBuilder::with_config(config, game)
-		.build()
-		.await
-		.unwrap()
+	// Set up network with default configuration
+	let builder = CoreBuilder::with_config(config);
+
+	// Configure gossipsub
+	// Specify the gossip filter algorithm
+	let filter_fn = gossipsub_filter_fn;
+	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
+
+	// Build
+	builder.build().await.unwrap()
 }
 
 /// Setup node 2.
-async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<Game>, PeerId) {
-	let game = Game {
-		node: 2,
-		score: 0,
-		current_guess: -1,
-	};
-
+async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core, PeerId) {
 	// The PeerId of the node 1
 	let peer_id = Keypair::from_protobuf_encoding(&PROTOBUF_KEYPAIR)
 		.unwrap()
@@ -211,18 +158,50 @@ async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core<
 
 	// Set up network
 	(
-		CoreBuilder::with_config(config, game)
-			.build()
-			.await
-			.unwrap(),
+		CoreBuilder::with_config(config).build().await.unwrap(),
 		peer_id,
 	)
 }
 
 /// Run node 1
 async fn run_node_1() {
+	// Application state
+	let mut game_state = Game {
+		node: 1,
+		score: 0,
+		current_guess: -1,
+	};
+
 	// Set up node
 	let mut node_1 = setup_node_1((49666, 49606)).await;
+
+	// Read events generated at setup
+	while let Some(event) = node_1.next_event().await {
+		match event {
+			NetworkEvent::NewListenAddr {
+				local_peer_id,
+				listener_id: _,
+				address,
+			} => {
+				// Announce interfaces we're listening on
+				println!("[[Node {}]] >> Peer id: {}", game_state.node, local_peer_id);
+				println!(
+					"[[Node {}]] >> We're listening on the {}",
+					game_state.node, address
+				);
+			},
+			NetworkEvent::ConnectionEstablished {
+				peer_id,
+				connection_id: _,
+				endpoint: _,
+				num_established: _,
+				established_in: _,
+			} => {
+				println!("Connection established with peer: {:?}", peer_id);
+			},
+			_ => {},
+		}
+	}
 
 	// Join a network (subscribe to a topic)
 	let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
@@ -240,7 +219,7 @@ async fn run_node_1() {
 			let random_u32: i32 = rng.gen_range(1..=20);
 
 			// Save as current
-			node_1.state.lock().await.current_guess = random_u32;
+			game_state.current_guess = random_u32;
 
 			// Prepare a gossip request
 			let gossip_request = AppData::GossipsubBroadcastMessage {
@@ -253,11 +232,11 @@ async fn run_node_1() {
 
 			// Check score
 			// If the remote has won, our handler will set our score to -1
-			if node_1.state.lock().await.score == HIGH_SCORE {
+			if game_state.score == HIGH_SCORE {
 				// We've won!
 				println!(
 					"[[Node {}]] >> Congratulations! Node 1 is the winner.",
-					node_1.state.lock().await.node
+					game_state.node
 				);
 
 				// Inform Node 2
@@ -272,14 +251,29 @@ async fn run_node_1() {
 				let _ = node_1.query_network(gossip_request).await;
 
 				break;
-			} else if node_1.state.lock().await.score == -1 {
+			} else if game_state.score == -1 {
 				// We lost :(
 				println!(
 					"[[Node {}]] >> Game Over! Node 2 is the winner.",
-					node_1.state.lock().await.node
+					game_state.node
 				);
 				break;
 			}
+
+			// Check for gossip events
+			let _ = node_1
+				.events()
+				.await
+				.map(|e| {
+					match e {
+						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
+							// Call handler
+							handle_gossipsub_incoming_message(&mut game_state, source, data);
+						},
+						_ => {},
+					}
+				})
+				.collect::<Vec<_>>();
 
 			// sleep for a few seconds
 			tokio::time::sleep(Duration::from_secs(GAME_SLEEP_TIME)).await;
@@ -291,8 +285,47 @@ async fn run_node_1() {
 
 /// Run node 2
 async fn run_node_2() {
+	// Application state
+	let mut game_state = Game {
+		node: 2,
+		score: 0,
+		current_guess: -1,
+	};
+
 	// Set up node 2 and initiate connection to node 1
-	let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+	let (mut node_2, _) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+	// Read all currently buffered network events
+	let events = node_2.events().await;
+
+	let _ = events
+		.map(|e| {
+			match e {
+				NetworkEvent::NewListenAddr {
+					local_peer_id,
+					listener_id: _,
+					address,
+				} => {
+					// Announce interfaces we're listening on
+					println!("[[Node {}]] >> Peer id: {}", game_state.node, local_peer_id);
+					println!(
+						"[[Node {}]] >> We're listening on the {}",
+						game_state.node, address
+					);
+				},
+				NetworkEvent::ConnectionEstablished {
+					peer_id,
+					connection_id: _,
+					endpoint: _,
+					num_established: _,
+					established_in: _,
+				} => {
+					println!("Connection established with peer: {:?}", peer_id);
+				},
+				_ => {},
+			}
+		})
+		.collect::<Vec<_>>();
 
 	// Join a network (subscribe to a topic)
 	let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
@@ -307,10 +340,10 @@ async fn run_node_2() {
 		// The loop stops when we have a winner
 		loop {
 			let mut rng = rand::thread_rng();
-			let random_u32: i32 = rng.gen_range(1..=10);
+			let random_u32: i32 = rng.gen_range(1..=20);
 
 			// Save as current
-			node_2.state.lock().await.current_guess = random_u32;
+			game_state.current_guess = random_u32;
 
 			// Prepare a gossip request
 			let gossip_request = AppData::GossipsubBroadcastMessage {
@@ -323,14 +356,14 @@ async fn run_node_2() {
 
 			// Check score
 			// If the remote has won, our handler will set our score to -1
-			if node_2.state.lock().await.score == HIGH_SCORE {
+			if game_state.score == HIGH_SCORE {
 				// We've won!
 				println!(
 					"[[Node {}]] >> Congratulations! Node 2 is the winner.",
-					node_2.state.lock().await.node
+					game_state.node
 				);
 
-				// Inform Node 1
+				// Inform Node 2
 
 				// Prepare a gossip request
 				let gossip_request = AppData::GossipsubBroadcastMessage {
@@ -342,14 +375,29 @@ async fn run_node_2() {
 				let _ = node_2.query_network(gossip_request).await;
 
 				break;
-			} else if node_2.state.lock().await.score == -1 {
+			} else if game_state.score == -1 {
 				// We lost :(
 				println!(
 					"[[Node {}]] >> Game Over! Node 1 is the winner.",
-					node_2.state.lock().await.node
+					game_state.node
 				);
 				break;
 			}
+
+			// Check for gossip events
+			let _ = node_2
+				.events()
+				.await
+				.map(|e| {
+					match e {
+						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
+							// Call handler
+							handle_gossipsub_incoming_message(&mut game_state, source, data);
+						},
+						_ => {},
+					}
+				})
+				.collect::<Vec<_>>();
 
 			// sleep for a few seconds
 			tokio::time::sleep(Duration::from_secs(GAME_SLEEP_TIME)).await;

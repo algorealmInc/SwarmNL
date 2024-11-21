@@ -1,11 +1,10 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
 //! Data structures and functions to setup a node and configure it for networking.
 
 #![doc = include_str!("../doc/setup/NodeSetup.md")]
-
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::core::gossipsub_cfg::Blacklist;
 pub use crate::prelude::*;
@@ -24,9 +23,11 @@ pub struct BootstrapConfig {
 	/// The Cryptographic Keypair for node identification and message auth.
 	keypair: Keypair,
 	/// Bootstrap peers.
-	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+	boot_nodes: Nodes,
 	/// Blacklisted peers
 	blacklist: Blacklist,
+	/// Configuration data for replication
+	replication_cfg: Rc<Vec<ReplConfigData>>,
 }
 
 impl BootstrapConfig {
@@ -52,12 +53,15 @@ impl BootstrapConfig {
 			// Default node keypair type i.e Ed25519.
 			keypair: Keypair::generate_ed25519(),
 			boot_nodes: Default::default(),
+			// List of blacklisted peers
 			blacklist: Default::default(),
+			// List containing replication nodes
+			replication_cfg: Default::default(),
 		}
 	}
 
 	/// Configure available bootnodes.
-	pub fn with_bootnodes(mut self, boot_nodes: HashMap<PeerIdString, MultiaddrString>) -> Self {
+	pub fn with_bootnodes(mut self, boot_nodes: Nodes) -> Self {
 		// Additive operation
 		self.boot_nodes.extend(boot_nodes.into_iter());
 		self
@@ -89,6 +93,22 @@ impl BootstrapConfig {
 			BootstrapConfig { udp_port, ..self }
 		} else {
 			self
+		}
+	}
+
+	/// Configure nodes for replication and add them to bootnodes for early connection
+	pub fn with_replication(self, cfg_data: Vec<ReplConfigData>) -> Self {
+		// A connection request must be sent to the replica nodes on startup, so we will add it to
+		// our list of bootnodes
+		let bootnodes: HashMap<String, String> = cfg_data
+			.iter()
+			.flat_map(|cfg| cfg.nodes.iter().map(|(k, v)| (k.clone(), v.clone())))
+			.collect();
+		let node = self.with_bootnodes(bootnodes);
+
+		Self {
+			replication_cfg: Rc::new(cfg_data),
+			..node
 		}
 	}
 
@@ -174,13 +194,18 @@ impl BootstrapConfig {
 	}
 
 	/// Return the configured bootnodes for the network.
-	pub fn bootnodes(&self) -> HashMap<PeerIdString, MultiaddrString> {
+	pub fn bootnodes(&self) -> Nodes {
 		self.boot_nodes.clone()
 	}
 
 	/// Return the 	`PeerId`'s of nodes that are to be blacklisted.
 	pub fn blacklist(&self) -> Blacklist {
 		self.blacklist.clone()
+	}
+
+	/// Return the configuration data for replication
+	pub fn repl_cfg(&self) -> Rc<Vec<ReplConfigData>> {
+		self.replication_cfg.clone()
 	}
 }
 
@@ -194,6 +219,7 @@ impl Default for BootstrapConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::collections::HashMap;
 	use std::fs;
 	use std::panic;
 	use std::process::Command;
@@ -272,7 +298,7 @@ mod tests {
 	#[test]
 	fn new_config_with_bootnodes_works() {
 		// Setup test data
-		let mut bootnodes: HashMap<PeerIdString, MultiaddrString> = HashMap::new();
+		let mut bootnodes: Nodes = HashMap::new();
 		let key_1 = "12D3KooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();
 		let val_1 = "/ip4/192.168.1.205/tcp/1509".to_string();
 		let key_2 = "12A0ZooWBmwXN3rsVfnLsZKbXeBrSLfczHxZHwVjPrbKwpLfYm3t".to_string();

@@ -1,4 +1,4 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
 //! Utility helper functions for reading from and writing to `.ini` config files.
@@ -7,7 +7,8 @@ use crate::{prelude::*, setup::BootstrapConfig};
 use base58::FromBase58;
 use ini::Ini;
 use libp2p_identity::PeerId;
-use std::{collections::HashMap, str::FromStr};
+use rand::{distributions::Alphanumeric, Rng};
+use std::{collections::HashMap, path::Path, str::FromStr, time::{SystemTime, UNIX_EPOCH}};
 
 /// Read an INI file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
@@ -61,9 +62,18 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			Default::default()
 		};
 
+		// Now, read static replication config data if any
+		let replica_nodes = if let Some(section) = config.section(Some("repl")) {
+			// Get the configured replica nodes
+			parse_replication_data(section.get("replica_nodes").unwrap_or_default())
+		} else {
+			Default::default()
+		};
+
 		Ok(BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type, &mut serialized_keypair)
 			.with_bootnodes(boot_nodes)
+			.with_replication(replica_nodes)
 			.with_blacklist(blacklist)
 			.with_tcp(tcp_port)
 			.with_udp(udp_port))
@@ -74,7 +84,12 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 }
 
 /// Write value into config file.
-pub fn write_config(section: &str, key: &str, new_value: &str, file_path: &str) -> bool {
+pub fn write_config<T: AsRef<Path> + ?Sized>(
+	section: &str,
+	key: &str,
+	new_value: &str,
+	file_path: &T,
+) -> bool {
 	if let Ok(mut conf) = Ini::load_from_file(file_path) {
 		// Set a value:
 		conf.set_to(Some(section), key.into(), new_value.into());
@@ -114,9 +129,62 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 		})
 }
 
+/// Parse replica nodes specified in the `bootstrap_config.ini` config file
+fn parse_replication_data(input: &str) -> Vec<ReplConfigData> {
+	let mut result = Vec::new();
+
+	// Remove brackets and split by '@'
+	let data = input.trim_matches(|c| c == '[' || c == ']').split('@');
+
+	for section in data {
+		if section.is_empty() {
+			continue;
+		}
+
+		// Split outer identifier and the rest
+		if let Some((outer_id, inner_data)) = section.split_once(':') {
+			let mut inner_map = HashMap::new();
+
+			// Split each key-value pair
+			for entry in inner_data.trim_matches(|c| c == '[' || c == ']').split(',') {
+				if let Some((key, value)) = entry.trim().split_once(':') {
+					inner_map.insert(key.to_string(), value.to_string());
+				}
+			}
+
+			// Create outer map
+			let cfg = ReplConfigData {
+				network_key: outer_id.trim().to_string(),
+				nodes: inner_map,
+			};
+			result.push(cfg);
+		}
+	}
+
+	result
+}
+
 /// Convert a peer ID string to [`PeerId`].
 pub fn string_to_peer_id(peer_id_string: &str) -> Option<PeerId> {
 	PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).ok()
+}
+
+/// Generate a random string of variable length
+pub fn generate_random_string(length: usize) -> String {
+	let mut rng = rand::thread_rng();
+	(0..length)
+		.map(|_| rng.sample(Alphanumeric) as char)
+		.collect()
+}
+
+// Get unix timestamp as string
+pub fn get_unix_timestamp() -> Seconds {
+    // Get the current system time
+    let now = SystemTime::now();
+    // Calculate the duration since the Unix epoch
+    let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    // Return the Unix timestamp in seconds as a string
+    duration_since_epoch.as_secs()
 }
 
 #[cfg(test)]

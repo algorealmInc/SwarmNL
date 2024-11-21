@@ -1,10 +1,10 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
 //! Types and traits that are used throughout SwarmNL.
 
 use libp2p_identity::KeyType;
-use std::net::Ipv4Addr;
+use std::{collections::HashMap, net::Ipv4Addr};
 use thiserror::Error;
 
 /// Default IP address when no address is specified.
@@ -12,6 +12,15 @@ pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
 
 /// Default amount of time to keep a connection alive.
 pub static DEFAULT_KEEP_ALIVE_DURATION: Seconds = 60;
+
+/// Struct respresenting data for replication configuration
+#[derive(Clone, Default, Debug)]
+pub struct ReplConfigData {
+	/// Replica Network key
+	pub network_key: String,
+	/// Replica nodes described by their addresses
+	pub nodes: HashMap<String, String>,
+}
 
 /// Library error type containing all custom errors that could be encountered.
 #[derive(Error, Debug)]
@@ -46,6 +55,8 @@ pub type Seconds = u64;
 pub type PeerIdString = String;
 /// The stringified `Multiaddr` type.
 pub type MultiaddrString = String;
+/// A collection of nodes described purely by their addresses
+pub type Nodes = HashMap<PeerIdString, MultiaddrString>;
 
 /// Lower bound port range (u16::MIN).
 pub const MIN_PORT: u16 = 49152;

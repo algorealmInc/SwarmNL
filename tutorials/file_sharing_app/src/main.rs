@@ -1,22 +1,20 @@
-// Copyright 2024 Algorealm
+// Copyright 2024 Algorealm, Inc.
 
-/// This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing application
-/// using two nodes. One nodes writes a record to the DHT and specifies itself as a provider for a
-/// file it has locally. The other node reads the DHT and then uses an RPC to fetch the file from
-/// the first peer.
-
+/// This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing
+/// application using two nodes. One nodes writes a record to the DHT and specifies itself as a
+/// provider for a file it has locally. The other node reads the DHT and then uses an RPC to
+/// fetch the file from the first peer.
 use std::{
 	collections::HashMap,
 	fs::File,
 	io::{self, BufRead, Read},
-	num::NonZeroU32,
 	time::Duration,
 };
 
 use swarm_nl::{
-	core::{AppData, AppResponse, Core, CoreBuilder, EventHandler},
+	core::{AppData, AppResponse, Core, CoreBuilder, NetworkEvent, RpcConfig},
 	setup::BootstrapConfig,
-	ConnectedPoint, ConnectionId, Keypair, ListenerId, Multiaddr, PeerId, Port,
+	Keypair, PeerId, Port,
 };
 
 /// The key we're writing to the DHT
@@ -33,85 +31,49 @@ pub const PROTOBUF_KEYPAIR: [u8; 68] = [
 ];
 
 /// Node 1 wait time (for node 2 to initiate connection).
-/// This is useful because we need at least one connected peer (Quorum) to successfully write to the DHT.
+/// This is useful because we need at least one connected peer (Quorum) to successfully write to the
+/// DHT.
 const NODE_1_WAIT_TIME: u64 = 10;
 
 /// Node 2 wait time (for node 1 to write to the DHT).
 const NODE_2_WAIT_TIME: u64 = 10;
 
-/// Application State.
-#[derive(Clone)]
-struct FileServer;
+// We need to handle the incoming RPC here
+// What we're going to do is to look in our file system for the file specified in the RPC data and
+// return it's binary content
+fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+	println!("Received incoming RPC: {:?}", data);
 
-/// Handle network events.
-impl EventHandler for FileServer {
-	fn new_listen_addr(
-		&mut self,
-		local_peer_id: PeerId,
-		_listener_id: ListenerId,
-		addr: Multiaddr,
-	) {
-		// announce interfaces we're listening on
-		println!("Peer id: {}", local_peer_id);
-		println!("We're listening on the {}", addr);
-	}
+	// Extract the file name from the incoming data
+	let file_name = String::from_utf8_lossy(&data[0]);
+	// Trim any potential whitespace
+	let file_name = file_name.trim();
 
-	fn connection_established(
-		&mut self,
-		peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_established_in: Duration,
-	) {
-		println!("Connection established with peer: {:?}", peer_id);
-	}
-
-	// We need to handle the incoming rpc here
-	// What we're going to do is to look at out file system for the file specified in the rpc data and return it's binary content
-	fn rpc_incoming_message_handled(&mut self, data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-		println!("Received incoming RPC: {:?}", data);
-
-		// Extract the file name from the incoming data
-		let file_name = String::from_utf8_lossy(&data[0]);
-		let file_name = file_name.trim(); // Trim any potential whitespace
-
-		// Read the file content
-		let mut file_content = Vec::new();
-		match File::open(&file_name) {
-			Ok(mut file) => match file.read_to_end(&mut file_content) {
-				Ok(_) => {
-					println!("File read successfully: {}", file_name);
-				},
-				Err(e) => {
-					println!("Failed to read file content: {}", e);
-					return vec![b"Error: Failed to read file content".to_vec()];
-				},
+	// Read the contents of the file
+	let mut file_content = Vec::new();
+	match File::open(&file_name) {
+		Ok(mut file) => match file.read_to_end(&mut file_content) {
+			Ok(_) => {
+				println!("File read successfully: {}", file_name);
 			},
 			Err(e) => {
-				println!("Failed to open file: {}", e);
-				return vec![b"Error: Failed to open file".to_vec()];
+				println!("Failed to read file content: {}", e);
+				return vec![b"Error: Failed to read file content".to_vec()];
 			},
-		}
-
-		// Return the file content as a Vec<Vec<u8>>
-		vec![file_content]
+		},
+		Err(e) => {
+			println!("Failed to open file: {}", e);
+			return vec![b"Error: Failed to open file".to_vec()];
+		},
 	}
 
-	// handle the incoming gossip message
-	fn gossipsub_incoming_message_handled(&mut self, source: PeerId, data: Vec<String>) {
-		println!("Recvd incoming gossip: {:?}", data);
-	}
-
-	fn kademlia_put_record_success(&mut self, key: Vec<u8>) {
-		println!("Record successfully written to DHT. Key: {:?}", key);
-	}
+	// Return the file content as a Vec<Vec<u8>>
+	vec![file_content]
 }
 
 /// Used to create a detereministic node 1.
-async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
+async fn setup_node_1(ports: (Port, Port)) -> Core {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
-	let app_state = FileServer;
 
 	// First, we want to configure our node by specifying a static keypair (for easy connection by
 	// node 2)
@@ -121,19 +83,17 @@ async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
 		.with_udp(ports.1);
 
 	// Set up network
-	CoreBuilder::with_config(config, app_state)
-		.build()
-		.await
-		.unwrap()
+	let mut builder = CoreBuilder::with_config(config);
+
+	// Configure RPC handling
+	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
+
+	// Finish build
+	builder.build().await.unwrap()
 }
 
 /// Setup node 2.
-async fn setup_node_2(
-	node_1_ports: (Port, Port),
-	ports: (Port, Port),
-) -> (Core<FileServer>, PeerId) {
-	let app_state = FileServer;
-
+async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core, PeerId) {
 	// The PeerId of the node 1
 	let peer_id = Keypair::from_protobuf_encoding(&PROTOBUF_KEYPAIR)
 		.unwrap()
@@ -154,13 +114,13 @@ async fn setup_node_2(
 		.with_udp(ports.1);
 
 	// Set up network
-	(
-		CoreBuilder::with_config(config, app_state)
-			.build()
-			.await
-			.unwrap(),
-		peer_id,
-	)
+	let mut builder = CoreBuilder::with_config(config);
+
+	// Configure RPC handling
+	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
+
+	// Set up network
+	(builder.build().await.unwrap(), peer_id)
 }
 
 /// Run node 1.
@@ -168,13 +128,41 @@ async fn run_node_1() {
 	// Set up node
 	let mut node = setup_node_1((49666, 49606)).await;
 
+	// Read events generated at setup
+	while let Some(event) = node.next_event().await {
+		match event {
+			NetworkEvent::NewListenAddr {
+				local_peer_id,
+				listener_id: _,
+				address,
+			} => {
+				// Announce interfaces we're listening on
+				println!("Peer id: {}", local_peer_id);
+				println!("We're listening on the {}", address);
+			},
+			NetworkEvent::ConnectionEstablished {
+				peer_id,
+				connection_id: _,
+				endpoint: _,
+				num_established: _,
+				established_in: _,
+			} => {
+				println!("Connection established with peer: {:?}", peer_id);
+			},
+			_ => {},
+		}
+	}
+
 	// Sleep for a few seconds to allow node 2 to reach out
 	async_std::task::sleep(Duration::from_secs(NODE_1_WAIT_TIME)).await;
 
 	// What are we writing to the DHT?
 	// A file we have on the fs and the location of the file, so it can be easily retrieved
 
-	println!("[1] >>>> Writing file location to DHT: {}", String::from_utf8_lossy(KADEMLIA_KEY.as_bytes()));
+	println!(
+		"[1] >>>> Writing file location to DHT: {}",
+		String::from_utf8_lossy(KADEMLIA_KEY.as_bytes())
+	);
 
 	// Prepare a query to write to the DHT
 	let (key, value, expiration_time, explicit_peers) = (
@@ -194,6 +182,22 @@ async fn run_node_1() {
 	// Submit query to the network
 	node.query_network(kad_request).await.unwrap();
 
+
+	// Check for DHT events
+	let _ = node
+	.events()
+	.await
+	.map(|e| {
+		match e {
+			NetworkEvent::KademliaPutRecordSuccess { key } => {
+				// Call handler
+				println!("Record successfully written to DHT. Key: {:?}", key);
+			},
+			_ => {},
+		}
+	})
+	.collect::<Vec<_>>();
+
 	loop {}
 }
 
@@ -201,6 +205,35 @@ async fn run_node_1() {
 async fn run_node_2() {
 	// Set up node 2 and initiate connection to node 1
 	let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+	// Read all currently buffered network events
+	let events = node_2.events().await;
+
+	let _ = events
+		.map(|e| {
+			match e {
+				NetworkEvent::NewListenAddr {
+					local_peer_id,
+					listener_id: _,
+					address,
+				} => {
+					// Announce interfaces we're listening on
+					println!("Peer id: {}", local_peer_id);
+					println!("We're listening on the {}", address);
+				},
+				NetworkEvent::ConnectionEstablished {
+					peer_id,
+					connection_id: _,
+					endpoint: _,
+					num_established: _,
+					established_in: _,
+				} => {
+					println!("Connection established with peer: {:?}", peer_id);
+				},
+				_ => {},
+			}
+		})
+		.collect::<Vec<_>>();
 
 	// Sleep for a few seconds to allow node 1 write to the DHT
 	async_std::task::sleep(Duration::from_secs(NODE_2_WAIT_TIME)).await;
@@ -214,7 +247,10 @@ async fn run_node_2() {
 	if let Ok(result) = node_2.query_network(kad_request).await {
 		// We have our response
 		if let AppResponse::KademliaLookupSuccess(value) = result {
-			println!("[2] >>>> File read from DHT: {}", String::from_utf8_lossy(&value));
+			println!(
+				"[2] >>>> File read from DHT: {}",
+				String::from_utf8_lossy(&value)
+			);
 			// Now prepare an RPC query to fetch the file from the remote node
 			let fetch_key = vec![value];
 
