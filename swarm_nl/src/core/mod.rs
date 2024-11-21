@@ -32,7 +32,6 @@ use libp2p::{
 	ping::{self, Failure},
 	request_response::{self, cbor::Behaviour, ProtocolSupport},
 	swarm::{NetworkBehaviour, SwarmEvent},
-	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
 use prelude::replica_cfg::ReplBufferData;
