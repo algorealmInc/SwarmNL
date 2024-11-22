@@ -3,12 +3,17 @@
 
 //! Utility helper functions for reading from and writing to `.ini` config files.
 
-use crate::{prelude::*, setup::BootstrapConfig};
+use crate::{core::replica_cfg::ReplConfigData, prelude::*, setup::BootstrapConfig};
 use base58::FromBase58;
 use ini::Ini;
 use libp2p_identity::PeerId;
 use rand::{distributions::Alphanumeric, Rng};
-use std::{collections::HashMap, path::Path, str::FromStr, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+	collections::HashMap,
+	path::Path,
+	str::FromStr,
+	time::{SystemTime, UNIX_EPOCH},
+};
 
 /// Read an INI file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
@@ -62,21 +67,27 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			Default::default()
 		};
 
-		// Now, read static replication config data if any
-		let replica_nodes = if let Some(section) = config.section(Some("repl")) {
+		// Now, read replication config data if any
+		let replica_network_data = if let Some(section) = config.section(Some("repl")) {
 			// Get the configured replica nodes
 			parse_replication_data(section.get("replica_nodes").unwrap_or_default())
 		} else {
 			Default::default()
 		};
 
-		Ok(BootstrapConfig::new()
+		let mut bootstrap_data = BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type, &mut serialized_keypair)
 			.with_bootnodes(boot_nodes)
-			.with_replication(replica_nodes)
 			.with_blacklist(blacklist)
 			.with_tcp(tcp_port)
-			.with_udp(udp_port))
+			.with_udp(udp_port);
+
+		// Loop to configure replication data if any
+		for (network_key, repl_data) in replica_network_data {
+			bootstrap_data = bootstrap_data.with_replication(network_key, repl_data);
+		}
+
+		Ok(bootstrap_data)
 	} else {
 		// Return error
 		Err(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))
@@ -130,7 +141,7 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 }
 
 /// Parse replica nodes specified in the `bootstrap_config.ini` config file
-fn parse_replication_data(input: &str) -> Vec<ReplConfigData> {
+fn parse_replication_data(input: &str) -> Vec<(String, ReplConfigData)> {
 	let mut result = Vec::new();
 
 	// Remove brackets and split by '@'
@@ -152,12 +163,13 @@ fn parse_replication_data(input: &str) -> Vec<ReplConfigData> {
 				}
 			}
 
-			// Create outer map
+			// Set up replica network config data
 			let cfg = ReplConfigData {
-				network_key: outer_id.trim().to_string(),
-				nodes: inner_map,
+				nonce: 0,         // Set nonce to 0
+				nodes: inner_map, // Replica nodes
 			};
-			result.push(cfg);
+
+			result.push((outer_id.trim().to_string(), cfg));
 		}
 	}
 
@@ -179,12 +191,12 @@ pub fn generate_random_string(length: usize) -> String {
 
 // Get unix timestamp as string
 pub fn get_unix_timestamp() -> Seconds {
-    // Get the current system time
-    let now = SystemTime::now();
-    // Calculate the duration since the Unix epoch
-    let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-    // Return the Unix timestamp in seconds as a string
-    duration_since_epoch.as_secs()
+	// Get the current system time
+	let now = SystemTime::now();
+	// Calculate the duration since the Unix epoch
+	let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+	// Return the Unix timestamp in seconds as a string
+	duration_since_epoch.as_secs()
 }
 
 #[cfg(test)]
@@ -199,7 +211,7 @@ mod tests {
 	const CUSTOM_TCP_PORT: Port = 49666;
 	const CUSTOM_UDP_PORT: Port = 49852;
 
-	// Helper to create an INI file without a static keypair and a valid range for ports.
+	// Helper to create an INI file without a keypair and a valid range for ports.
 	fn create_test_ini_file_without_keypair(file_path: &str) {
 		let mut config = Ini::new();
 		config

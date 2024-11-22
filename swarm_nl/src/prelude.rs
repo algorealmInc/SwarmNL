@@ -13,15 +13,6 @@ pub static DEFAULT_IP_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
 /// Default amount of time to keep a connection alive.
 pub static DEFAULT_KEEP_ALIVE_DURATION: Seconds = 60;
 
-/// Struct respresenting data for replication configuration
-#[derive(Clone, Default, Debug)]
-pub struct ReplConfigData {
-	/// Replica Network key
-	pub network_key: String,
-	/// Replica nodes described by their addresses
-	pub nodes: HashMap<String, String>,
-}
-
 /// Library error type containing all custom errors that could be encountered.
 #[derive(Error, Debug)]
 pub enum SwarmNlError {

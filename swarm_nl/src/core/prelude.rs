@@ -603,36 +603,58 @@ pub mod ping_config {
 /// Module that contains important data structures to manage `Replication` operations on the network
 pub mod replica_cfg {
 	use super::*;
-	use crate::ReplConfigData;
-	use std::{cmp::Ordering, sync::Arc, time::SystemTime};
+	use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::SystemTime};
+
+	/// Struct respresenting data for replication configuration
+	#[derive(Clone, Default, Debug)]
+	pub struct ReplConfigData {
+		/// Nonce to support logical clocks
+		pub nonce: Nonce,
+		/// Replica nodes described by their addresses
+		pub nodes: HashMap<String, String>,
+	}
 
 	/// Struct containing important information for replication
 	#[derive(Clone)]
 	pub struct ReplInfo {
 		/// Internal state for replication
-		pub state: Arc<Vec<ReplConfigData>>,
+		pub state: Arc<Mutex<HashMap<String, ReplConfigData>>>,
 	}
 
-	/// Struct containing configurations for replication
+	/// The consistency models supported.
+	/// This is important as is determines the behaviour of the node in handling and delivering
+	/// replicated data to the application layer. There are also trade-offs to be considered
+	/// before choosing any model. You must choose the model that aligns and suits your exact
+	/// usecase and objective.
+	#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+	pub enum ConsistencyModel {
+		/// Eventual consistency
+		Eventual,
+		/// Strong consistency
+		Strong,
+	}
+
+	/// Enum containing configurations for replication
 	#[derive(Clone)]
 	pub enum ReplNetworkConfig {
-		/// No expiry, queue operates in a FIFO manner and message are dropped
-		/// when the buffer is full
-		NoExpiry,
 		/// A custom configuration.
 		///
 		/// # Fields
 		///
 		/// - `queue_length`: Max capacity for transient storage
-		/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full
+		/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full. If a
+		///   `NoExpiry` behaviour is preferred, `expiry_time` should be set to `None`.
 		/// - `sync_epoch`: Epoch to attempt network synchronization of data in the buffer
+		/// - `consistency_model`: The data consistency model to be supported by the node. This
+		///   must be uniform across all nodes to prevent undefined behaviour
 		Custom {
 			queue_length: u64,
-			expiry_time: Seconds,
+			expiry_time: Option<Seconds>,
 			sync_epoch: Seconds,
+			consistency_model: ConsistencyModel,
 		},
-		/// A default Configuration (queue_length = 100, expiry_time = 60 seconds,
-		/// sychronization_epoch = 5 seconds)
+		/// A default Configuration: queue_length = 100, expiry_time = 60 seconds,
+		/// syc_epoch = 5 seconds, consistency_model: `Eventual`
 		Default,
 	}
 
@@ -650,6 +672,9 @@ pub mod replica_cfg {
 		pub message_id: String,
 		/// Sender PeerId
 		pub sender: PeerId,
+		/// Number of confirmations. This is to help the nodes using the strong consistenty
+		/// synchronization data model to come to an agreement
+		pub confirmations: Option<Nonce>,
 	}
 
 	/// Implement Ord
@@ -681,133 +706,207 @@ pub mod replica_cfg {
 
 	/// Transient buffer queue where incoming replicated data are stored
 	pub struct ReplicaBufferQueue {
-		/// Configuration
+		/// Configuration for replication and general synchronization
 		config: ReplNetworkConfig,
-		/// Internal queue implementation
-		queue: Mutex<BTreeSet<ReplBufferData>>,
+		/// In the case of a strong consistency model, this is where data is buffered
+		/// initially before it is agreed upon by all participants in the network. After which
+		/// it are then moved to the queue exposed to the application layer.
+		temporary_queue: Mutex<BTreeMap<String, BTreeMap<String, ReplBufferData>>>,
+		/// Internal buffer containing replicated data to be consumed by the application layer
+		queue: Mutex<BTreeMap<String, BTreeSet<ReplBufferData>>>,
 	}
 
 	impl ReplicaBufferQueue {
-		/// The max capacity of the buffer
+		/// The default max capacity of the buffer
 		const MAX_CAPACITY: u64 = 150;
 
-		/// Expiry time of data in the buffer if the buffer is full
+		/// The default expiry time of data in the buffer, when the buffer becomes full
 		const EXPIRY_TIME: Seconds = 60;
 
-		/// Epoch to attempt network synchronization of data in the buffer
+		/// The default epoch to attempt network synchronization of data in the buffer
 		const SYNC_EPOCH: Seconds = 5;
+
+		/// The default data consistency model
+		const DEFAULT_CONSISTENCY_MODEL: ConsistencyModel = ConsistencyModel::Eventual;
 
 		/// Create a new instance of [ReplicaBufferQueue]
 		pub fn new(config: ReplNetworkConfig) -> Self {
 			Self {
-				queue: Mutex::new(BTreeSet::new()),
 				config,
+				temporary_queue: Mutex::new(Default::default()),
+				queue: Mutex::new(Default::default()),
 			}
 		}
-  
+
+		/// Return the configured [ConsistencyModel] for data synchronization
+		pub fn consistency_model(&self) -> ConsistencyModel {
+			match self.config {
+				// Default config always supports eventual consistency
+				ReplNetworkConfig::Default => ConsistencyModel::Eventual,
+				ReplNetworkConfig::Custom {
+					consistency_model, ..
+				} => consistency_model,
+			}
+		}
+
 		/// Push a new [ReplBufferData] item into the buffer
-		pub async fn push(&self, data: ReplBufferData) {
-			let mut queue = self.queue.lock().await; // Lock the queue to modify it
-
-			// The behaviour of the push operation and its corresponding actions e.g removing an
-			// item from the queue is based on configuration
-
+		pub async fn push(&self, mut core: Core, replica_network: String, data: ReplBufferData) {
+			// Different behaviours based on configurations
 			match self.config {
 				// Default implementation supports expiry of buffer items and values are based on
 				// structs contants
 				ReplNetworkConfig::Default => {
-					// If the queue is full, remove expired data first
-					while queue.len() as u64 >= Self::MAX_CAPACITY {
-						// Check and remove expired data
-						let current_time = SystemTime::now()
-							.duration_since(SystemTime::UNIX_EPOCH)
-							.unwrap()
-							.as_secs();
-						let mut expired_items = Vec::new();
+					// Lock the queue to modify it
+					let mut queue = self.queue.lock().await;
 
-						// Identify expired items and collect them for removal
-						for entry in queue.iter() {
-							if current_time - entry.outgoing_timestamp >= Self::EXPIRY_TIME {
-								expired_items.push(entry.clone());
+					// Filter into replica network the data belongs to
+					if let Some(queue) = queue.get_mut(&replica_network) {
+						// If the queue is full, remove expired data first
+						while queue.len() as u64 >= Self::MAX_CAPACITY {
+							// Check and remove expired data
+							let current_time = SystemTime::now()
+								.duration_since(SystemTime::UNIX_EPOCH)
+								.unwrap()
+								.as_secs();
+							let mut expired_items = Vec::new();
+
+							// Identify expired items and collect them for removal
+							for entry in queue.iter() {
+								if current_time - entry.outgoing_timestamp >= Self::EXPIRY_TIME {
+									expired_items.push(entry.clone());
+								}
+							}
+
+							// Remove expired items
+							for expired in expired_items {
+								queue.remove(&expired);
+							}
+
+							// If no expired items were removed, pop the front (oldest) item
+							if queue.len() as u64 >= Self::MAX_CAPACITY {
+								if let Some(first) = queue.iter().next().cloned() {
+									queue.remove(&first);
+								}
 							}
 						}
 
-						// Remove expired items
-						for expired in expired_items {
-							queue.remove(&expired);
-						}
-
-						// If no expired items were removed, pop the front (oldest) item
-						if queue.len() as u64 >= Self::MAX_CAPACITY {
-							if let Some(first) = queue.iter().next().cloned() {
-								queue.remove(&first);
-							}
-						}
-					}
-				},
-				// There is no expiry time for buffer items and removal is only done when buffer us full
-				ReplNetworkConfig::NoExpiry => {
-					while queue.len() as u64 >= Self::MAX_CAPACITY {
-						// Pop the front (oldest) item
-						if queue.len() as u64 >= Self::MAX_CAPACITY {
-							if let Some(first) = queue.iter().next().cloned() {
-								queue.remove(&first);
-							}
-						}
+						// Insert data right into the final queue
+						queue.insert(data);
 					}
 				},
 				// Here decay applies in addition to removal of excess buffer content
 				ReplNetworkConfig::Custom {
 					queue_length,
 					expiry_time,
+					consistency_model,
 					..
 				} => {
-					// If the queue is full, remove expired data first
-					while queue.len() as u64 >= queue_length {
-						// Check and remove expired data
-						let current_time = SystemTime::now()
-							.duration_since(SystemTime::UNIX_EPOCH)
-							.unwrap()
-							.as_secs();
-						let mut expired_items = Vec::new();
+					// Which buffer the incoming data will interact with initially is determined by
+					// the supported data consistency model
+					match consistency_model {
+						// For eventual consistency, data is written straight into the final queue
+						// for consumption
+						ConsistencyModel::Eventual => {
+							// Lock the queue to modify it
+							let mut queue = self.queue.lock().await;
 
-						// Identify expired items and collect them for removal
-						for entry in queue.iter() {
-							if current_time - entry.outgoing_timestamp >= expiry_time {
-								expired_items.push(entry.clone());
+							// Filter into replica network the data belongs to
+							if let Some(queue) = queue.get_mut(&replica_network) {
+								// If the queue is full, remove expired data first
+								while queue.len() as u64 >= queue_length {
+									// Remove only when data expiration is supported
+									if let Some(expiry_time) = expiry_time {
+										// Check and remove expired data
+										let current_time = SystemTime::now()
+											.duration_since(SystemTime::UNIX_EPOCH)
+											.unwrap()
+											.as_secs();
+										let mut expired_items = Vec::new();
+
+										// Identify expired items and collect them for removal
+										for entry in queue.iter() {
+											if current_time - entry.outgoing_timestamp
+												>= expiry_time
+											{
+												expired_items.push(entry.clone());
+											}
+										}
+
+										// Remove expired items
+										for expired in expired_items {
+											queue.remove(&expired);
+										}
+									}
+
+									// If no expired items were removed, pop the front (oldest) item
+									if queue.len() as u64 >= Self::MAX_CAPACITY {
+										if let Some(first) = queue.iter().next().cloned() {
+											queue.remove(&first);
+										}
+									}
+								}
 							}
-						}
+						},
+						// Here data is written into the temporary buffer first, for finalization to
+						// occur. It is then moved into the final queue based on concensus.
+						ConsistencyModel::Strong => {
+							// Lock the queue to modify it
+							let mut temp_queue = self.temporary_queue.lock().await;
 
-						// Remove expired items
-						for expired in expired_items {
-							queue.remove(&expired);
-						}
+							// Filter into replica network the data belongs to
+							if let Some(temp_queue) = temp_queue.get_mut(&replica_network) {
+								// Remove the first item from the queue. No decay applies here
+								if temp_queue.len() as u64 >= Self::MAX_CAPACITY {
+									if let Some(first_key) = temp_queue.keys().next().cloned() {
+										temp_queue.remove(&first_key);
+									}
+								}
 
-						// If no expired items were removed, pop the front (oldest) item
-						if queue.len() as u64 >= Self::MAX_CAPACITY {
-							if let Some(first) = queue.iter().next().cloned() {
-								queue.remove(&first);
+								// Get messageId
+								let message_id = data.message_id.clone();
+
+								// Insert data into queue. Confirmation count is already 1
+								temp_queue.insert(data.message_id.clone(), data);
+
+								// Start strong consistency synchronization algorithm:
+								// Broadcast just recieved message to peers to increase the
+								// confirmation. It is just the message id that will be broadcast
+
+								let message =
+									vec![
+										Core::STRONG_CONSISTENCY_FLAG.as_bytes().to_vec(), /* Strong Consistency Sync Gossip Flag */
+										message_id.as_bytes().into(),
+									];
+
+								// Prepare a gossip request
+								let gossip_request = AppData::GossipsubBroadcastMessage {
+									topic: replica_network.into(),
+									message,
+								};
+
+								// Gossip data to replica nodes
+								let _ = core.query_network(gossip_request).await;
 							}
-						}
+						},
 					}
 				},
 			}
-
-			// Finally, insert the new data into the queue
-			queue.insert(data);
 		}
 
-		// Pop the front (smallest element) from the queue
-		pub async fn pop_front(&self) -> Option<ReplBufferData> {
+		// Pop the front (earliest data) from the queue
+		pub async fn pop_front(&self, replica_network: &str) -> Option<ReplBufferData> {
 			let mut queue = self.queue.lock().await;
-			if let Some(first) = queue.iter().next().cloned() {
-				// Remove the front element (smallest)
-				queue.remove(&first);
-				Some(first)
-			} else {
-				// Empty queue
-				None
+
+			// Filter into replica network the data belongs to
+			if let Some(queue) = queue.get_mut(replica_network) {
+				if let Some(first) = queue.iter().next().cloned() {
+					// Remove the front element
+					queue.remove(&first);
+					return Some(first);
+				}
 			}
+
+			None
 		}
 	}
 }
