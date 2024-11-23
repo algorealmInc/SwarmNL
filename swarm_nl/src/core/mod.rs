@@ -1203,8 +1203,7 @@ impl Core {
 
 		// Queues supporting the strong consistency algorithm, used to ask the network layer for the
 		// current number of nodes in a replica group
-		let (mut query_sender, mut query_reciever) =
-			mpsc::channel::<String>(STREAM_BUFFER_CAPACITY);
+		let (query_sender, mut query_reciever) = mpsc::channel::<String>(STREAM_BUFFER_CAPACITY);
 		let (mut result_sender, mut result_reciever) = mpsc::channel::<u64>(STREAM_BUFFER_CAPACITY);
 
 		// Network information
@@ -1254,15 +1253,18 @@ impl Core {
 												let _ = swarm.behaviour_mut().kademlia.start_providing(RecordKey::new(&key));
 
 												// Send streamId to libp2p events, to track response
-												data_queue_1.0.send(stream_id).await;
-
-												// Cache record on peers explicitly (if specified)
-												if let Some(explicit_peers) = explicit_peers {
-													// Extract PeerIds
-													let peers = explicit_peers.iter().map(|peer_id_string| {
-														PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
-													}).filter_map(Result::ok).collect::<Vec<_>>();
-													swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
+												if let Ok(_) = data_queue_1.0.send(stream_id).await {
+													// Cache record on peers explicitly (if specified)
+													if let Some(explicit_peers) = explicit_peers {
+														// Extract PeerIds
+														let peers = explicit_peers.iter().map(|peer_id_string| {
+															PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
+														}).filter_map(Result::ok).collect::<Vec<_>>();
+														swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
+													}
+												} else {
+													// Return error
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key)))).await;
 												}
 											} else {
 												// Return error
@@ -1274,14 +1276,20 @@ impl Core {
 											let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
 
 											// Send streamId to libp2p events, to track response
-											data_queue_2.0.send(stream_id).await;
+											if let Err(_) = data_queue_2.0.send(stream_id).await {
+												// Return error
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::InternalStreamError))).await;
+											}
 										},
 										// Perform a lookup of peers that store a record
 										AppData::KademliaGetProviders { key } => {
 											swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
 
 											// Send streamId to libp2p events, to track response
-											data_queue_3.0.send(stream_id).await;
+											if let Err(_) = data_queue_3.0.send(stream_id).await {
+												// Return error
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::InternalStreamError))).await;
+											}
 										}
 										// Stop providing a record on the network
 										AppData::KademliaStopProviding { key } => {
@@ -1308,7 +1316,10 @@ impl Core {
 												.send_request(&peer, rpc);
 
 											// Send streamId to libp2p events, to track response
-											data_queue_4.0.send(stream_id).await;
+											if let Err(_) = data_queue_4.0.send(stream_id).await {
+												// Return error
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::InternalStreamError))).await;
+											}
 										},
 										// Return important information about the node
 										AppData::GetNetworkInfo => {

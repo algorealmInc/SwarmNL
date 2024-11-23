@@ -175,6 +175,8 @@ pub enum NetworkError {
 	GossipsubBroadcastMessageError,
 	#[error("failed to join a mesh network")]
 	GossipsubJoinNetworkError,
+	#[error("internal stream failed to transport data")]
+	InternalStreamError
 }
 
 /// A simple struct used to track requests sent from the application layer to the network layer.
@@ -726,9 +728,6 @@ pub mod replica_cfg {
 		/// The default epoch to attempt network synchronization of data in the buffer
 		const SYNC_EPOCH: Seconds = 5;
 
-		/// The default data consistency model
-		const DEFAULT_CONSISTENCY_MODEL: ConsistencyModel = ConsistencyModel::Eventual;
-
 		/// Create a new instance of [ReplicaBufferQueue]
 		pub fn new(config: ReplNetworkConfig) -> Self {
 			Self {
@@ -845,6 +844,9 @@ pub mod replica_cfg {
 										}
 									}
 								}
+
+								// Insert data right into the final queue
+								queue.insert(data);
 							}
 						},
 						// Here data is written into the temporary buffer first, for finalization to
@@ -905,7 +907,6 @@ pub mod replica_cfg {
 					return Some(first);
 				}
 			}
-
 			None
 		}
 
@@ -926,21 +927,107 @@ pub mod replica_cfg {
 				if let Some(data_entry) = temp_queue.get_mut(&message_id) {
 					// Increase confirmation count
 					data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
-		
+
 					// Send the replica network for peer count query
 					if query_sender.send(replica_network.clone()).await.is_ok() {
 						// Now read from the second channel to get the replica count
 						if let Some(peers_count) = data_reciever.next().await {
 							// Check if confirmation is complete
 							if data_entry.confirmations == Some(peers_count) {
-								// Move it into the main queue for consumption by the application layer
-								let mut public_queue = self.queue.lock().await;
-								let data_entries = public_queue
+								// Move it into the main queue for consumption by the application
+								// layer
+								let mut queue = self.queue.lock().await;
+								let public_queue = queue
 									.entry(replica_network.clone())
 									.or_insert_with(BTreeSet::new);
+
+								// Cleanup public buffer first
+								match self.config {
+									// Default implementation supports expiry of buffer items and
+									// values are based on structs contants
+									ReplNetworkConfig::Default => {
+										// If the queue is full, remove expired data first
+										while public_queue.len() as u64 >= Self::MAX_CAPACITY {
+											// Check and remove expired data
+											let current_time = SystemTime::now()
+												.duration_since(SystemTime::UNIX_EPOCH)
+												.unwrap()
+												.as_secs();
+											let mut expired_items = Vec::new();
+
+											// Identify expired items and collect them for removal
+											for entry in public_queue.iter() {
+												if current_time - entry.outgoing_timestamp
+													>= Self::EXPIRY_TIME
+												{
+													expired_items.push(entry.clone());
+												}
+											}
+
+											// Remove expired items
+											for expired in expired_items {
+												public_queue.remove(&expired);
+											}
+
+											// If no expired items were removed, pop the front
+											// (oldest) item
+											if public_queue.len() as u64 >= Self::MAX_CAPACITY {
+												if let Some(first) =
+													public_queue.iter().next().cloned()
+												{
+													public_queue.remove(&first);
+												}
+											}
+										}
+									},
+									ReplNetworkConfig::Custom {
+										queue_length,
+										expiry_time,
+										..
+									} => {
+										// If the public_queue is full, remove expired data first
+										while public_queue.len() as u64 >= queue_length {
+											// Remove only when data expiration is supported
+											if let Some(expiry_time) = expiry_time {
+												// Check and remove expired data
+												let current_time = SystemTime::now()
+													.duration_since(SystemTime::UNIX_EPOCH)
+													.unwrap()
+													.as_secs();
+												let mut expired_items = Vec::new();
+
+												// Identify expired items and collect them for
+												// removal
+												for entry in public_queue.iter() {
+													if current_time - entry.outgoing_timestamp
+														>= expiry_time
+													{
+														expired_items.push(entry.clone());
+													}
+												}
+
+												// Remove expired items
+												for expired in expired_items {
+													public_queue.remove(&expired);
+												}
+											}
+
+											// If no expired items were removed, pop the front
+											// (oldest) item
+											if public_queue.len() as u64 >= Self::MAX_CAPACITY {
+												if let Some(first) =
+													public_queue.iter().next().cloned()
+												{
+													public_queue.remove(&first);
+												}
+											}
+										}
+									},
+								}
+
 								// Insert entry into public queue
-								data_entries.insert(data_entry.to_owned());
-		
+								public_queue.insert(data_entry.to_owned());
+
 								// Delete the processed entry from the temporary queue
 								temp_queue.remove(&message_id);
 							}
