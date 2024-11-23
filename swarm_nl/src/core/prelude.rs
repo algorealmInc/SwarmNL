@@ -705,7 +705,7 @@ pub mod replica_cfg {
 	}
 
 	/// Transient buffer queue where incoming replicated data are stored
-	pub struct ReplicaBufferQueue {
+	pub(crate) struct ReplicaBufferQueue {
 		/// Configuration for replication and general synchronization
 		config: ReplNetworkConfig,
 		/// In the case of a strong consistency model, this is where data is buffered
@@ -871,11 +871,11 @@ pub mod replica_cfg {
 								// Start strong consistency synchronization algorithm:
 								// Broadcast just recieved message to peers to increase the
 								// confirmation. It is just the message id that will be broadcast
-
 								let message =
 									vec![
 										Core::STRONG_CONSISTENCY_FLAG.as_bytes().to_vec(), /* Strong Consistency Sync Gossip Flag */
-										message_id.as_bytes().into(),
+										replica_network.clone().into(),                    /* Replica network */
+										message_id.as_bytes().into(),                      /* Message id */
 									];
 
 								// Prepare a gossip request
@@ -907,6 +907,47 @@ pub mod replica_cfg {
 			}
 
 			None
+		}
+
+		/// Handle incoming data confimation from replica peers.
+		/// This function only concerns the strong consistency data model.
+		/// It recieves a `message_id` and tries to index into the temporary buffer state of the
+		/// replica to increase the replication confirmation count of the particular data item
+		pub async fn handle_data_confirmation(
+			&self,
+			mut query_sender: Sender<String>,
+			data_reciever: &mut Receiver<u64>,
+			replica_network: String,
+			message_id: String,
+		) {
+			// Index into the temporary buffer queue of the replica network
+			if let Some(temp_queue) = self.temporary_queue.lock().await.get_mut(&replica_network) {
+				// Get data entry
+				if let Some(data_entry) = temp_queue.get_mut(&message_id) {
+					// Increase confirmation count
+					data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
+		
+					// Send the replica network for peer count query
+					if query_sender.send(replica_network.clone()).await.is_ok() {
+						// Now read from the second channel to get the replica count
+						if let Some(peers_count) = data_reciever.next().await {
+							// Check if confirmation is complete
+							if data_entry.confirmations == Some(peers_count) {
+								// Move it into the main queue for consumption by the application layer
+								let mut public_queue = self.queue.lock().await;
+								let data_entries = public_queue
+									.entry(replica_network.clone())
+									.or_insert_with(BTreeSet::new);
+								// Insert entry into public queue
+								data_entries.insert(data_entry.to_owned());
+		
+								// Delete the processed entry from the temporary queue
+								temp_queue.remove(&message_id);
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }

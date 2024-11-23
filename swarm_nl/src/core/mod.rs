@@ -757,9 +757,9 @@ impl Core {
 	/// replication
 	pub const REPL_GOSSIP_FLAG: &'static str = "REPL_GOSSIP_FLAG_@@";
 
-	/// The gossip flag to indicate that incoming (or outgoing) gossipsub message is a part of the strong
-	/// consistency algorithm, intending to increase the confirmation count of a particular data
-	/// item in the replicas temporary buffer
+	/// The gossip flag to indicate that incoming (or outgoing) gossipsub message is a part of the
+	/// strong consistency algorithm, intending to increase the confirmation count of a particular
+	/// data item in the replicas temporary buffer
 	pub const STRONG_CONSISTENCY_FLAG: &'static str = "STRONG_CON_@@";
 
 	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful
@@ -1063,7 +1063,9 @@ impl Core {
 			.await;
 
 		// Then push into buffer queue
-		self.replica_buffer.push(self.clone(), repl_network, repl_data).await;
+		self.replica_buffer
+			.push(self.clone(), repl_network, repl_data)
+			.await;
 	}
 
 	/// Consume data in replication buffer
@@ -1073,9 +1075,6 @@ impl Core {
 
 	/// Handle network sychronization using the eventual consistency data model
 	async fn sync_with_eventual_consistency(&self) {}
-
-	/// Handle network sychronization using the strong consistency data model
-	async fn sync_with_strong_consistency(&self) {}
 
 	/// Send data to replica nodes. Function returns false if replication key is not recognized,
 	/// meaning the replication network has not been configured
@@ -1089,7 +1088,7 @@ impl Core {
 			.get_mut(repl_key)
 		{
 			// Increase the nonce before sending
-			repl_network_data.nonce.saturating_add(1);
+			let _ = repl_network_data.nonce.saturating_add(1);
 
 			// So that we do not block the foreground operations, we will spawn a task to handle it
 			// and then return immediately
@@ -1104,10 +1103,10 @@ impl Core {
 				// Add the replication flag as the first element of the message and the replication
 				// key as the second one
 				let mut message = vec![
-					Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(),   // Replica Gossip Flag
-					get_unix_timestamp().to_string().into(), // Timestamp
+					Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(), // Replica Gossip Flag
+					get_unix_timestamp().to_string().into(),    // Timestamp
 					replica_network_data.nonce.to_string().into(), // Nonce
-					replication_key.clone().into(),          // Replication network key,
+					replication_key.clone().into(),             // Replication network key,
 				];
 				message.append(&mut replica_data);
 
@@ -1125,10 +1124,10 @@ impl Core {
 			async_std::task::spawn(async move {
 				// Construct replica message
 				let mut message = vec![
-					Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(),   // Replica Gossip Flag
-					get_unix_timestamp().to_string().into(), // Timestamp
+					Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(), // Replica Gossip Flag
+					get_unix_timestamp().to_string().into(),    // Timestamp
 					replica_network_data.nonce.to_string().into(), // Nonce
-					replication_key.clone().into(),          // Replication network key,
+					replication_key.clone().into(),             // Replication network key,
 				];
 				// Then append data
 				message.append(&mut replica_data);
@@ -1197,10 +1196,16 @@ impl Core {
 		mut network_core: Core,
 	) {
 		// Network queue that tracks the execution of application requests in the network layer.
-		let data_queue_1 = DataQueue::new();
-		let data_queue_2 = DataQueue::new();
-		let data_queue_3 = DataQueue::new();
-		let data_queue_4 = DataQueue::new();
+		let mut data_queue_1 = mpsc::channel::<StreamId>(STREAM_BUFFER_CAPACITY);
+		let mut data_queue_2 = mpsc::channel::<StreamId>(STREAM_BUFFER_CAPACITY);
+		let mut data_queue_3 = mpsc::channel::<StreamId>(STREAM_BUFFER_CAPACITY);
+		let mut data_queue_4 = mpsc::channel::<StreamId>(STREAM_BUFFER_CAPACITY);
+
+		// Queues supporting the strong consistency algorithm, used to ask the network layer for the
+		// current number of nodes in a replica group
+		let (mut query_sender, mut query_reciever) =
+			mpsc::channel::<String>(STREAM_BUFFER_CAPACITY);
+		let (mut result_sender, mut result_reciever) = mpsc::channel::<u64>(STREAM_BUFFER_CAPACITY);
 
 		// Network information
 		let mut network_info = network_core.network_info.clone();
@@ -1249,7 +1254,7 @@ impl Core {
 												let _ = swarm.behaviour_mut().kademlia.start_providing(RecordKey::new(&key));
 
 												// Send streamId to libp2p events, to track response
-												data_queue_1.push(stream_id).await;
+												data_queue_1.0.send(stream_id).await;
 
 												// Cache record on peers explicitly (if specified)
 												if let Some(explicit_peers) = explicit_peers {
@@ -1269,14 +1274,14 @@ impl Core {
 											let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
 
 											// Send streamId to libp2p events, to track response
-											data_queue_2.push(stream_id).await;
+											data_queue_2.0.send(stream_id).await;
 										},
 										// Perform a lookup of peers that store a record
 										AppData::KademliaGetProviders { key } => {
 											swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
 
 											// Send streamId to libp2p events, to track response
-											data_queue_3.push(stream_id).await;
+											data_queue_3.0.send(stream_id).await;
 										}
 										// Stop providing a record on the network
 										AppData::KademliaStopProviding { key } => {
@@ -1303,7 +1308,7 @@ impl Core {
 												.send_request(&peer, rpc);
 
 											// Send streamId to libp2p events, to track response
-											data_queue_4.push(stream_id).await;
+											data_queue_4.0.send(stream_id).await;
 										},
 										// Return important information about the node
 										AppData::GetNetworkInfo => {
@@ -1555,7 +1560,7 @@ impl Core {
 														}).collect::<Vec<_>>();
 
 														// Receive data from our one-way channel
-														if let Some(stream_id) = data_queue_3.pop().await {
+														if let Some(stream_id) = data_queue_3.1.next().await {
 															// Send the response back to the application layer
 															let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
 														}
@@ -1563,7 +1568,7 @@ impl Core {
 													// No providers found
 													kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. } => {
 														// Receive data from our one-way channel
-														if let Some(stream_id) = data_queue_3.pop().await {
+														if let Some(stream_id) = data_queue_3.1.next().await {
 															// Send the response back to the application layer
 															let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
 														}
@@ -1573,7 +1578,7 @@ impl Core {
 
 											kad::QueryResult::GetProviders(Err(_)) => {
 												// Receive data from our one-way channel
-												if let Some(stream_id) = data_queue_3.pop().await {
+												if let Some(stream_id) = data_queue_3.1.next().await {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
 												}
@@ -1582,14 +1587,14 @@ impl Core {
 												kad::PeerRecord { record:kad::Record{ value, .. }, .. },
 											))) => {
 												// Receive data from out one-way channel
-												if let Some(stream_id) = data_queue_2.pop().await {
+												if let Some(stream_id) = data_queue_2.1.next().await {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaLookupSuccess(value))).await;
 												}
 											}
 											kad::QueryResult::GetRecord(Ok(_)) => {
 												// Receive data from out one-way channel
-												if let Some(stream_id) = data_queue_2.pop().await {
+												if let Some(stream_id) = data_queue_2.1.next().await {
 													// Send the error back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(vec![])))).await;
 												}
@@ -1602,14 +1607,14 @@ impl Core {
 												};
 
 												// Receive data from out one-way channel
-												if let Some(stream_id) = data_queue_2.pop().await {
+												if let Some(stream_id) = data_queue_2.1.next().await {
 													// Send the error back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(key.to_vec())))).await;
 												}
 											}
 											kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
 												// Receive data from our one-way channel
-												if let Some(stream_id) = data_queue_1.pop().await {
+												if let Some(stream_id) = data_queue_1.1.next().await {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaStoreRecordSuccess)).await;
 												}
@@ -1625,7 +1630,7 @@ impl Core {
 													kad::PutRecordError::Timeout { key, .. } => key,
 												};
 
-												if let Some(stream_id) = data_queue_1.pop().await {
+												if let Some(stream_id) = data_queue_1.1.next().await {
 													// Send the error back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key.to_vec())))).await;
 												}
@@ -1713,7 +1718,7 @@ impl Core {
 												// We have a response message
 												request_response::Message::Response { response, .. } => {
 													// Receive data from our one-way channel
-													if let Some(stream_id) = data_queue_4.pop().await {
+													if let Some(stream_id) = data_queue_4.1.next().await {
 														match response {
 															Rpc::ReqResponse { data } => {
 																// Send the response back to the application layer
@@ -1725,7 +1730,7 @@ impl Core {
 										},
 										request_response::Event::OutboundFailure { .. } => {
 											// Receive data from out one-way channel
-											if let Some(stream_id) = data_queue_4.pop().await {
+											if let Some(stream_id) = data_queue_4.1.next().await {
 												// Send the error back to the application layer
 												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::RpcDataFetchError))).await;
 											}
@@ -1741,34 +1746,43 @@ impl Core {
 											let data_string = String::from_utf8(message.data).unwrap_or_default();
 											let gossip_data = data_string.split(GOSSIP_MESSAGE_SEPARATOR).map(|msg| msg.to_string()).collect::<Vec<_>>();
 
-											// Check whether it is a replication message
-											if gossip_data[0] == Core::REPL_GOSSIP_FLAG {
-												// Construct buffer data
-												let queue_data = ReplBufferData {
-													data: gossip_data[4..].to_owned(),
-													outgoing_timestamp: get_unix_timestamp(),
-													incoming_timestamp: gossip_data[1].parse::<u64>().unwrap_or(0),
-													// Message id is modified by concatenating it with the nonce
-													message_id: message_id.to_string() + &gossip_data[2].to_string(),
-													sender: propagation_source.clone(),
-													confirmations: if network_core.replica_buffer.consistency_model() == ConsistencyModel::Eventual {
-														// No confirmations needed for eventual consistency
-														None
-													} else {
-														// Set count to 1
-														Some(1)
-													}
-												};
+											match gossip_data[0].as_str() {
+												// It is an incoming replication message
+												Core::REPL_GOSSIP_FLAG =>  {
+													// Construct buffer data
+													let queue_data = ReplBufferData {
+														data: gossip_data[4..].to_owned(),
+														outgoing_timestamp: get_unix_timestamp(),
+														incoming_timestamp: gossip_data[1].parse::<u64>().unwrap_or(0),
+														// Message id is modified by concatenating it with the nonce
+														message_id: message_id.to_string() + &gossip_data[2].to_string(),
+														sender: propagation_source.clone(),
+														confirmations: if network_core.replica_buffer.consistency_model() == ConsistencyModel::Eventual {
+															// No confirmations needed for eventual consistency
+															None
+														} else {
+															// Set count to 1
+															Some(1)
+														}
+													};
 
-												// Handle incoming replicated data
-												network_core.handle_incoming_repl_data(gossip_data[3].clone().into(), queue_data).await;
-											} else {
-												// First trigger the configured application filter event
-												if (network_info.gossip_filter_fn)(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
-													// Append to network event queue
-													network_core.event_queue.push(NetworkEvent::GossipsubIncomingMessageHandled { source: propagation_source, data: gossip_data }).await;
+													// Handle incoming replicated data
+													network_core.handle_incoming_repl_data(gossip_data[3].clone().into(), queue_data).await;
+												},
+												// It is a broadcast from replica nodes to ensure strong consistency
+												Core::STRONG_CONSISTENCY_FLAG => {
+													// Handle the data confirmation
+													network_core.replica_buffer.handle_data_confirmation(query_sender.clone(), &mut result_reciever, gossip_data[1].to_owned(), gossip_data[2].to_owned()).await;
 												}
-												// else { // drop message }
+												// Normal gossip
+												_ => {
+													// First trigger the configured application filter event
+													if (network_info.gossip_filter_fn)(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
+														// Append to network event queue
+														network_core.event_queue.push(NetworkEvent::GossipsubIncomingMessageHandled { source: propagation_source, data: gossip_data }).await;
+													}
+													// else { // drop message }
+												}
 											}
 										},
 										// A peer just subscribed
@@ -1900,6 +1914,18 @@ impl Core {
 							}
 						},
 						_ => {}
+					}
+				},
+				channel_data = query_reciever.next() => {
+					// This stream is from the impl of the strong consistency algorithm.
+					// We want to know how many replica (gossip) peers exist in a replication network
+					if let Some(replica_network) = channel_data {
+						// Get the number of replica peers
+						let topic = TopicHash::from_raw(&replica_network);
+						let peers_count = swarm.behaviour().gossipsub.mesh_peers(&topic).count();
+
+						// Now send it back to the algorithm
+						let _ = result_sender.send(peers_count as u64).await;
 					}
 				}
 			}
