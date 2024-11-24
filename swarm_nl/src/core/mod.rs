@@ -653,7 +653,7 @@ impl CoreBuilder {
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
 			// Initialize an empty event queue
 			event_queue: DataQueue::new(),
-			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.1)),
+			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.1.clone())),
 			network_info,
 		};
 
@@ -673,6 +673,34 @@ impl CoreBuilder {
 
 			#[cfg(feature = "tokio-runtime")]
 			tokio::task::spawn(async move { core.init_replication().await });
+
+			// Now check that the syncronization model is eventual consistency
+			let core = network_core.clone();
+			match self.replication_cfg.1 {
+				ReplNetworkConfig::Default => {
+					// Spin up task to ensure data consistency across the network
+					#[cfg(feature = "async-std-runtime")]
+					async_std::task::spawn(
+						async move { core.sync_with_eventual_consistency().await },
+					);
+
+					#[cfg(feature = "tokio-runtime")]
+					tokio::task::spawn(async move { core.sync_with_eventual_consistency().await });
+				},
+				ReplNetworkConfig::Custom {
+					consistency_model, ..
+				} if consistency_model == ConsistencyModel::Eventual => {
+					// Spin up task to ensure data consistency across the network
+					#[cfg(feature = "async-std-runtime")]
+					async_std::task::spawn(
+						async move { core.sync_with_eventual_consistency().await },
+					);
+
+					#[cfg(feature = "tokio-runtime")]
+					tokio::task::spawn(async move { core.sync_with_eventual_consistency().await });
+				},
+				_ => {},
+			}
 		}
 
 		// Spin up task to handle async operations and data on the network
@@ -959,7 +987,7 @@ impl Core {
 			let repl_data = repl_data.to_owned();
 			let mut core = self.clone();
 
-			// Spawn an async-std task to join replica network and propel others to join aswell
+			// Spawn an task to join replica network and propel others to join as well
 			#[cfg(feature = "tokio-runtime")]
 			tokio::task::spawn(async move {
 				// Join private replication network
@@ -1074,7 +1102,28 @@ impl Core {
 	}
 
 	/// Handle network sychronization using the eventual consistency data model
-	async fn sync_with_eventual_consistency(&self) {}
+	async fn sync_with_eventual_consistency(&self) {
+		// First we want to check out the replica networks the node is a part of
+		let network_data = self.network_info.replication.state.lock().await;
+		for (repl_network, repl_nodes) in network_data.iter() {
+			let network = repl_network.to_owned();
+			let nodes = repl_nodes.to_owned();
+
+			// We will spawn a task for each replica network to manage synchronization respectively
+			let repl_buffer = self.replica_buffer.clone();
+			#[cfg(feature = "tokio-runtime")]
+			tokio::task::spawn(async move {
+				let buffer = repl_buffer;
+				buffer.sync_with_eventual_consistency(network, nodes).await;
+			});
+
+			#[cfg(feature = "async-std-runtime")]
+			async_std::task::spawn(async move {
+				let buffer = repl_buffer;
+				buffer.sync_with_eventual_consistency(network, nodes).await;
+			});
+		}
+	}
 
 	/// Send data to replica nodes. Function returns false if replication key is not recognized,
 	/// meaning the replication network has not been configured

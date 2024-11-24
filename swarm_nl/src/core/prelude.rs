@@ -176,7 +176,7 @@ pub enum NetworkError {
 	#[error("failed to join a mesh network")]
 	GossipsubJoinNetworkError,
 	#[error("internal stream failed to transport data")]
-	InternalStreamError
+	InternalStreamError,
 }
 
 /// A simple struct used to track requests sent from the application layer to the network layer.
@@ -649,14 +649,17 @@ pub mod replica_cfg {
 		/// - `sync_epoch`: Epoch to attempt network synchronization of data in the buffer
 		/// - `consistency_model`: The data consistency model to be supported by the node. This
 		///   must be uniform across all nodes to prevent undefined behaviour
+		/// - `data_wait_period`: When data has arrived and is saved into the buffer, the time to
+		///   wait for it to get to other peers after which it can be picked for synchronization
 		Custom {
 			queue_length: u64,
 			expiry_time: Option<Seconds>,
 			sync_epoch: Seconds,
 			consistency_model: ConsistencyModel,
+			data_aging_period: Seconds,
 		},
 		/// A default Configuration: queue_length = 100, expiry_time = 60 seconds,
-		/// syc_epoch = 5 seconds, consistency_model: `Eventual`
+		/// sync_epoch = 5 seconds, consistency_model: `Eventual`, data_wait_period = 5 seconds
 		Default,
 	}
 
@@ -674,7 +677,7 @@ pub mod replica_cfg {
 		pub message_id: String,
 		/// Sender PeerId
 		pub sender: PeerId,
-		/// Number of confirmations. This is to help the nodes using the strong consistenty
+		/// Number of confirmations. This is to help the nodes using the strong consistency
 		/// synchronization data model to come to an agreement
 		pub confirmations: Option<Nonce>,
 	}
@@ -727,6 +730,9 @@ pub mod replica_cfg {
 
 		/// The default epoch to attempt network synchronization of data in the buffer
 		const SYNC_EPOCH: Seconds = 5;
+
+		/// The default aging period after which the data can be synchronized accross the network
+		const DATA_AGING_PERIOD: Seconds = 5;
 
 		/// Create a new instance of [ReplicaBufferQueue]
 		pub fn new(config: ReplNetworkConfig) -> Self {
@@ -933,7 +939,7 @@ pub mod replica_cfg {
 						// Now read from the second channel to get the replica count
 						if let Some(peers_count) = data_reciever.next().await {
 							// Check if confirmation is complete
-							if data_entry.confirmations == Some(peers_count) {
+							if data_entry.confirmations == Some(peers_count - 1) {
 								// Move it into the main queue for consumption by the application
 								// layer
 								let mut queue = self.queue.lock().await;
@@ -1034,6 +1040,47 @@ pub mod replica_cfg {
 						}
 					}
 				}
+			}
+		}
+
+		/// Synchronize the data in the buffer queue using eventual consistency
+		pub async fn sync_with_eventual_consistency(
+			&self,
+			repl_network: String,
+			replica_network_cfg: ReplConfigData,
+		) {
+			let data_aging_time = match self.config {
+				ReplNetworkConfig::Default => Self::DATA_AGING_PERIOD,
+				ReplNetworkConfig::Custom {
+					data_aging_period, ..
+				} => data_aging_period,
+			};
+
+			// First we want to get the replica data that are ripe for synchronization
+			let queue = self.queue.lock().await;
+
+			if let Some(replica_data) = queue.get(&repl_network) {
+				// Get the ones that have passed the wait period
+				let repl_data = replica_data
+					.iter()
+					.filter(|&d| util::get_unix_timestamp() - d.incoming_timestamp > data_aging_time)
+					.collect::<BTreeSet<_>>();
+
+				// Extract the outgoing timestamps (beginning and end)
+				let (min_timestamp, max_timestamp) =
+					if let (Some(first), Some(last)) = (repl_data.first(), repl_data.last()) {
+						(first.outgoing_timestamp, last.outgoing_timestamp)
+					} else {
+						// Default, can never happen
+						(0, 0) 
+					};
+
+				// Then extract the message IDs from the buffer data
+				let message_ids = repl_data
+					.iter()
+					.map(|data| data.message_id.clone()) // Correct the clone call
+					.collect::<Vec<_>>();
+
 			}
 		}
 	}
