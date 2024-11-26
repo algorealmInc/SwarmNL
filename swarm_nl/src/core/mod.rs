@@ -7,6 +7,7 @@
 #![doc = include_str!("../../doc/core/ApplicationInteraction.md")]
 
 use std::{
+	cmp,
 	collections::{vec_deque::IntoIter, BTreeSet, HashMap, HashSet},
 	fs,
 	net::IpAddr,
@@ -778,17 +779,34 @@ pub struct Core {
 impl Core {
 	/// The flag used to initialize the replication protocol. When replica nodes recieve
 	/// an RPC with the flag as the first parameter, they then join the replication network whose
-	/// key is specified in the second field
-	pub const REPL_CFG_FLAG: &'static str = "REPL_CFG_FLAG_@@";
+	/// key is specified in the second field.
+	pub const REPL_CFG_FLAG: &'static str = "REPL_CFG_FLAG__@@";
 
 	/// The gossip flag to indicate that incoming gossipsub message is actually data sent for
-	/// replication
-	pub const REPL_GOSSIP_FLAG: &'static str = "REPL_GOSSIP_FLAG_@@";
+	/// replication.
+	pub const REPL_GOSSIP_FLAG: &'static str = "REPL_GOSSIP_FLAG__@@";
 
 	/// The gossip flag to indicate that incoming (or outgoing) gossipsub message is a part of the
 	/// strong consistency algorithm, intending to increase the confirmation count of a particular
-	/// data item in the replicas temporary buffer
-	pub const STRONG_CONSISTENCY_FLAG: &'static str = "STRONG_CON_@@";
+	/// data item in the replicas temporary buffer.
+	pub const STRONG_CONSISTENCY_FLAG: &'static str = "STRONG_CON__@@";
+
+	/// The gossip flag to indicate that incoming (or outgoing) gossipsub message is a part of the
+	/// eventual consistency algorithm seeking to synchronize data across nodes.
+	pub const EVENTUAL_CONSISTENCY_FLAG: &'static str = "EVENTUAL_CON_@@";
+
+	/// The RPC flag to pull missing data from a replica node for eventual consistency
+	/// synchronization.
+	pub const RPC_SYNC_PULL_FLAG: &'static str = "RPC_SYNC_PULL_FLAG__@@";
+
+	/// The delimeter between the data fields of an entry in a dataset requested by a replica peer.
+	pub const FIELD_DELIMITER: &'static str = "_@_";
+
+	/// The delimeter between the data entries that has been requested by a replica peer.
+	pub const ENTRY_DELIMITER: &'static str = "@@@";
+
+	/// The delimeter to separate messages during RPC data marshalling
+	pub const DATA_DELIMITER: &'static str = "$$";
 
 	/// Serialize keypair to protobuf format and write to config file on disk. This could be useful
 	/// for saving a keypair for future use when going offline.
@@ -1075,7 +1093,7 @@ impl Core {
 	}
 
 	/// Handle incoming replicated data.
-	/// The first element of the incoming data vector contains the replica group key
+	/// The first element of the incoming data vector contains the replica group key.
 	async fn handle_incoming_repl_data(&mut self, repl_network: String, repl_data: ReplBufferData) {
 		// First we generate an event announcing the arrival of a replica.
 		// Application developers can listen for this
@@ -1089,6 +1107,21 @@ impl Core {
 				sender: replica_data.sender,
 			})
 			.await;
+
+		// Compare and increment the lamport's clock for the replica node
+		if let Some(repl_network_data) = self
+			.network_info
+			.replication
+			.state
+			.lock()
+			.await
+			.get_mut(&repl_network)
+		{
+			// Update clock
+			(*repl_network_data).lamport_clock =
+				cmp::max(repl_network_data.lamport_clock, repl_data.lamport_clock)
+					.saturating_add(1);
+		}
 
 		// Then push into buffer queue
 		self.replica_buffer
@@ -1105,22 +1138,22 @@ impl Core {
 	async fn sync_with_eventual_consistency(&self) {
 		// First we want to check out the replica networks the node is a part of
 		let network_data = self.network_info.replication.state.lock().await;
-		for (repl_network, repl_nodes) in network_data.iter() {
+		for (repl_network, _) in network_data.iter() {
 			let network = repl_network.to_owned();
-			let nodes = repl_nodes.to_owned();
 
 			// We will spawn a task for each replica network to manage synchronization respectively
 			let repl_buffer = self.replica_buffer.clone();
+			let core = self.clone();
 			#[cfg(feature = "tokio-runtime")]
 			tokio::task::spawn(async move {
 				let buffer = repl_buffer;
-				buffer.sync_with_eventual_consistency(network, nodes).await;
+				buffer.sync_with_eventual_consistency(core, network).await;
 			});
 
 			#[cfg(feature = "async-std-runtime")]
 			async_std::task::spawn(async move {
 				let buffer = repl_buffer;
-				buffer.sync_with_eventual_consistency(network, nodes).await;
+				buffer.sync_with_eventual_consistency(core, network).await;
 			});
 		}
 	}
@@ -1136,8 +1169,8 @@ impl Core {
 			.await
 			.get_mut(repl_key)
 		{
-			// Increase the nonce before sending
-			let _ = repl_network_data.nonce.saturating_add(1);
+			// Increase the clock before sending data
+			let _ = repl_network_data.lamport_clock.saturating_add(1);
 
 			// So that we do not block the foreground operations, we will spawn a task to handle it
 			// and then return immediately
@@ -1175,7 +1208,7 @@ impl Core {
 				let mut message = vec![
 					Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(), // Replica Gossip Flag
 					get_unix_timestamp().to_string().into(),    // Timestamp
-					replica_network_data.nonce.to_string().into(), // Nonce
+					replica_network_data.lamport_clock.to_string().into(), // Clock
 					replication_key.clone().into(),             // Replication network key,
 				];
 				// Then append data
@@ -1755,23 +1788,40 @@ impl Core {
 													// Parse request
 													match request {
 														Rpc::ReqResponse { data } => {
-															// Check if it a request to join a replication network
-															if &data[0][..] == Core::REPL_CFG_FLAG.as_bytes() {
-																// Send the response, so as to return the RPC immediately
-																let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
+															if let Ok(byte_str) = std::str::from_utf8(&data[0][..]) {
+																match byte_str {
+																	// It is a request to join a replication network
+																	Core::REPL_CFG_FLAG => {
+																		// Send the response, so as to return the RPC immediately
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
 
-																// Attempt to decode the key
-																if let Ok(key_string) = String::from_utf8(data[1].clone()) {
-																	// Join the replication (gossip) network
-																	let gossip_request = AppData::GossipsubJoinNetwork(key_string.clone());
-																	let _ = network_core.clone().query_network(gossip_request).await;
+																		// Attempt to decode the key
+																		if let Ok(key_string) = String::from_utf8(data[1].clone()) {
+																			// Join the replication (gossip) network
+																			let gossip_request = AppData::GossipsubJoinNetwork(key_string.clone());
+																			let _ = network_core.clone().query_network(gossip_request).await;
+																		}
+																	}
+																	// It is a request to retrieve missing data the RPC sender lacks
+																	Core::RPC_SYNC_PULL_FLAG => {
+																		// Get replica network that the requested data belong to
+																		let repl_network = String::from_utf8(data[1].clone()).unwrap_or_default();
+
+																		// Retrieve missing data from local data buffer
+																		let requested_msgs = network_core.replica_buffer.pull_missing_data(repl_network, &data[2..]).await;
+
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: requested_msgs });
+																	}
+																	// Normal RPC
+																	_ => {
+																		// Pass request data to configured request handler
+																		let response_data = (network_info.rpc_handler_fn)(data);
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
+																	}
 																}
-															} else {
-																// Pass request data to configured request handler
-																let response_data = (network_info.rpc_handler_fn)(data);
-																// Send the response
-																let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
-															};
+															}
 														}
 													}
 												},
@@ -1812,10 +1862,10 @@ impl Core {
 													// Construct buffer data
 													let queue_data = ReplBufferData {
 														data: gossip_data[4..].to_owned(),
+														lamport_clock: gossip_data[2].parse::<u64>().unwrap_or(0),	// It can never unwrap()
 														outgoing_timestamp: get_unix_timestamp(),
 														incoming_timestamp: gossip_data[1].parse::<u64>().unwrap_or(0),
-														// Message id is modified by concatenating it with the nonce
-														message_id: message_id.to_string() + &gossip_data[2].to_string(),
+														message_id: message_id.to_string(),
 														sender: propagation_source.clone(),
 														confirmations: if network_core.replica_buffer.consistency_model() == ConsistencyModel::Eventual {
 															// No confirmations needed for eventual consistency
@@ -1833,6 +1883,16 @@ impl Core {
 												Core::STRONG_CONSISTENCY_FLAG => {
 													// Handle the data confirmation
 													network_core.replica_buffer.handle_data_confirmation(query_sender.clone(), &mut result_reciever, gossip_data[1].to_owned(), gossip_data[2].to_owned()).await;
+												}
+												// It is a broadcast from replica nodes to ensure eventual consistency
+												Core::EVENTUAL_CONSISTENCY_FLAG => {
+													// Lower bound of Lamport's Clock
+													let min_clock = gossip_data[3].parse::<u64>().unwrap_or_default();
+													// Higher bound of Lamport's Clock
+													let max_clock = gossip_data[4].parse::<u64>().unwrap_or_default();
+
+													// Synchronize the imcoming replica node's buffer image with the local buffer image
+													network_core.replica_buffer.sync_buffer_image(network_core.clone(), gossip_data[1].clone(), gossip_data[2].clone(), (min_clock, max_clock), gossip_data[5..].to_owned()).await;
 												}
 												// Normal gossip
 												_ => {

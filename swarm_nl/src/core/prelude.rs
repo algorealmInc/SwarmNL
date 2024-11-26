@@ -610,8 +610,8 @@ pub mod replica_cfg {
 	/// Struct respresenting data for replication configuration
 	#[derive(Clone, Default, Debug)]
 	pub struct ReplConfigData {
-		/// Nonce to support logical clocks
-		pub nonce: Nonce,
+		/// lamport's clock for synchronization
+		pub lamport_clock: Nonce,
 		/// Replica nodes described by their addresses
 		pub nodes: HashMap<String, String>,
 	}
@@ -633,10 +633,20 @@ pub mod replica_cfg {
 		/// Eventual consistency
 		Eventual,
 		/// Strong consistency
-		Strong,
+		Strong(ConcensusModel),
 	}
 
-	/// Enum containing configurations for replication
+	/// This enum dictates how many nodes need to come to an agreement for concensus to be held
+	/// during a strong consistency sync model.
+	#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+	pub enum ConcensusModel {
+		/// All nodes in replica network must contribute to concensus
+		All,
+		/// Just a subset of the network are needed for concensus
+		MinPeers(u64),
+	}
+
+	/// Enum containing configurations for replication.
 	#[derive(Clone)]
 	pub enum ReplNetworkConfig {
 		/// A custom configuration.
@@ -646,7 +656,8 @@ pub mod replica_cfg {
 		/// - `queue_length`: Max capacity for transient storage
 		/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full. If a
 		///   `NoExpiry` behaviour is preferred, `expiry_time` should be set to `None`.
-		/// - `sync_epoch`: Epoch to attempt network synchronization of data in the buffer
+		/// - `sync_wait_time`: Epoch to wait before attempting the next network synchronization of
+		///   data in the buffer
 		/// - `consistency_model`: The data consistency model to be supported by the node. This
 		///   must be uniform across all nodes to prevent undefined behaviour
 		/// - `data_wait_period`: When data has arrived and is saved into the buffer, the time to
@@ -654,12 +665,12 @@ pub mod replica_cfg {
 		Custom {
 			queue_length: u64,
 			expiry_time: Option<Seconds>,
-			sync_epoch: Seconds,
+			sync_wait_time: Seconds,
 			consistency_model: ConsistencyModel,
 			data_aging_period: Seconds,
 		},
 		/// A default Configuration: queue_length = 100, expiry_time = 60 seconds,
-		/// sync_epoch = 5 seconds, consistency_model: `Eventual`, data_wait_period = 5 seconds
+		/// sync_wait_time = 5 seconds, consistency_model: `Eventual`, data_wait_period = 5 seconds
 		Default,
 	}
 
@@ -669,6 +680,8 @@ pub mod replica_cfg {
 	pub struct ReplBufferData {
 		/// Raw incoming data
 		pub data: StringVector,
+		/// Lamports clock for synchronization
+		pub lamport_clock: Nonce,
 		/// Timestamp at which the message left the sending node
 		pub outgoing_timestamp: Seconds,
 		/// Timestamp at which the message arrived
@@ -685,8 +698,8 @@ pub mod replica_cfg {
 	/// Implement Ord
 	impl Ord for ReplBufferData {
 		fn cmp(&self, other: &Self) -> Ordering {
-			self.outgoing_timestamp
-				.cmp(&other.outgoing_timestamp) // Compare by outgoing_timestamp first
+			self.lamport_clock
+				.cmp(&other.lamport_clock) // Compare by lamport_clock first
 				.then_with(|| self.message_id.cmp(&other.message_id)) // Then compare by message_id
 		}
 	}
@@ -704,8 +717,7 @@ pub mod replica_cfg {
 	/// Implement PartialEq
 	impl PartialEq for ReplBufferData {
 		fn eq(&self, other: &Self) -> bool {
-			self.outgoing_timestamp == other.outgoing_timestamp
-				&& self.message_id == other.message_id
+			self.lamport_clock == other.lamport_clock && self.message_id == other.message_id
 		}
 	}
 
@@ -728,8 +740,9 @@ pub mod replica_cfg {
 		/// The default expiry time of data in the buffer, when the buffer becomes full
 		const EXPIRY_TIME: Seconds = 60;
 
-		/// The default epoch to attempt network synchronization of data in the buffer
-		const SYNC_EPOCH: Seconds = 5;
+		/// The default epoch to wait before attempting the next network synchronization of data in
+		/// the buffer
+		const SYNC_WAIT_TIME: Seconds = 5;
 
 		/// The default aging period after which the data can be synchronized accross the network
 		const DATA_AGING_PERIOD: Seconds = 5;
@@ -857,7 +870,7 @@ pub mod replica_cfg {
 						},
 						// Here data is written into the temporary buffer first, for finalization to
 						// occur. It is then moved into the final queue based on concensus.
-						ConsistencyModel::Strong => {
+						ConsistencyModel::Strong(_) => {
 							// Lock the queue to modify it
 							let mut temp_queue = self.temporary_queue.lock().await;
 
@@ -919,7 +932,7 @@ pub mod replica_cfg {
 		/// Handle incoming data confimation from replica peers.
 		/// This function only concerns the strong consistency data model.
 		/// It recieves a `message_id` and tries to index into the temporary buffer state of the
-		/// replica to increase the replication confirmation count of the particular data item
+		/// replica to increase the replication confirmation count of the particular data item.
 		pub async fn handle_data_confirmation(
 			&self,
 			mut query_sender: Sender<String>,
@@ -927,6 +940,35 @@ pub mod replica_cfg {
 			replica_network: String,
 			message_id: String,
 		) {
+			// Get the total number of peers needed for consensus
+			let peers_count = match self.config {
+				// Handle custom configurations with a defined consistency model
+				ReplNetworkConfig::Custom {
+					consistency_model, ..
+				} => match consistency_model {
+					// Eventual consistency requires no peers
+					ConsistencyModel::Eventual => 0,
+					ConsistencyModel::Strong(concensus_model) => match concensus_model {
+						ConcensusModel::All => {
+							// Attempt to retrieve peer count from the swarm
+							if query_sender.send(replica_network.clone()).await.is_ok() {
+								// Wait for peer count from the data receiver
+								if let Some(peers_count) = data_reciever.next().await {
+									peers_count - 1 // Exclude self from count
+								} else {
+									0 // Default to zero if no data received
+								}
+							} else {
+								0 // Default to zero if sending fails
+							}
+						},
+						// Use the specified minimum peers
+						ConcensusModel::MinPeers(required_peers) => required_peers,
+					},
+				},
+				ReplNetworkConfig::Default => 0,
+			};
+
 			// Index into the temporary buffer queue of the replica network
 			if let Some(temp_queue) = self.temporary_queue.lock().await.get_mut(&replica_network) {
 				// Get data entry
@@ -934,108 +976,243 @@ pub mod replica_cfg {
 					// Increase confirmation count
 					data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
 
-					// Send the replica network for peer count query
-					if query_sender.send(replica_network.clone()).await.is_ok() {
-						// Now read from the second channel to get the replica count
-						if let Some(peers_count) = data_reciever.next().await {
-							// Check if confirmation is complete
-							if data_entry.confirmations == Some(peers_count - 1) {
-								// Move it into the main queue for consumption by the application
-								// layer
-								let mut queue = self.queue.lock().await;
-								let public_queue = queue
-									.entry(replica_network.clone())
-									.or_insert_with(BTreeSet::new);
+					// Check if confirmation is complete
+					// We cannot do anything if `peers_count` is 0. The data will eventually be
+					// shifted out at the end of the queue
+					if peers_count != 0 && data_entry.confirmations == Some(peers_count) {
+						// Move it into the main queue for consumption by the application
+						// layer
+						let mut queue = self.queue.lock().await;
+						let public_queue = queue
+							.entry(replica_network.clone())
+							.or_insert_with(BTreeSet::new);
 
-								// Cleanup public buffer first
-								match self.config {
-									// Default implementation supports expiry of buffer items and
-									// values are based on structs contants
-									ReplNetworkConfig::Default => {
-										// If the queue is full, remove expired data first
-										while public_queue.len() as u64 >= Self::MAX_CAPACITY {
-											// Check and remove expired data
-											let current_time = SystemTime::now()
-												.duration_since(SystemTime::UNIX_EPOCH)
-												.unwrap()
-												.as_secs();
-											let mut expired_items = Vec::new();
+						// Cleanup public buffer first
+						match self.config {
+							// Default implementation supports expiry of buffer items and
+							// values are based on structs contants
+							ReplNetworkConfig::Default => {
+								// If the queue is full, remove expired data first
+								while public_queue.len() as u64 >= Self::MAX_CAPACITY {
+									// Check and remove expired data
+									let current_time = SystemTime::now()
+										.duration_since(SystemTime::UNIX_EPOCH)
+										.unwrap()
+										.as_secs();
+									let mut expired_items = Vec::new();
 
-											// Identify expired items and collect them for removal
-											for entry in public_queue.iter() {
-												if current_time - entry.outgoing_timestamp
-													>= Self::EXPIRY_TIME
-												{
-													expired_items.push(entry.clone());
-												}
-											}
-
-											// Remove expired items
-											for expired in expired_items {
-												public_queue.remove(&expired);
-											}
-
-											// If no expired items were removed, pop the front
-											// (oldest) item
-											if public_queue.len() as u64 >= Self::MAX_CAPACITY {
-												if let Some(first) =
-													public_queue.iter().next().cloned()
-												{
-													public_queue.remove(&first);
-												}
-											}
+									// Identify expired items and collect them for removal
+									for entry in public_queue.iter() {
+										if current_time - entry.outgoing_timestamp
+											>= Self::EXPIRY_TIME
+										{
+											expired_items.push(entry.clone());
 										}
-									},
-									ReplNetworkConfig::Custom {
-										queue_length,
-										expiry_time,
-										..
-									} => {
-										// If the public_queue is full, remove expired data first
-										while public_queue.len() as u64 >= queue_length {
-											// Remove only when data expiration is supported
-											if let Some(expiry_time) = expiry_time {
-												// Check and remove expired data
-												let current_time = SystemTime::now()
-													.duration_since(SystemTime::UNIX_EPOCH)
-													.unwrap()
-													.as_secs();
-												let mut expired_items = Vec::new();
+									}
 
-												// Identify expired items and collect them for
-												// removal
-												for entry in public_queue.iter() {
-													if current_time - entry.outgoing_timestamp
-														>= expiry_time
-													{
-														expired_items.push(entry.clone());
-													}
-												}
+									// Remove expired items
+									for expired in expired_items {
+										public_queue.remove(&expired);
+									}
 
-												// Remove expired items
-												for expired in expired_items {
-													public_queue.remove(&expired);
-												}
-											}
-
-											// If no expired items were removed, pop the front
-											// (oldest) item
-											if public_queue.len() as u64 >= Self::MAX_CAPACITY {
-												if let Some(first) =
-													public_queue.iter().next().cloned()
-												{
-													public_queue.remove(&first);
-												}
-											}
+									// If no expired items were removed, pop the front
+									// (oldest) item
+									if public_queue.len() as u64 >= Self::MAX_CAPACITY {
+										if let Some(first) = public_queue.iter().next().cloned() {
+											public_queue.remove(&first);
 										}
-									},
+									}
 								}
+							},
+							ReplNetworkConfig::Custom {
+								queue_length,
+								expiry_time,
+								..
+							} => {
+								// If the public_queue is full, remove expired data first
+								while public_queue.len() as u64 >= queue_length {
+									// Remove only when data expiration is supported
+									if let Some(expiry_time) = expiry_time {
+										// Check and remove expired data
+										let current_time = SystemTime::now()
+											.duration_since(SystemTime::UNIX_EPOCH)
+											.unwrap()
+											.as_secs();
+										let mut expired_items = Vec::new();
 
-								// Insert entry into public queue
-								public_queue.insert(data_entry.to_owned());
+										// Identify expired items and collect them for
+										// removal
+										for entry in public_queue.iter() {
+											if current_time - entry.outgoing_timestamp
+												>= expiry_time
+											{
+												expired_items.push(entry.clone());
+											}
+										}
 
-								// Delete the processed entry from the temporary queue
-								temp_queue.remove(&message_id);
+										// Remove expired items
+										for expired in expired_items {
+											public_queue.remove(&expired);
+										}
+									}
+
+									// If no expired items were removed, pop the front
+									// (oldest) item
+									if public_queue.len() as u64 >= Self::MAX_CAPACITY {
+										if let Some(first) = public_queue.iter().next().cloned() {
+											public_queue.remove(&first);
+										}
+									}
+								}
+							},
+						}
+
+						// Insert entry into public queue
+						public_queue.insert(data_entry.to_owned());
+
+						// Delete the processed entry from the temporary queue
+						temp_queue.remove(&message_id);
+					}
+				}
+			}
+		}
+
+		/// Synchronize the data in the buffer queue using eventual consistency
+		pub async fn sync_with_eventual_consistency(&self, mut core: Core, repl_network: String) {
+			loop {
+				let repl_network = repl_network.clone();
+
+				// Get configured aging period
+				let data_aging_time = match self.config {
+					ReplNetworkConfig::Default => Self::DATA_AGING_PERIOD,
+					ReplNetworkConfig::Custom {
+						data_aging_period, ..
+					} => data_aging_period,
+				};
+
+				// First we want to get the local data that are ripe for synchronization
+				let queue = self.queue.lock().await;
+				if let Some(local_data_state) = queue.get(&repl_network) {
+					// Get the ones that have passed the wait period
+					let local_data = local_data_state
+						.iter()
+						.filter(|&d| {
+							util::get_unix_timestamp() - d.incoming_timestamp > data_aging_time
+						})
+						.collect::<BTreeSet<_>>();
+
+					// Extract the bounding lamport clocks
+					let (min_clock, max_clock) = if let (Some(first), Some(last)) =
+						(local_data.first(), local_data.last())
+					{
+						(first.lamport_clock, last.lamport_clock)
+					} else {
+						// Default, can never happen
+						(0, 0)
+					};
+
+					// Then extract the message IDs from the buffer data
+					let mut message_ids = local_data
+						.iter()
+						.map(|data| data.message_id.clone().into())
+						.collect::<ByteVector>();
+
+					// We will then broadcast the Ids for synchronization
+					let mut message = vec![
+						Core::EVENTUAL_CONSISTENCY_FLAG.as_bytes().to_vec(), /* Strong Consistency
+						                                                      * Sync Gossip Flag */
+						core.peer_id().into(),        /* Peer Id so replica nodes can send RPCs
+						                               * to
+						                               * query for
+						                               * missing messages */
+						repl_network.clone().into(),  // The replica network
+						min_clock.to_string().into(), // Min Lamport's Clock to be considered
+						max_clock.to_string().into(), // Max Lamport's lock to be considered
+					];
+
+					// Append the message ID's
+					message.append(&mut message_ids);
+
+					// Prepare a gossip request
+					let gossip_request = AppData::GossipsubBroadcastMessage {
+						topic: repl_network.into(),
+						message,
+					};
+
+					// Gossip data to replica nodes
+					let _ = core.query_network(gossip_request).await;
+
+					// Wait for some duration before next network sync
+					#[cfg(feature = "async-std-runtime")]
+					async_std::task::sleep(Duration::from_secs(Self::SYNC_WAIT_TIME)).await;
+
+					// Wait for a few seconds before passing control to the application
+					#[cfg(feature = "tokio-runtime")]
+					tokio::time::sleep(Duration::from_secs(SYNC_WAIT_TIME)).await;
+				}
+			}
+		}
+
+		/// Synchronize incoming buffer image from a replica node with the local buffer image.
+		pub async fn sync_buffer_image(
+			&self,
+			mut core: Core,
+			repl_peer_id: PeerIdString,
+			repl_network: String,
+			lamports_clock_bound: (u64, u64),
+			replica_data_state: StringVector,
+		) {
+			// Get local data buffer
+			let mut queue = self.queue.lock().await;
+			if let Some(local_state) = queue.get_mut(&repl_network) {
+				// Convert replica data state into a set
+				let replica_buffer_state = replica_data_state.into_iter().collect::<BTreeSet<_>>();
+
+				// We will then filter our local buffer and extract messageIds that are in the range
+				// of the clocks, bounds inclusive
+				let local_buffer_state = local_state
+					.iter()
+					.filter(|data| {
+						data.lamport_clock >= lamports_clock_bound.0
+							|| data.lamport_clock <= lamports_clock_bound.1
+					})
+					.map(|data| data.message_id.clone())
+					.collect::<BTreeSet<_>>();
+
+				// Extract messages that is missing from our local buffer
+				let mut missing_msgs = replica_buffer_state
+					.difference(&local_buffer_state)
+					.cloned()
+					.map(|id| id.into())
+					.collect::<ByteVector>();
+
+				// Now for our missing messages, we will ask the replica to send them to us.
+				// This is an hybrid of the PUSH-PULL data model.
+				// Parse peer id
+				if let Ok(repl_peer_id) = PeerId::from_bytes(repl_peer_id.as_bytes()) {
+					let mut rpc_data: ByteVector = vec![
+						Core::RPC_SYNC_PULL_FLAG.into(), // RPC sync pull flag
+						repl_network.into(),             // Replica network
+					];
+
+					// Append the message ids to the request data
+					rpc_data.append(&mut missing_msgs);
+
+					// Prepare an RPC to ask the replica node for missing data
+					let fetch_request = AppData::FetchData {
+						keys: missing_msgs,
+						peer: repl_peer_id,
+					};
+
+					// Send the fetch request
+					if let Ok(response) = core.query_network(fetch_request).await {
+						if let AppResponse::FetchData(messages) = response {
+							// Parse response
+							let response = util::unmarshal_messages(messages);
+
+							// Insert into data buffer queue
+							for missing_msg in response {
+								local_state.insert(missing_msg);
 							}
 						}
 					}
@@ -1043,45 +1220,56 @@ pub mod replica_cfg {
 			}
 		}
 
-		/// Synchronize the data in the buffer queue using eventual consistency
-		pub async fn sync_with_eventual_consistency(
+		/// Pull and return missing data requested by a replica node.
+		pub async fn pull_missing_data(
 			&self,
 			repl_network: String,
-			replica_network_cfg: ReplConfigData,
-		) {
-			let data_aging_time = match self.config {
-				ReplNetworkConfig::Default => Self::DATA_AGING_PERIOD,
-				ReplNetworkConfig::Custom {
-					data_aging_period, ..
-				} => data_aging_period,
-			};
-
-			// First we want to get the replica data that are ripe for synchronization
+			message_ids: &[Vec<u8>],
+		) -> ByteVector {
+			// Get requested data by their messageids if they still exist in the buffer and have not
+			// aged out or been consumed by the application layer
 			let queue = self.queue.lock().await;
-
-			if let Some(replica_data) = queue.get(&repl_network) {
-				// Get the ones that have passed the wait period
-				let repl_data = replica_data
+			if let Some(local_state) = queue.get(&repl_network) {
+				// Retrieve messages
+				let requested_msgs = local_state
 					.iter()
-					.filter(|&d| util::get_unix_timestamp() - d.incoming_timestamp > data_aging_time)
-					.collect::<BTreeSet<_>>();
-
-				// Extract the outgoing timestamps (beginning and end)
-				let (min_timestamp, max_timestamp) =
-					if let (Some(first), Some(last)) = (repl_data.first(), repl_data.last()) {
-						(first.outgoing_timestamp, last.outgoing_timestamp)
-					} else {
-						// Default, can never happen
-						(0, 0) 
-					};
-
-				// Then extract the message IDs from the buffer data
-				let message_ids = repl_data
-					.iter()
-					.map(|data| data.message_id.clone()) // Correct the clone call
+					.filter(|&data| message_ids.contains(&data.message_id.as_bytes().to_vec()))
 					.collect::<Vec<_>>();
 
+				// Marshall data and get it ready to be sent back to peer
+				let mut result = Vec::new();
+
+				for msg in requested_msgs {
+					// Serialize the `data` field (Vec<String>) into a single string,
+					// separated by `$$`
+
+					let joined_data = msg.data.join(Core::DATA_DELIMITER);
+
+					// Serialize individual fields, excluding `confirmations`
+					let mut entry = Vec::new();
+					entry.extend_from_slice(joined_data.as_bytes());
+					entry.extend_from_slice(Core::FIELD_DELIMITER.to_string().as_bytes());
+					entry.extend_from_slice(msg.lamport_clock.to_string().as_bytes());
+					entry.extend_from_slice(Core::FIELD_DELIMITER.to_string().as_bytes());
+					entry.extend_from_slice(msg.outgoing_timestamp.to_string().as_bytes());
+					entry.extend_from_slice(Core::FIELD_DELIMITER.to_string().as_bytes());
+					entry.extend_from_slice(msg.incoming_timestamp.to_string().as_bytes());
+					entry.extend_from_slice(Core::FIELD_DELIMITER.to_string().as_bytes());
+					entry.extend_from_slice(msg.message_id.as_bytes());
+					entry.extend_from_slice(Core::FIELD_DELIMITER.to_string().as_bytes());
+					entry.extend_from_slice(msg.sender.to_base58().as_bytes());
+
+					// Append the entry to the result, separated by `ENTRY_DELIMITER`
+					if !result.is_empty() {
+						result.extend_from_slice(Core::ENTRY_DELIMITER.to_string().as_bytes());
+					}
+					result.extend(entry);
+				}
+
+				return vec![result];
 			}
+
+			Default::default()
 		}
 	}
 }

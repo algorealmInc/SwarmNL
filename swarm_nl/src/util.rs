@@ -3,7 +3,14 @@
 
 //! Utility helper functions for reading from and writing to `.ini` config files.
 
-use crate::{core::replica_cfg::ReplConfigData, prelude::*, setup::BootstrapConfig};
+use crate::{
+	core::{
+		replica_cfg::{ReplBufferData, ReplConfigData},
+		Core,
+	},
+	prelude::*,
+	setup::BootstrapConfig,
+};
 use base58::FromBase58;
 use ini::Ini;
 use libp2p_identity::PeerId;
@@ -165,7 +172,7 @@ fn parse_replication_data(input: &str) -> Vec<(String, ReplConfigData)> {
 
 			// Set up replica network config data
 			let cfg = ReplConfigData {
-				nonce: 0,         // Set nonce to 0
+				lamport_clock: 0, // Set clock to 0
 				nodes: inner_map, // Replica nodes
 			};
 
@@ -189,7 +196,53 @@ pub fn generate_random_string(length: usize) -> String {
 		.collect()
 }
 
-// Get unix timestamp as string
+/// Unmarshall data recieved as RPC during the execution of the eventual consistency algorithm
+pub fn unmarshal_messages(data: Vec<Vec<u8>>) -> Vec<ReplBufferData> {
+	let mut result = Vec::new();
+
+	for entry in data {
+		let serialized = String::from_utf8_lossy(&entry).to_string();
+		let entries: Vec<&str> = serialized
+			.split(Core::ENTRY_DELIMITER)
+			.collect();
+
+		for entry in entries {
+			let fields: Vec<&str> = entry
+				.split(Core::FIELD_DELIMITER)
+				.collect();
+			if fields.len() < 6 {
+				continue; // Skip malformed entries
+			}
+
+			let data_field: Vec<String> = fields[0]
+				.split(Core::DATA_DELIMITER)
+				.map(|s| s.to_string())
+				.collect();
+			let lamport_clock = fields[1].parse().unwrap_or(0);
+			let outgoing_timestamp = fields[2].parse().unwrap_or(0);
+			let incoming_timestamp = fields[3].parse().unwrap_or(0);
+			let message_id = fields[4].to_string();
+			let sender = fields[5].as_bytes();
+
+			// Parse peerId
+			if let Ok(peer_id) = PeerId::from_bytes(sender) {
+				result.push(ReplBufferData {
+					data: data_field,
+					lamport_clock,
+					outgoing_timestamp,
+					incoming_timestamp,
+					message_id,
+					sender: peer_id,
+					confirmations: None, // Excluded in serialization/deserialization
+				});
+			}
+		}
+	}
+
+	result
+}
+
+/// Get unix timestamp as string
 pub fn get_unix_timestamp() -> Seconds {
 	// Get the current system time
 	let now = SystemTime::now();
