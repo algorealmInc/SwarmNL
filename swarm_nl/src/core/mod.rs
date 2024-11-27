@@ -289,7 +289,6 @@ impl CoreBuilder {
 
 	/// Configure the 'Replication` protocol for the network.
 	pub fn with_replication(mut self, repl_cfg: ReplNetworkConfig) -> Self {
-		// Save the event handler and map it to the replica group key
 		self.replication_cfg.1 = repl_cfg;
 		Self { ..self }
 	}
@@ -779,8 +778,8 @@ pub struct Core {
 
 impl Core {
 	/// The flag used to initialize the replication protocol. When replica nodes recieve
-	/// an RPC with the flag as the first field element, they then join the replication network whose
-	/// key is specified in the second field.
+	/// an RPC with the flag as the first field element, they then join the replication network
+	/// whose key is specified in the second field.
 	pub const REPL_CFG_FLAG: &'static str = "REPL_CFG_FLAG__@@";
 
 	/// The gossip flag to indicate that incoming gossipsub message is actually data sent for
@@ -1042,10 +1041,7 @@ impl Core {
 						}
 					}
 				} else {
-					eprintln!(
-						"Failed to send gossip request for key: {}",
-						repl_network
-					);
+					eprintln!("Failed to send gossip request for key: {}", repl_network);
 				}
 			});
 
@@ -1122,17 +1118,71 @@ impl Core {
 			(*repl_network_data).lamport_clock =
 				cmp::max(repl_network_data.lamport_clock, repl_data.lamport_clock)
 					.saturating_add(1);
-		}
 
-		// Then push into buffer queue
-		self.replica_buffer
-			.push(self.clone(), repl_network, repl_data)
-			.await;
+			// Then push into buffer queue
+			self.replica_buffer
+				.push(self.clone(), repl_network, repl_data)
+				.await;
+		}
 	}
 
 	/// Consume data in replication buffer
 	pub async fn consume_repl_data(&mut self, replica_network: &str) -> Option<ReplBufferData> {
 		self.replica_buffer.pop_front(replica_network).await
+	}
+
+	/// Join a replica network and get up to speed with the current nextwork data state.
+	/// If the consistency model is eventual, in no time the node's buffer will be up to date. But
+	/// if it's the case of a strong consistency model, we might have to call
+	/// [`Core::replicate_buffer`] to get up to date.
+	pub async fn join_network(&mut self, repl_network: String) -> NetworkResult {
+		// Join the replication (gossip) network
+		let gossip_request = AppData::GossipsubJoinNetwork(repl_network.clone());
+		if let Ok(response) = self.query_network(gossip_request).await {
+			// Set up replica network config
+			let mut cfg = self.network_info.replication.state.lock().await;
+			cfg.entry(repl_network).or_insert(ReplConfigData {
+				lamport_clock: 0,
+				nodes: Default::default(),
+			});
+
+			Ok(response)
+		} else {
+			Err(NetworkError::GossipsubJoinNetworkError)
+		}
+	}
+
+	/// Leave a replica network. The messages on the internal replica queue are not discarded so as
+	/// to aid speedy recorvery in case of reconnection.
+	pub async fn leave_network(&mut self, repl_network: String) -> NetworkResult {
+		// Leave the replication (gossip) network
+		let gossip_request = AppData::GossipsubExitNetwork(repl_network.clone());
+		self.query_network(gossip_request).await
+	}
+
+	/// Replicate a replica node's current buffer image. This is necessary in case of
+	/// joining a replica network with a strong consistency model.
+	pub async fn replicate_buffer(
+		&self,
+		repl_network: String,
+		replica_node: PeerId,
+	) -> Result<(), NetworkError> {
+		// First make sure i'm a part of the replica network
+		if self
+			.network_info
+			.replication
+			.state
+			.lock()
+			.await
+			.contains_key(&repl_network)
+		{
+			// Populate buffer
+			self.replica_buffer
+				.replicate_buffer(self.clone(), repl_network, replica_node)
+				.await
+		} else {
+			Err(NetworkError::MissingReplNetwork)
+		}
 	}
 
 	/// Handle network sychronization using the eventual consistency data model
@@ -1159,8 +1209,8 @@ impl Core {
 		}
 	}
 
-	/// Send data to replica nodes. Function returns false if node is not a member of the replica network specified,
-	/// meaning the replication network has not been configured or joined.
+	/// Send data to replica nodes. Function returns false if node is not a member of the replica
+	/// network specified, meaning the replication network has not been configured or joined.
 	pub async fn replicate(&mut self, mut replica_data: ByteVector, replica_network: &str) -> bool {
 		if let Some(repl_network_data) = self
 			.network_info
