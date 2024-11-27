@@ -635,16 +635,16 @@ pub mod replica_cfg {
 		/// Eventual consistency
 		Eventual,
 		/// Strong consistency
-		Strong(ConcensusModel),
+		Strong(ConsensusModel),
 	}
 
-	/// This enum dictates how many nodes need to come to an agreement for concensus to be held
+	/// This enum dictates how many nodes need to come to an agreement for consensus to be held
 	/// during the impl of a strong consistency sync model.
 	#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-	pub enum ConcensusModel {
-		/// All nodes in the network must contribute to concensus
+	pub enum ConsensusModel {
+		/// All nodes in the network must contribute to consensus
 		All,
-		/// Just a subset of the network are needed for concensus
+		/// Just a subset of the network are needed for consensus
 		MinPeers(u64),
 	}
 
@@ -869,7 +869,7 @@ pub mod replica_cfg {
 							queue.insert(data);
 						},
 						// Here data is written into the temporary buffer first, for finalization to
-						// occur. It is then moved into the final queue after favourable concensus
+						// occur. It is then moved into the final queue after favourable consensus
 						// has been reached.
 						ConsistencyModel::Strong(_) => {
 							// Lock the queue to modify it
@@ -930,111 +930,92 @@ pub mod replica_cfg {
 			None
 		}
 
-		/// Handle incoming data confimation from replica peers.
-		/// This function only concerns the strong consistency data model.
-		/// It recieves a `message_id` and tries to index into the temporary buffer state of the
-		/// replica to increase the replication confirmation count of the particular data item.
 		pub async fn handle_data_confirmation(
 			&self,
 			mut query_sender: Sender<String>,
-			data_reciever: &mut Receiver<u64>,
+			data_receiver: &mut Receiver<u64>,
 			replica_network: String,
 			message_id: String,
 		) {
-			// Get the total number of peers needed for consensus
+			// Determine the number of peers required for consensus
 			let peers_count = match self.config {
-				// Handle custom configurations with a defined consistency model
 				ReplNetworkConfig::Custom {
 					consistency_model, ..
 				} => match consistency_model {
-					// Eventual consistency requires no peers
 					ConsistencyModel::Eventual => 0,
-					ConsistencyModel::Strong(concensus_model) => match concensus_model {
-						ConcensusModel::All => {
-							// Attempt to retrieve real-time peer count from the swarm
+					ConsistencyModel::Strong(consensus_model) => match consensus_model {
+						ConsensusModel::All => {
+							// Query for real-time peer count
 							if query_sender.send(replica_network.clone()).await.is_ok() {
-								// Wait for peer count from the data receiver
-								if let Some(peers_count) = data_reciever.next().await {
-									peers_count - 1 // Exclude self from count
+								if let Some(peers_count) = data_receiver.next().await {
+									peers_count.saturating_sub(1) // Exclude self
 								} else {
-									0 // Default to zero if no data received
+									0
 								}
 							} else {
-								0 // Default to zero if sending fails
+								0
 							}
 						},
-						// Use the specified minimum peers
-						ConcensusModel::MinPeers(required_peers) => required_peers,
+						ConsensusModel::MinPeers(required_peers) => required_peers,
 					},
 				},
 				ReplNetworkConfig::Default => 0,
 			};
 
-			// Index into the temporary buffer queue of the replica network
-			if let Some(temp_queue) = self.temporary_queue.lock().await.get_mut(&replica_network) {
-				// Get data entry
-				if let Some(data_entry) = temp_queue.get_mut(&message_id) {
-					// Increase confirmation count
-					data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
+			// Update confirmation count while holding the lock minimally
+			let is_fully_confirmed = {
+				let mut flag = false;
+				let mut temporary_queue = self.temporary_queue.lock().await;
+				if let Some(temp_queue) = temporary_queue.get_mut(&replica_network) {
+					if let Some(data_entry) = temp_queue.get_mut(&message_id) {
+						// Increment confirmation count
+						data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
+						// Check if confirmations meet required peers
+						flag = peers_count != 0 && data_entry.confirmations == Some(peers_count);
+					}
+				}
 
-					// Check if confirmation is complete
-					// We cannot do anything if `peers_count` is 0. The data will eventually be
-					// shifted out at the end of the queue (FIFO-style!)
-					if peers_count != 0 && data_entry.confirmations == Some(peers_count) {
-						// Move it into the main queue for consumption by the application
-						// layer
-						let mut queue = self.queue.lock().await;
-						let public_queue = queue
-							.entry(replica_network.clone())
-							.or_insert_with(BTreeSet::new);
+				flag
+			};
 
-						// Cleanup public buffer first
-						if let ReplNetworkConfig::Custom {
-							queue_length,
-							expiry_time,
-							..
-						} = self.config
-						{
-							// If the public_queue is full, remove expired data first
-							while public_queue.len() as u64 >= queue_length {
-								// Remove only when data expiration is supported
-								if let Some(expiry_time) = expiry_time {
-									// Check and remove expired data
-									let current_time = SystemTime::now()
-										.duration_since(SystemTime::UNIX_EPOCH)
-										.unwrap()
-										.as_secs();
-									let mut expired_items = Vec::new();
+			// If fully confirmed, move data to the public queue
+			if is_fully_confirmed {
+				let mut public_queue = self.queue.lock().await;
+				let public_queue = public_queue
+					.entry(replica_network.clone())
+					.or_insert_with(BTreeSet::new);
 
-									// Identify expired items and collect them for
-									// removal
-									for entry in public_queue.iter() {
-										if current_time - entry.outgoing_timestamp >= expiry_time {
-											expired_items.push(entry.clone());
-										}
-									}
+				// Cleanup expired or excessive entries
+				if let ReplNetworkConfig::Custom {
+					queue_length,
+					expiry_time,
+					..
+				} = self.config
+				{
+					let current_time = SystemTime::now()
+						.duration_since(SystemTime::UNIX_EPOCH)
+						.unwrap()
+						.as_secs();
 
-									// Remove expired items
-									for expired in expired_items {
-										public_queue.remove(&expired);
-									}
-								}
+					// Remove expired items
+					if let Some(expiry_time) = expiry_time {
+						public_queue
+							.retain(|entry| current_time - entry.outgoing_timestamp < expiry_time);
+					}
 
-								// If no expired items were removed, pop the front
-								// (oldest) item
-								if public_queue.len() as u64 >= Self::MAX_CAPACITY {
-									if let Some(first) = public_queue.iter().next().cloned() {
-										public_queue.remove(&first);
-									}
-								}
-							}
-
-							// Insert entry into public queue
-							public_queue.insert(data_entry.to_owned());
-
-							// Delete the processed entry from the temporary queue
-							temp_queue.remove(&message_id);
+					// Remove oldest items if queue exceeds capacity
+					while public_queue.len() as u64 >= queue_length {
+						if let Some(first) = public_queue.iter().next().cloned() {
+							public_queue.remove(&first);
 						}
+					}
+				}
+
+				// Move confirmed entry to public queue
+				let mut temporary_queue = self.temporary_queue.lock().await;
+				if let Some(temp_queue) = temporary_queue.get_mut(&replica_network) {
+					if let Some(data_entry) = temp_queue.remove(&message_id) {
+						public_queue.insert(data_entry);
 					}
 				}
 			}
@@ -1057,71 +1038,73 @@ pub mod replica_cfg {
 					} => data_aging_period,
 				};
 
-				// First we want to get the local data that are ripe for synchronization
-				let queue = self.queue.lock().await;
-				if let Some(local_data_state) = queue.get(&repl_network) {
-					// Get the ones that have passed the wait period
+				// Fetch local data state while holding the lock minimally
+				let local_data_state = {
+					let queue = self.queue.lock().await;
+					queue.get(&repl_network).cloned()
+				};
+
+				if let Some(local_data_state) = local_data_state {
+					// Filter data outside the lock
 					let local_data = local_data_state
 						.iter()
 						.filter(|&d| {
 							util::get_unix_timestamp() - d.incoming_timestamp > data_aging_time
 						})
+						.cloned()
 						.collect::<BTreeSet<_>>();
 
-					// Extract the bounding lamport clocks
+					// Extract the bounding Lamport clocks
 					let (min_clock, max_clock) = if let (Some(first), Some(last)) =
 						(local_data.first(), local_data.last())
 					{
 						(first.lamport_clock, last.lamport_clock)
 					} else {
-						// Default, can never happen
+						// Default values if no data is present
 						(0, 0)
 					};
 
-					// To save network bandwidth, we will make sure that synchronization only occurs
-					// when the oldest lamport clock has aged
+					// Only sync if the max clock is greater than the previous clock
 					if max_clock > prev_clock {
-						// Then extract the message IDs from the buffer data
+						// Extract message IDs for synchronization
 						let mut message_ids = local_data
 							.iter()
 							.map(|data| data.message_id.clone().into())
 							.collect::<ByteVector>();
 
-						// We will then broadcast the Ids for synchronization
+						// Prepare gossip message
 						let mut message = vec![
 							// Strong Consistency Sync Gossip Flag
 							Core::EVENTUAL_CONSISTENCY_FLAG.as_bytes().to_vec(),
-							// Node's Peer Id so replica nodes can send RPCs to query for missing
-							// messages
+							// Node's Peer Id
 							core.peer_id().into(),
-							repl_network.clone().into(),  // The replica network
-							min_clock.to_string().into(), // Min Lamport's Clock to be considered
-							max_clock.to_string().into(), // Max Lamport's lock to be considered
+							repl_network.clone().into(),
+							min_clock.to_string().into(),
+							max_clock.to_string().into(),
 						];
 
-						// Append the message ID's
+						// Append the message IDs
 						message.append(&mut message_ids);
 
-						// Prepare a gossip request
+						// Broadcast gossip request
 						let gossip_request = AppData::GossipsubBroadcastMessage {
 							topic: repl_network.into(),
 							message,
 						};
 
-						// Gossip data to replica nodes
 						let _ = core.query_network(gossip_request).await;
 
-						// Update previous clock
+						// Update the previous clock
 						prev_clock = max_clock;
 					}
-
-					// Wait for some duration before next network sync
-					#[cfg(feature = "tokio-runtime")]
-					tokio::time::sleep(Duration::from_secs(SYNC_WAIT_TIME)).await;
-
-					#[cfg(feature = "async-std-runtime")]
-					async_std::task::sleep(Duration::from_secs(Self::SYNC_WAIT_TIME)).await;
 				}
+
+				// Wait for a defined duration before the next sync
+				#[cfg(feature = "tokio-runtime")]
+				tokio::time::sleep(Duration::from_secs(Self::SYNC_WAIT_TIME)).await;
+
+				#[cfg(feature = "async-std-runtime")]
+				async_std::task::sleep(Duration::from_secs(Self::SYNC_WAIT_TIME)).await;
 			}
 		}
 
@@ -1134,54 +1117,59 @@ pub mod replica_cfg {
 			lamports_clock_bound: (u64, u64),
 			replica_data_state: StringVector,
 		) {
-			// Get local data buffer
-			let mut queue = self.queue.lock().await;
-			if let Some(local_state) = queue.get_mut(&repl_network) {
-				// Convert replica data state into a set
-				let replica_buffer_state = replica_data_state.into_iter().collect::<BTreeSet<_>>();
+			// Convert replica data state into a set outside the mutex lock
+			let replica_buffer_state = replica_data_state.into_iter().collect::<BTreeSet<_>>();
 
-				// We will then filter our local buffer and extract messageIds that are in the range
-				// of the clocks, bounds inclusive
-				let local_buffer_state = local_state
-					.iter()
-					.filter(|data| {
-						data.lamport_clock >= lamports_clock_bound.0
-							|| data.lamport_clock <= lamports_clock_bound.1
-					})
-					.map(|data| data.message_id.clone())
-					.collect::<BTreeSet<_>>();
+			// Extract local buffer state and filter it while keeping the mutex lock duration
+			// minimal
+			let mut missing_msgs = {
+				let mut queue = self.queue.lock().await;
+				if let Some(local_state) = queue.get_mut(&repl_network) {
+					let local_buffer_state = local_state
+						.iter()
+						.filter(|data| {
+							data.lamport_clock >= lamports_clock_bound.0
+								&& data.lamport_clock <= lamports_clock_bound.1
+						})
+						.map(|data| data.message_id.clone())
+						.collect::<BTreeSet<_>>();
 
-				// Extract messages that is missing from our local buffer
-				let mut missing_msgs = replica_buffer_state
-					.difference(&local_buffer_state)
-					.cloned()
-					.map(|id| id.into())
-					.collect::<ByteVector>();
+					// Extract messages missing from our local buffer
+					replica_buffer_state
+						.difference(&local_buffer_state)
+						.cloned()
+						.map(|id| id.into())
+						.collect::<ByteVector>()
+				} else {
+					return; // If the network state doesn't exist, exit early
+				}
+			};
 
-				// Now for our missing messages, we will ask the replica to send them to us.
-				// This is an hybrid of the PUSH-PULL data model.
-				if let Ok(repl_peer_id) = repl_peer_id.parse::<PeerId>() {
-					let mut rpc_data: ByteVector = vec![
-						Core::RPC_SYNC_PULL_FLAG.into(), // RPC sync pull flag
-						repl_network.into(),             // Replica network
-					];
+			// Prepare an RPC fetch request for missing messages
+			if let Ok(repl_peer_id) = repl_peer_id.parse::<PeerId>() {
+				let mut rpc_data: ByteVector = vec![
+					Core::RPC_SYNC_PULL_FLAG.into(), // RPC sync pull flag
+					repl_network.clone().into(),     // Replica network
+				];
 
-					// Append the missing message ids to the request data
-					rpc_data.append(&mut missing_msgs);
+				// Append the missing message ids to the request data
+				rpc_data.append(&mut missing_msgs);
 
-					// Prepare an RPC to ask the replica node for missing data
-					let fetch_request = AppData::FetchData {
-						keys: missing_msgs,
-						peer: repl_peer_id,
-					};
+				// Prepare an RPC to ask the replica node for missing data
+				let fetch_request = AppData::FetchData {
+					keys: missing_msgs.clone(),
+					peer: repl_peer_id,
+				};
 
-					// Send the fetch request
-					if let Ok(response) = core.query_network(fetch_request).await {
-						if let AppResponse::FetchData(messages) = response {
-							// Parse response
-							let response = util::unmarshal_messages(messages);
+				// Send the fetch request
+				if let Ok(response) = core.query_network(fetch_request).await {
+					if let AppResponse::FetchData(messages) = response {
+						// Parse response
+						let response = util::unmarshal_messages(messages);
 
-							// Insert into data buffer queue
+						// Re-lock the mutex only for inserting new messages
+						let mut queue = self.queue.lock().await;
+						if let Some(local_state) = queue.get_mut(&repl_network) {
 							for missing_msg in response {
 								local_state.insert(missing_msg);
 							}
@@ -1197,22 +1185,26 @@ pub mod replica_cfg {
 			repl_network: String,
 			message_ids: &[Vec<u8>],
 		) -> ByteVector {
-			// Get requested data by their messageids if they still exist in the buffer and have not
-			// aged out or been consumed by the application layer
-			let queue = self.queue.lock().await;
-			if let Some(local_state) = queue.get(&repl_network) {
-				// Retrieve messages
+			// Fetch the local state from the queue with a minimal lock
+			let local_state = {
+				let queue = self.queue.lock().await;
+				queue.get(&repl_network).cloned()
+			};
+
+			// If the local state exists, process the message retrieval
+			if let Some(local_state) = local_state {
+				// Retrieve messages that match the requested message IDs
 				let requested_msgs = local_state
 					.iter()
 					.filter(|&data| message_ids.contains(&data.message_id.as_bytes().to_vec()))
 					.collect::<Vec<_>>();
 
-				// Marshall data and get it ready to be sent back to peer
+				// Prepare the result buffer
 				let mut result = Vec::new();
 
 				for msg in requested_msgs {
-					// Serialize the `data` field (Vec<String>) into a single string,
-					// separated by `$$`
+					// Serialize the `data` field (Vec<String>) into a single string, separated by
+					// `$$`
 					let joined_data = msg.data.join(Core::DATA_DELIMITER);
 
 					// Serialize individual fields, excluding `confirmations`
@@ -1239,6 +1231,7 @@ pub mod replica_cfg {
 				return vec![result];
 			}
 
+			// Default empty result if no local state is found
 			Default::default()
 		}
 
