@@ -1,5 +1,5 @@
-// Copyright 2024 Algorealm, Inc.
-// Apache 2.0 License
+//! Copyright 2024 Algorealm, Inc.
+//! Apache 2.0 License
 
 //! Data structures and functions to setup a node and configure it for networking.
 
@@ -55,7 +55,7 @@ impl BootstrapConfig {
 			boot_nodes: Default::default(),
 			// List of blacklisted peers
 			blacklist: Default::default(),
-			// List containing replication nodes
+			// List containing nodes for replication
 			replication_cfg: Default::default(),
 		}
 	}
@@ -96,14 +96,15 @@ impl BootstrapConfig {
 		}
 	}
 
-	/// Configure nodes for replication and add them to bootnodes for early connection
-	pub fn with_replication(self, repl_network_key: String, repl_data: ReplConfigData) -> Self {
+	/// Configure nodes for replication and add them to bootnodes for connection initiation.
+	pub fn with_replication(mut self, repl_network_key: String, repl_data: ReplConfigData) -> Self {
 		// A connection request must be sent to the replica nodes on startup, so we will add it to
 		// our list of bootnodes
 		let mut bootnodes = HashMap::new();
 		bootnodes.extend(repl_data.nodes.clone().into_iter());
 
-		let node = self.with_bootnodes(bootnodes);
+		// Update self
+		self = self.with_bootnodes(bootnodes);
 
 		// Set up replica network config
 		let mut repl_network_data = HashMap::new();
@@ -111,7 +112,7 @@ impl BootstrapConfig {
 
 		Self {
 			replication_cfg: Rc::new(repl_network_data),
-			..node
+			..self
 		}
 	}
 

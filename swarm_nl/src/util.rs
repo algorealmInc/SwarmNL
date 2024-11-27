@@ -1,5 +1,5 @@
-// Copyright 2024 Algorealm, Inc.
-// Apache 2.0 License
+//! Copyright 2024 Algorealm, Inc.
+//! Apache 2.0 License
 
 //! Utility helper functions for reading from and writing to `.ini` config files.
 
@@ -196,20 +196,17 @@ pub fn generate_random_string(length: usize) -> String {
 		.collect()
 }
 
-/// Unmarshall data recieved as RPC during the execution of the eventual consistency algorithm
+/// Unmarshall data recieved as RPC during the execution of the eventual consistency algorithm to
+/// fill in missing messages in the node's buffer
 pub fn unmarshal_messages(data: Vec<Vec<u8>>) -> Vec<ReplBufferData> {
 	let mut result = Vec::new();
 
 	for entry in data {
 		let serialized = String::from_utf8_lossy(&entry).to_string();
-		let entries: Vec<&str> = serialized
-			.split(Core::ENTRY_DELIMITER)
-			.collect();
+		let entries: Vec<&str> = serialized.split(Core::ENTRY_DELIMITER).collect();
 
 		for entry in entries {
-			let fields: Vec<&str> = entry
-				.split(Core::FIELD_DELIMITER)
-				.collect();
+			let fields: Vec<&str> = entry.split(Core::FIELD_DELIMITER).collect();
 			if fields.len() < 6 {
 				continue; // Skip malformed entries
 			}
@@ -222,10 +219,10 @@ pub fn unmarshal_messages(data: Vec<Vec<u8>>) -> Vec<ReplBufferData> {
 			let outgoing_timestamp = fields[2].parse().unwrap_or(0);
 			let incoming_timestamp = fields[3].parse().unwrap_or(0);
 			let message_id = fields[4].to_string();
-			let sender = fields[5].as_bytes();
+			let sender = fields[5];
 
 			// Parse peerId
-			if let Ok(peer_id) = PeerId::from_bytes(sender) {
+			if let Ok(peer_id) = sender.parse::<PeerId>() {
 				result.push(ReplBufferData {
 					data: data_field,
 					lamport_clock,
@@ -233,7 +230,7 @@ pub fn unmarshal_messages(data: Vec<Vec<u8>>) -> Vec<ReplBufferData> {
 					incoming_timestamp,
 					message_id,
 					sender: peer_id,
-					confirmations: None, // Excluded in serialization/deserialization
+					confirmations: None, // Since eventual consistency
 				});
 			}
 		}
