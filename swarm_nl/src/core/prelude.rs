@@ -486,8 +486,11 @@ pub enum NetworkEvent {
 	///
 	/// # Fields
 	///
-	/// - `source`: The `PeerId` of the source peer.
 	/// - `data`: The data contained in the gossip message.
+	/// - `outgoing_timestamp`: The time the message left the source
+	/// - `outgoing_timestamp`: The time the message was recieved
+	/// - `message_id`: The unique id of the message
+	/// - `source`: The `PeerId` of the source peer.
 	ReplicaDataIncoming {
 		/// Data
 		data: StringVector,
@@ -498,7 +501,28 @@ pub enum NetworkEvent {
 		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
 		message_id: String,
 		/// Sender PeerId
-		sender: PeerId,
+		source: PeerId,
+	},
+	/// Event that announces the arrival of a sharded data content
+	///
+	/// # Fields
+	///
+	/// - `data`: The data contained in the gossip message.
+	/// - `outgoing_timestamp`: The time the message left the source
+	/// - `outgoing_timestamp`: The time the message was recieved
+	/// - `message_id`: The unique id of the message
+	/// - `source`: The `PeerId` of the source peer.
+	ShardDataIncoming {
+		/// Data
+		data: StringVector,
+		/// Timestamp at which the message left the sending node
+		outgoing_timestamp: Seconds,
+		/// Timestamp at which the message arrived
+		incoming_timestamp: Seconds,
+		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		message_id: String,
+		/// Sender PeerId
+		source: PeerId,
 	},
 	/// Event that announces the arrival of a gossip message.
 	///
@@ -601,6 +625,119 @@ pub mod ping_config {
 	pub struct PingInfo {
 		pub policy: PingErrorPolicy,
 		pub manager: PingManager,
+	}
+}
+
+/// Module that contains important data structures to manage `Sharding` operations on the network
+pub mod shard_cfg {
+	use super::*;
+	use async_trait::async_trait;
+
+	/// Trait that specifies sharding logic and behaviour of shards
+	#[async_trait]
+	pub trait Sharding
+	where
+		Self::Key: Send + Sync,
+		Self::ShardId: ToString + Send + Sync,
+	{
+		/// The type of the shard key e.g hash, range etc
+		type Key;
+		/// The identifier pointing to a specific group of shards
+		type ShardId;
+
+		/// Map a key to a shard
+		fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId>;
+
+		/// Retrieve all nodes in a logical shard
+		async fn shard_nodes(&self, mut core: Core, shard_id: &Self::ShardId) -> Vec<PeerId> {
+			let shard_id = shard_id.to_string();
+			let mut nodes = Vec::new();
+
+			// Prepare request to the network layer to retrieve network information
+			let req = AppData::GossipsubGetInfo;
+			if let Ok(info) = core.query_network(req).await {
+				if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = info {
+					nodes = mesh_peers
+						.iter()
+						.filter(|(_, networks)| networks.contains(&shard_id))
+						.map(|(peer_id, _)| peer_id.to_owned())
+						.collect::<Vec<_>>();
+				}
+			}
+			nodes
+		}
+
+		/// Add a node to a sharding network
+		async fn add_node_to_shard(
+			&mut self,
+			mut core: Core,
+			node: PeerId,
+			shard_id: &Self::ShardId,
+		) -> bool {
+			// First, our node must be a member of the sharding (gossip) group
+			let gossip_request = AppData::GossipsubJoinNetwork(shard_id.to_string().clone());
+			if let Ok(_) = core.clone().query_network(gossip_request).await {
+				// We will send an RPC to the node, then it'll join on its own accord since we're
+				// building on the libp2p gossipsub mechanism
+				let message = vec![
+					Core::RPC_SHARD_INVITATION_FLAG.as_bytes().to_vec(), /* Flag to ask remove
+					                                                      * node
+					                                                      * to join the network */
+					shard_id.to_string().into(), /* Shard ke (Gossip group) */
+				];
+
+				// Prepare an rpc request
+				let rpc_request = AppData::FetchData {
+					keys: message,
+					peer: node,
+				};
+
+				// Gossip data to replica nodes
+				if let Ok(_) = core.query_network(rpc_request).await {
+					return true;
+				}
+			}
+			false
+		}
+
+		/// Exit a sharding network
+		async fn exit_shard_network(&mut self, core: Core, shard_id: &Self::ShardId) -> bool {
+			// Send request to the network layer to exit shard network
+			let gossip_request = AppData::GossipsubExitNetwork(shard_id.to_string().clone());
+			if let Ok(_) = core.clone().query_network(gossip_request).await {
+				true
+			} else {
+				false
+			}
+		}
+
+		/// Send data to appropriate location on the network due to share configurations
+		async fn shard(&self, mut core: Core, key: &Self::Key, data: ByteVector) -> bool {
+			// First, we get the shard that would store the key
+			if let Some(shard_id) = self.locate_shard(key) {
+				// Broadcast to appropriate nodes part of the shard network
+				let mut message = vec![
+					Core::SHARD_GOSSIP_FLAG.as_bytes().to_vec(), // Shard Gossip Flag
+					get_unix_timestamp().to_string().into(),     // Timestamp
+					shard_id.to_string().into(),                 // Shard id
+				];
+				// Then append data
+				message.extend(data.into_iter());
+
+				// Prepare a gossip request
+				let gossip_request = AppData::GossipsubBroadcastMessage {
+					topic: shard_id.to_string(),
+					message,
+				};
+
+				// Gossip data to shard nodes
+				if let Ok(_) = core.query_network(gossip_request).await {
+					return true;
+				}
+			}
+
+			false
+		}
 	}
 }
 

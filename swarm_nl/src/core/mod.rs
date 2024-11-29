@@ -786,6 +786,10 @@ impl Core {
 	/// replication.
 	pub const REPL_GOSSIP_FLAG: &'static str = "REPL_GOSSIP_FLAG__@@";
 
+	/// The gossip flag to indicate that incoming gossipsub message is actually data sent to the
+	/// node based on sharding.
+	pub const SHARD_GOSSIP_FLAG: &'static str = "SHARD_GOSSIP_FLAG__@@";
+
 	/// The gossip flag to indicate that incoming (or outgoing) gossipsub message is a part of the
 	/// strong consistency algorithm, intending to increase the confirmation count of a particular
 	/// data item in the replicas temporary buffer.
@@ -798,6 +802,9 @@ impl Core {
 	/// The RPC flag to pull missing data from a replica node for eventual consistency
 	/// synchronization.
 	pub const RPC_SYNC_PULL_FLAG: &'static str = "RPC_SYNC_PULL_FLAG__@@";
+
+	/// The RPC flag to add a remote node to a logical shard network
+	pub const RPC_SHARD_INVITATION_FLAG: &'static str = "RPC_SHARD_INVITATION_FLAG__@@";
 
 	/// The delimeter between the data fields of an entry in a dataset requested by a replica peer.
 	pub const FIELD_DELIMITER: &'static str = "_@_";
@@ -1101,7 +1108,7 @@ impl Core {
 				outgoing_timestamp: replica_data.outgoing_timestamp,
 				incoming_timestamp: replica_data.incoming_timestamp,
 				message_id: replica_data.message_id,
-				sender: replica_data.sender,
+				source: replica_data.sender,
 			})
 			.await;
 
@@ -1124,6 +1131,26 @@ impl Core {
 				.push(self.clone(), repl_network, repl_data)
 				.await;
 		}
+	}
+
+	/// Handle incmoing shard data. We will not be doing any internal buffering as the data would be
+	/// exposed as an event
+	async fn handle_incoming_shard_data(
+		&self,
+		message_id: String,
+		source: PeerId,
+		incoming_data: StringVector,
+	) {
+		// Push into event queue
+		self.event_queue
+			.push(NetworkEvent::ShardDataIncoming {
+				data: incoming_data[3..].into(),
+				outgoing_timestamp: incoming_data[0].parse::<u64>().unwrap_or_default(),
+				incoming_timestamp: get_unix_timestamp(),
+				message_id,
+				source,
+			})
+			.await;
 	}
 
 	/// Consume data in replication buffer
@@ -1847,12 +1874,6 @@ impl Core {
 																		// Send the response, so as to return the RPC immediately
 																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
 
-																		// Attempt to decode the key
-																		if let Ok(key_string) = String::from_utf8(data[1].clone()) {
-																			// Join the replication (gossip) network
-																			let gossip_request = AppData::GossipsubJoinNetwork(key_string.clone());
-																			let _ = network_core.clone().query_network(gossip_request).await;
-																		}
 																	}
 																	// It is a request to retrieve missing data the RPC sender node lacks
 																	Core::RPC_SYNC_PULL_FLAG => {
@@ -1864,6 +1885,18 @@ impl Core {
 
 																		// Send the response
 																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: requested_msgs });
+																	}
+																	// It is a request to join a shard network
+																	Core::RPC_SHARD_INVITATION_FLAG => {
+																		// Attempt to decode the shard_id
+																		if let Ok(key_string) = String::from_utf8(data[1].clone()) {
+																			// Join the shard (gossip) network
+																			let gossip_request = AppData::GossipsubJoinNetwork(key_string.clone());
+																			let _ = network_core.clone().query_network(gossip_request).await;
+																		}
+
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
 																	}
 																	// Normal RPC
 																	_ => {
@@ -1918,7 +1951,7 @@ impl Core {
 														outgoing_timestamp: gossip_data[1].parse::<u64>().unwrap_or(0),
 														incoming_timestamp: get_unix_timestamp(),
 														message_id: message_id.to_string(),
-														sender: propagation_source.clone(),
+														sender: if let Some(peer) = message.source { peer.clone() } else { propagation_source.clone() },
 														confirmations: if network_core.replica_buffer.consistency_model() == ConsistencyModel::Eventual {
 															// No confirmations needed for eventual consistency
 															None
@@ -1945,6 +1978,12 @@ impl Core {
 
 													// Synchronize the incoming replica node's buffer image with the local buffer image
 													network_core.replica_buffer.sync_buffer_image(network_core.clone(), gossip_data[1].clone(), gossip_data[2].clone(), (min_clock, max_clock), gossip_data[5..].to_owned()).await;
+												}
+												// It is an incoming shard message
+												Core::SHARD_GOSSIP_FLAG => {
+													let msg_source = if let Some(peer) = message.source { peer.clone() } else { propagation_source.clone() };
+													// Handle incoming shard data
+													network_core.handle_incoming_shard_data(message_id.to_string(), msg_source, gossip_data[1..].into()).await;
 												}
 												// Normal gossip
 												_ => {

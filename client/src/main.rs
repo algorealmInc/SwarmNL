@@ -64,8 +64,8 @@ async fn setup_node_1(
 
 	// Set up network
 	let builder = CoreBuilder::with_config(config)
-		.with_rpc(RpcConfig::Default, rpc_incoming_message_handler)
-		.with_replication(REPLICA_NETWORK_KEY.to_string(), repl_msg_handler);
+		.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
+		// .with_replication(REPLICA_NETWORK_KEY.to_string(), repl_msg_handler);
 
 	// Configure gossipsub
 	// Specify the gossip filter algorithm
