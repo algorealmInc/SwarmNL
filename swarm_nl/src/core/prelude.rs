@@ -30,16 +30,16 @@ pub type AppResponseResult = Result<AppResponse, NetworkError>;
 /// Type that represents the data exchanged during RPC operations.
 pub type RpcData = ByteVector;
 
-/// Type that represents a vector of vector of bytes
+/// Type that represents a vector of vector of bytes.
 pub type ByteVector = Vec<Vec<u8>>;
 
-/// Type that represents a vector of string
+/// Type that represents a vector of string.
 pub type StringVector = Vec<String>;
 
-/// Type that represents a nonce
+/// Type that represents a nonce.
 pub type Nonce = u64;
 
-/// The delimeter that separates the messages to gossip
+/// The delimeter that separates the messages to gossip.
 pub(super) const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
 
 /// Time to wait (in seconds) for the node (network layer) to boot.
@@ -48,7 +48,7 @@ pub(super) const BOOT_WAIT_TIME: Seconds = 1;
 /// The buffer capacity of an mpsc stream.
 pub(super) const STREAM_BUFFER_CAPACITY: usize = 100;
 
-/// Data exchanged over a stream between the application and network layer
+/// Data exchanged over a stream between the application and network layer.
 #[derive(Debug, Clone)]
 pub(super) enum StreamData {
 	/// Application data sent over the stream.
@@ -498,7 +498,7 @@ pub enum NetworkEvent {
 		outgoing_timestamp: Seconds,
 		/// Timestamp at which the message arrived
 		incoming_timestamp: Seconds,
-		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		/// Message ID to prevent deduplication. It is usually a hash of the incoming message
 		message_id: String,
 		/// Sender PeerId
 		source: PeerId,
@@ -519,7 +519,7 @@ pub enum NetworkEvent {
 		outgoing_timestamp: Seconds,
 		/// Timestamp at which the message arrived
 		incoming_timestamp: Seconds,
-		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		/// Message ID to prevent deduplication. It is usually a hash of the incoming message
 		message_id: String,
 		/// Sender PeerId
 		source: PeerId,
@@ -553,13 +553,13 @@ pub enum NetworkEvent {
 /// The struct that contains incoming information about a peer returned by the `Identify` protocol.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct IdentifyInfo {
-	/// The public key of the remote peer
+	/// The public key of the remote peer.
 	pub public_key: PublicKey,
-	/// The address the remote peer is listening on
+	/// The address the remote peer is listening on.
 	pub listen_addrs: Vec<Multiaddr>,
-	/// The protocols supported by the remote peer
+	/// The protocols supported by the remote peer.
 	pub protocols: Vec<StreamProtocol>,
-	/// The address we are listened on, observed by the remote peer
+	/// The address we are listened on, observed by the remote peer.
 	pub observed_addr: Multiaddr,
 }
 
@@ -573,9 +573,9 @@ pub(super) struct NetworkInfo {
 	pub ping: PingInfo,
 	/// Important information to manage `Gossipsub` operations.
 	pub gossipsub: gossipsub_cfg::GossipsubInfo,
-	/// The function that handles incoming RPC data request and produces a response
+	/// The function that handles incoming RPC data request and produces a response.
 	pub rpc_handler_fn: fn(RpcData) -> RpcData,
-	/// The function to filter incoming gossip messages
+	/// The function to filter incoming gossip messages.
 	pub gossip_filter_fn: fn(PeerId, MessageId, Option<PeerId>, String, StringVector) -> bool,
 	/// Important information to manage `Replication` operations.
 	pub replication: replica_cfg::ReplInfo,
@@ -628,27 +628,27 @@ pub mod ping_config {
 	}
 }
 
-/// Module that contains important data structures to manage `Sharding` operations on the network
+/// Module that contains important data structures to manage [`Sharding`] operations on the network.
 pub mod shard_cfg {
 	use super::*;
 	use async_trait::async_trait;
 
-	/// Trait that specifies sharding logic and behaviour of shards
+	/// Trait that specifies sharding logic and behaviour of shards.
 	#[async_trait]
 	pub trait Sharding
 	where
 		Self::Key: Send + Sync,
 		Self::ShardId: ToString + Send + Sync,
 	{
-		/// The type of the shard key e.g hash, range etc
+		/// The type of the shard key e.g hash, range etc.
 		type Key;
-		/// The identifier pointing to a specific group of shards
+		/// The identifier pointing to a specific group of shards.
 		type ShardId;
 
-		/// Map a key to a shard
+		/// Map a key to a shard.
 		fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId>;
 
-		/// Retrieve all nodes in a logical shard
+		/// Retrieve all nodes in a logical shard.
 		async fn shard_nodes(&self, mut core: Core, shard_id: &Self::ShardId) -> Vec<PeerId> {
 			let shard_id = shard_id.to_string();
 			let mut nodes = Vec::new();
@@ -667,7 +667,7 @@ pub mod shard_cfg {
 			nodes
 		}
 
-		/// Add a node to a sharding network
+		/// Add a node to a sharding network.
 		async fn add_node_to_shard(
 			&mut self,
 			mut core: Core,
@@ -700,7 +700,7 @@ pub mod shard_cfg {
 			false
 		}
 
-		/// Exit a sharding network
+		/// Exit a sharding network.
 		async fn exit_shard_network(&mut self, core: Core, shard_id: &Self::ShardId) -> bool {
 			// Send request to the network layer to exit shard network
 			let gossip_request = AppData::GossipsubExitNetwork(shard_id.to_string().clone());
@@ -711,7 +711,7 @@ pub mod shard_cfg {
 			}
 		}
 
-		/// Send data to appropriate location on the network due to share configurations
+		/// Send data to appropriate location on the network due to share configurations.
 		async fn shard(&self, mut core: Core, key: &Self::Key, data: ByteVector) -> bool {
 			// First, we get the shard that would store the key
 			if let Some(shard_id) = self.locate_shard(key) {
@@ -741,28 +741,29 @@ pub mod shard_cfg {
 	}
 }
 
-/// Module that contains important data structures to manage `Replication` operations on the network
+/// Module that contains important data structures to manage `Replication` operations on the network.
 pub mod replica_cfg {
 	use super::*;
 	use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::SystemTime};
 
-	/// Struct respresenting data for replication configuration
+	/// Struct respresenting data for configuring node replication.
 	#[derive(Clone, Default, Debug)]
 	pub struct ReplConfigData {
-		/// lamport's clock for synchronization
+		/// Lamport's clock for synchronization.
 		pub lamport_clock: Nonce,
-		/// Replica nodes described by their addresses
+		/// Replica nodes described by their addresses.
 		pub nodes: HashMap<String, String>,
 	}
 
-	/// Struct containing important information for replication
+	/// Struct containing important information for replication.
 	#[derive(Clone)]
 	pub struct ReplInfo {
-		/// Internal state for replication
+		/// Internal state for replication.
 		pub state: Arc<Mutex<HashMap<String, ReplConfigData>>>,
 	}
 
 	/// The consistency models supported.
+	/// 
 	/// This is important as is determines the behaviour of the node in handling and delivering
 	/// replicated data to the application layer. There are also trade-offs to be considered
 	/// before choosing any model. You must choose the model that aligns and suits your exact
@@ -792,15 +793,15 @@ pub mod replica_cfg {
 		///
 		/// # Fields
 		///
-		/// - `queue_length`: Max capacity for transient storage
+		/// - `queue_length`: Max capacity for transient storage.
 		/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full. If a
 		///   `NoExpiry` behaviour is preferred, `expiry_time` should be set to `None`.
 		/// - `sync_wait_time`: Epoch to wait before attempting the next network synchronization of
-		///   data in the buffer
+		///   data in the buffer.
 		/// - `consistency_model`: The data consistency model to be supported by the node. This
-		///   must be uniform across all nodes to prevent undefined behaviour
+		///   must be uniform across all nodes to prevent undefined behaviour.
 		/// - `data_wait_period`: When data has arrived and is saved into the buffer, the time to
-		///   wait for it to get to other peers after which it can be picked for synchronization
+		///   wait for it to get to other peers after which it can be picked for synchronization.
 		Custom {
 			queue_length: u64,
 			expiry_time: Option<Seconds>,
@@ -808,33 +809,33 @@ pub mod replica_cfg {
 			consistency_model: ConsistencyModel,
 			data_aging_period: Seconds,
 		},
-		/// A default Configuration: queue_length = 100, expiry_time = 60 seconds,
-		/// sync_wait_time = 5 seconds, consistency_model: `Eventual`, data_wait_period = 5 seconds
+		/// A default configuration: `queue_length` = 100, `expiry_time` = 60 seconds,
+		/// `sync_wait_time` = 5 seconds, `consistency_model`: `Eventual`, `data_wait_period` = 5 seconds
 		Default,
 	}
 
 	/// Important data to marshall from incoming relication payload and store in the transient
-	/// buffer
+	/// buffer.
 	#[derive(Clone, Debug)]
 	pub struct ReplBufferData {
-		/// Raw incoming data
+		/// Raw incoming data.
 		pub data: StringVector,
-		/// Lamports clock for synchronization
+		/// Lamports clock for synchronization.
 		pub lamport_clock: Nonce,
-		/// Timestamp at which the message left the sending node
+		/// Timestamp at which the message left the sending node.
 		pub outgoing_timestamp: Seconds,
-		/// Timestamp at which the message arrived
+		/// Timestamp at which the message arrived.
 		pub incoming_timestamp: Seconds,
-		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		/// Message ID to prevent deduplication. It is usually a hash of the incoming message.
 		pub message_id: String,
-		/// Sender PeerId
+		/// Sender PeerId.
 		pub sender: PeerId,
 		/// Number of confirmations. This is to help the nodes using the strong consistency
 		/// synchronization data model to come to an agreement
 		pub confirmations: Option<Nonce>,
 	}
 
-	/// Implement Ord
+	/// Implement Ord.
 	impl Ord for ReplBufferData {
 		fn cmp(&self, other: &Self) -> Ordering {
 			self.lamport_clock
@@ -843,17 +844,17 @@ pub mod replica_cfg {
 		}
 	}
 
-	/// Implement PartialOrd
+	/// Implement PartialOrd.
 	impl PartialOrd for ReplBufferData {
 		fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 			Some(self.cmp(other))
 		}
 	}
 
-	/// Implement Eq
+	/// Implement Eq.
 	impl Eq for ReplBufferData {}
 
-	/// Implement PartialEq
+	/// Implement PartialEq.
 	impl PartialEq for ReplBufferData {
 		fn eq(&self, other: &Self) -> bool {
 			self.lamport_clock == other.lamport_clock && self.message_id == other.message_id
@@ -865,10 +866,10 @@ pub mod replica_cfg {
 		/// Configuration for replication and general synchronization.
 		config: ReplNetworkConfig,
 		/// In the case of a strong consistency model, this is where data is buffered
-		/// initially before it is agreed upon by majority of the network. After which
-		/// it are then moved to the queue exposed to the application layer.
+		/// initially before it is agreed upon by the majority of the network. After which
+		/// it is then moved to the queue exposed to the application layer.
 		temporary_queue: Mutex<BTreeMap<String, BTreeMap<String, ReplBufferData>>>,
-		/// Internal buffer containing replicated data to be consumed by the application layer
+		/// Internal buffer containing replicated data to be consumed by the application layer.
 		queue: Mutex<BTreeMap<String, BTreeSet<ReplBufferData>>>,
 	}
 
@@ -882,7 +883,7 @@ pub mod replica_cfg {
 		/// The default epoch to wait before attempting the next network synchronization.
 		const SYNC_WAIT_TIME: Seconds = 5;
 
-		/// The default aging period after which the data can be synchronized across the network
+		/// The default aging period after which the data can be synchronized across the network.
 		const DATA_AGING_PERIOD: Seconds = 5;
 
 		/// Create a new instance of [ReplicaBufferQueue].
@@ -894,7 +895,7 @@ pub mod replica_cfg {
 			}
 		}
 
-		/// Return the configured [ConsistencyModel] for data synchronization.
+		/// Return the configured [`ConsistencyModel`] for data synchronization.
 		pub fn consistency_model(&self) -> ConsistencyModel {
 			match self.config {
 				// Default config always supports eventual consistency
@@ -1023,7 +1024,7 @@ pub mod replica_cfg {
 								}
 							}
 
-							// Get messageId
+							// Get message ID
 							let message_id = data.message_id.clone();
 
 							// Insert data into queue. Confirmation count is already 1
@@ -1031,7 +1032,7 @@ pub mod replica_cfg {
 
 							// Start strong consistency synchronization algorithm:
 							// Broadcast just recieved message to peers to increase the
-							// confirmation. It is just the message id that will be broadcast
+							// confirmation. It is just the message ID that will be broadcast
 							let message = vec![
 								Core::STRONG_CONSISTENCY_FLAG.as_bytes().to_vec(), /* Strong Consistency Sync Gossip Flag */
 								replica_network.clone().into(),                    /* Replica network */
@@ -1158,7 +1159,7 @@ pub mod replica_cfg {
 			}
 		}
 
-		/// Synchronize the data in the buffer queue using eventual consistency
+		/// Synchronize the data in the buffer queue using eventual consistency.
 		pub async fn sync_with_eventual_consistency(&self, core: Core, repl_network: String) {
 			// The oldest clock of the previous sync
 			let mut prev_clock = 0;
@@ -1213,7 +1214,7 @@ pub mod replica_cfg {
 						let mut message = vec![
 							// Strong Consistency Sync Gossip Flag
 							Core::EVENTUAL_CONSISTENCY_FLAG.as_bytes().to_vec(),
-							// Node's Peer Id
+							// Node's Peer ID
 							core.peer_id().into(),
 							repl_network.clone().into(),
 							min_clock.to_string().into(),
@@ -1372,7 +1373,7 @@ pub mod replica_cfg {
 			Default::default()
 		}
 
-		/// Replicate and populate buffer with replica's state
+		/// Replicate and populate buffer with replica's state.
 		pub async fn replicate_buffer(
 			&self,
 			mut core: Core,
