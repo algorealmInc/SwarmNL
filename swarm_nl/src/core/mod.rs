@@ -35,12 +35,11 @@ use libp2p::{
 	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
-use prelude::replica_cfg::{ConsistencyModel, ReplBufferData};
+use replication::{ConsistencyModel, ReplBufferData, ReplConfigData, ReplInfo, ReplNetworkConfig, ReplicaBufferQueue};
 
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
-	replica_cfg::{ReplConfigData, ReplInfo, ReplNetworkConfig, ReplicaBufferQueue},
 };
 
 use super::*;
@@ -55,6 +54,7 @@ use tokio::sync::Mutex;
 pub(crate) mod prelude;
 pub use prelude::*;
 mod tests;
+pub mod replication;
 
 /// The Core Behaviour implemented which highlights the various protocols
 /// we'll be adding support for.

@@ -4,12 +4,10 @@
 //! Utility helper functions for reading from and writing to `.ini` config files.
 
 use crate::{
-	core::{
-		replica_cfg::{ReplBufferData, ReplConfigData},
-		Core,
-	},
+	core::Core,
 	prelude::*,
 	setup::BootstrapConfig,
+	core::replication::{ReplBufferData, ReplConfigData},
 };
 use base58::FromBase58;
 use ini::Ini;
