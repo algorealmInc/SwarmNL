@@ -678,9 +678,11 @@ impl ReplicaBufferQueue {
 	}
 }
 
+
 #[cfg(test)]
 mod tests {
-	// use libp2p::dns::tokio;
+
+    // use libp2p::dns::tokio;
 	use super::*;
 
 	// Define custom ports for testing
@@ -707,6 +709,16 @@ mod tests {
 		CoreBuilder::with_config(config).build().await.unwrap()
 	}
 
+    #[test]
+    fn test_initialization_with_default_config() {
+        let buffer = ReplicaBufferQueue::new(ReplNetworkConfig::Default);
+
+        match buffer.consistency_model() {
+            ConsistencyModel::Eventual => assert!(true),
+            _ => panic!("Consistency model not initialized correctly"),
+        }
+    }
+
 	#[test]
 	fn test_initialization_with_custom_config() {
 		let config = ReplNetworkConfig::Custom {
@@ -722,7 +734,41 @@ mod tests {
 			ConsistencyModel::Strong(ConsensusModel::All) => assert!(true),
 			_ => panic!("Consistency model not initialized correctly"),
 		}
+
+        // Verify queue length
+        match buffer.config {
+            ReplNetworkConfig::Custom { queue_length, .. } => {
+                assert_eq!(queue_length, 200);
+            },
+            _ => panic!("Queue length not initialized correctly"),
+        }
+
+        // Verify expiry time
+        match buffer.config {
+            ReplNetworkConfig::Custom { expiry_time, .. } => {
+                assert_eq!(expiry_time, Some(120));
+            },
+            _ => panic!("Expiry time not initialized correctly"),
+        }
+
+        // Verify sync wait time
+        match buffer.config {
+            ReplNetworkConfig::Custom { sync_wait_time, .. } => {
+                assert_eq!(sync_wait_time, 10);
+            },
+            _ => panic!("Sync wait time not initialized correctly"),
+        }
+
+        // Verify data aging period
+        match buffer.config {
+            ReplNetworkConfig::Custom { data_aging_period, .. } => {
+                assert_eq!(data_aging_period, 15);
+            },
+            _ => panic!("Data aging period not initialized correctly"),
+        }
 	}
+
+    // -- Buffer Queue Tests --
 
 	#[test]
 	fn test_buffer_overflow_expiry_behavior() {
@@ -859,80 +905,14 @@ mod tests {
 		});
 	}
 
-	#[test]
-	fn test_() {
-		tokio::runtime::Runtime::new().unwrap().block_on(async {});
-	}
+    #[test]
+    fn test_pop_from_empty_buffer() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let config = ReplNetworkConfig::Default;
+            let buffer = ReplicaBufferQueue::new(config);
+
+            let result = buffer.pop_front("network1").await;
+            assert!(result.is_none(), "Buffer should be empty");
+        });
+    }
 }
-
-// #[tokio::test]
-// async fn test_data_aging_eventual_consistency() {
-//     let buffer = ReplicaBufferQueue::new(ReplNetworkConfig::Default);
-
-//     let data = ReplBufferData {
-//         data: vec!["Aging Test".into()],
-//         lamport_clock: 1,
-//         outgoing_timestamp: util::get_unix_timestamp() - 10, // Simulate old data
-//         incoming_timestamp: util::get_unix_timestamp() - 10,
-//         message_id: "msg1".into(),
-//         sender: PeerId::random(),
-//         confirmations: None,
-//     };
-
-//     buffer.push(Core::default(), "network1".into(), data.clone()).await;
-//     buffer.sync_with_eventual_consistency(Core::default(), "network1".into()).await;
-
-//     let result = buffer.pop_front("network1").await;
-//     assert!(result.is_some(), "Aged data should still synchronize in eventual consistency");
-// }
-
-// #[tokio::test]
-// async fn test_strong_consistency_threshold() {
-//     let config = ReplNetworkConfig::Custom {
-//         queue_length: 100,
-//         expiry_time: None,
-//         sync_wait_time: 5,
-//         consistency_model: ConsistencyModel::Strong(ConsensusModel::MinPeers(3)),
-//         data_aging_period: 10,
-//     };
-
-//     let buffer = ReplicaBufferQueue::new(config);
-
-//     let data = ReplBufferData {
-//         data: vec!["Strong Consistency Test".into()],
-//         lamport_clock: 1,
-//         outgoing_timestamp: 1000,
-//         incoming_timestamp: 1001,
-//         message_id: "msg1".into(),
-//         sender: PeerId::random(),
-//         confirmations: Some(1),
-//     };
-
-//     buffer.push(Core::default(), "network1".into(), data.clone()).await;
-
-//     // Simulate two confirmations
-//     for _ in 0..2 {
-//         buffer
-//             .handle_data_confirmation(
-//                 tokio::sync::mpsc::channel(10).0,
-//                 &mut tokio::sync::mpsc::channel(10).1,
-//                 "network1".into(),
-//                 "msg1".into(),
-//             )
-//             .await;
-//     }
-
-//     let temp_queue = buffer.temporary_queue.lock().await;
-//     let temp_data = temp_queue.get("network1").unwrap();
-
-//     assert!(
-//         temp_data.contains_key("msg1"),
-//         "Data should remain in temporary queue until enough confirmations"
-//     );
-
-//     assert_eq!(
-//         temp_data["msg1"].confirmations,
-//         Some(3),
-//         "Confirmations should match threshold"
-//     );
-// }
