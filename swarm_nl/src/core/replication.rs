@@ -676,3 +676,262 @@ impl ReplicaBufferQueue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+	// use libp2p::dns::tokio;
+	use super::*;
+
+	// Define custom ports for testing
+	const CUSTOM_TCP_PORT: Port = 49666;
+	const CUSTOM_UDP_PORT: Port = 49852;
+
+	// Setup a node using default config
+	pub async fn setup_node(ports: (Port, Port)) -> Core {
+		let config = BootstrapConfig::default()
+			.with_tcp(ports.0)
+			.with_udp(ports.1);
+
+		// Set up network
+		CoreBuilder::with_config(config).build().await.unwrap()
+	}
+
+	// Setup a node using default config
+	pub async fn setup_node_with_replication(ports: (Port, Port)) -> Core {
+		let config = BootstrapConfig::default()
+			.with_tcp(ports.0)
+			.with_udp(ports.1);
+
+		// Set up network
+		CoreBuilder::with_config(config).build().await.unwrap()
+	}
+
+	#[test]
+	fn test_initialization_with_custom_config() {
+		let config = ReplNetworkConfig::Custom {
+			queue_length: 200,
+			expiry_time: Some(120),
+			sync_wait_time: 10,
+			consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+			data_aging_period: 15,
+		};
+		let buffer = ReplicaBufferQueue::new(config);
+
+		match buffer.consistency_model() {
+			ConsistencyModel::Strong(ConsensusModel::All) => assert!(true),
+			_ => panic!("Consistency model not initialized correctly"),
+		}
+	}
+
+	#[test]
+	fn test_buffer_overflow_expiry_behavior() {
+		tokio::runtime::Runtime::new().unwrap().block_on(async {
+			let expiry_period: u64 = 2;
+
+			let config = ReplNetworkConfig::Custom {
+				queue_length: 4,
+				expiry_time: Some(expiry_period), // Set very short expiry for testing
+				sync_wait_time: 10,
+				consistency_model: ConsistencyModel::Eventual,
+				data_aging_period: 10,
+			};
+
+			let network = setup_node((CUSTOM_TCP_PORT, CUSTOM_UDP_PORT)).await;
+			let buffer = ReplicaBufferQueue::new(config);
+
+			for clock in 1..5 {
+				let data = ReplBufferData {
+					data: vec!["Data 1".into()],
+					lamport_clock: clock,
+					outgoing_timestamp: util::get_unix_timestamp(),
+					incoming_timestamp: util::get_unix_timestamp(),
+					message_id: "msg1".into(),
+					sender: PeerId::random(),
+					confirmations: None,
+				};
+
+				buffer
+					.push(network.clone(), "network1".into(), data.clone())
+					.await;
+			}
+
+			// Check that the first data lamport is 1
+			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 1);
+
+			tokio::time::sleep(std::time::Duration::from_secs(expiry_period)).await; // Wait for expiry
+
+			// Fill up buffer
+			buffer
+				.push(
+					network.clone(),
+					"network1".into(),
+					ReplBufferData {
+						data: vec!["Data 1".into()],
+						lamport_clock: 6,
+						outgoing_timestamp: util::get_unix_timestamp(),
+						incoming_timestamp: util::get_unix_timestamp(),
+						message_id: "msg1".into(),
+						sender: PeerId::random(),
+						confirmations: None,
+					},
+				)
+				.await;
+
+			// Overflow buffer
+			buffer
+				.push(
+					network.clone(),
+					"network1".into(),
+					ReplBufferData {
+						data: vec!["Data 1".into()],
+						lamport_clock: 42,
+						outgoing_timestamp: util::get_unix_timestamp(),
+						incoming_timestamp: util::get_unix_timestamp(),
+						message_id: "msg1".into(),
+						sender: PeerId::random(),
+						confirmations: None,
+					},
+				)
+				.await;
+
+			// We expect that 6 is the first element and 42 is the second as they have not aged out
+			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 6);
+			assert_eq!(
+				buffer.pop_front("network1").await.unwrap().lamport_clock,
+				42
+			);
+		});
+	}
+
+	#[test]
+	fn test_buffer_overflow_no_expiry_behavior() {
+		tokio::runtime::Runtime::new().unwrap().block_on(async {
+			let config = ReplNetworkConfig::Custom {
+				queue_length: 4,
+				expiry_time: None, // Disable aging
+				sync_wait_time: 10,
+				consistency_model: ConsistencyModel::Eventual,
+				data_aging_period: 10,
+			};
+
+			let network = setup_node((CUSTOM_TCP_PORT, CUSTOM_UDP_PORT)).await;
+			let buffer = ReplicaBufferQueue::new(config);
+
+			for clock in 1..5 {
+				let data = ReplBufferData {
+					data: vec!["Data 1".into()],
+					lamport_clock: clock,
+					outgoing_timestamp: util::get_unix_timestamp(),
+					incoming_timestamp: util::get_unix_timestamp(),
+					message_id: "msg1".into(),
+					sender: PeerId::random(),
+					confirmations: None,
+				};
+
+				buffer
+					.push(network.clone(), "network1".into(), data.clone())
+					.await;
+			}
+
+			// Check that the first data lamport is 1
+			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 1);
+
+			buffer
+				.push(
+					network.clone(),
+					"network1".into(),
+					ReplBufferData {
+						data: vec!["Data 1".into()],
+						lamport_clock: 6,
+						outgoing_timestamp: util::get_unix_timestamp(),
+						incoming_timestamp: util::get_unix_timestamp(),
+						message_id: "msg1".into(),
+						sender: PeerId::random(),
+						confirmations: None,
+					},
+				)
+				.await;
+
+			// Check that the data lamports are 2 and 3 as expected
+			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 2);
+			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 3);
+		});
+	}
+
+	#[test]
+	fn test_() {
+		tokio::runtime::Runtime::new().unwrap().block_on(async {});
+	}
+}
+
+// #[tokio::test]
+// async fn test_data_aging_eventual_consistency() {
+//     let buffer = ReplicaBufferQueue::new(ReplNetworkConfig::Default);
+
+//     let data = ReplBufferData {
+//         data: vec!["Aging Test".into()],
+//         lamport_clock: 1,
+//         outgoing_timestamp: util::get_unix_timestamp() - 10, // Simulate old data
+//         incoming_timestamp: util::get_unix_timestamp() - 10,
+//         message_id: "msg1".into(),
+//         sender: PeerId::random(),
+//         confirmations: None,
+//     };
+
+//     buffer.push(Core::default(), "network1".into(), data.clone()).await;
+//     buffer.sync_with_eventual_consistency(Core::default(), "network1".into()).await;
+
+//     let result = buffer.pop_front("network1").await;
+//     assert!(result.is_some(), "Aged data should still synchronize in eventual consistency");
+// }
+
+// #[tokio::test]
+// async fn test_strong_consistency_threshold() {
+//     let config = ReplNetworkConfig::Custom {
+//         queue_length: 100,
+//         expiry_time: None,
+//         sync_wait_time: 5,
+//         consistency_model: ConsistencyModel::Strong(ConsensusModel::MinPeers(3)),
+//         data_aging_period: 10,
+//     };
+
+//     let buffer = ReplicaBufferQueue::new(config);
+
+//     let data = ReplBufferData {
+//         data: vec!["Strong Consistency Test".into()],
+//         lamport_clock: 1,
+//         outgoing_timestamp: 1000,
+//         incoming_timestamp: 1001,
+//         message_id: "msg1".into(),
+//         sender: PeerId::random(),
+//         confirmations: Some(1),
+//     };
+
+//     buffer.push(Core::default(), "network1".into(), data.clone()).await;
+
+//     // Simulate two confirmations
+//     for _ in 0..2 {
+//         buffer
+//             .handle_data_confirmation(
+//                 tokio::sync::mpsc::channel(10).0,
+//                 &mut tokio::sync::mpsc::channel(10).1,
+//                 "network1".into(),
+//                 "msg1".into(),
+//             )
+//             .await;
+//     }
+
+//     let temp_queue = buffer.temporary_queue.lock().await;
+//     let temp_data = temp_queue.get("network1").unwrap();
+
+//     assert!(
+//         temp_data.contains_key("msg1"),
+//         "Data should remain in temporary queue until enough confirmations"
+//     );
+
+//     assert_eq!(
+//         temp_data["msg1"].confirmations,
+//         Some(3),
+//         "Confirmations should match threshold"
+//     );
+// }
