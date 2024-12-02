@@ -684,7 +684,6 @@ pub mod shard_cfg {
 					shard_id.to_string().into_bytes(), // Shard ID.
 				];
 
-
 				// We must send the current state of the network to the joining node, so it can have
 				// a current view of the network.
 				let shard_state = core.network_info.sharding.state.lock().await.clone();

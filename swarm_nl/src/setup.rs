@@ -6,7 +6,7 @@
 #![doc = include_str!("../doc/setup/NodeSetup.md")]
 use std::{collections::HashMap, rc::Rc};
 
-use crate::core::{gossipsub_cfg::Blacklist};
+use crate::core::gossipsub_cfg::Blacklist;
 use crate::core::replication::ReplConfigData;
 pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};

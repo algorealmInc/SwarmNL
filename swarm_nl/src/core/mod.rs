@@ -35,12 +35,15 @@ use libp2p::{
 	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, tls, yamux, Multiaddr, StreamProtocol, Swarm, SwarmBuilder,
 };
-use replication::{ConsistencyModel, ReplBufferData, ReplConfigData, ReplInfo, ReplNetworkConfig, ReplicaBufferQueue};
+use replication::{
+	ConsistencyModel, ReplBufferData, ReplConfigData, ReplInfo, ReplNetworkConfig,
+	ReplicaBufferQueue,
+};
 
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
-	shard_cfg::{ShardingInfo},
+	shard_cfg::ShardingInfo,
 };
 
 use super::*;
@@ -54,8 +57,8 @@ use tokio::sync::Mutex;
 
 pub(crate) mod prelude;
 pub use prelude::*;
-mod tests;
 pub mod replication;
+mod tests;
 
 /// The Core Behaviour implemented which highlights the various protocols
 /// we'll be adding support for.
@@ -230,7 +233,7 @@ impl CoreBuilder {
 			gossipsub: (gossipsub_behaviour, gossip_filter_fn),
 			replication_cfg: (config.repl_cfg(), ReplNetworkConfig::Default),
 			// The default peers to be forwarded sharded data must be 25% of the total in a shard
-			sharding: Default::default()
+			sharding: Default::default(),
 		}
 	}
 

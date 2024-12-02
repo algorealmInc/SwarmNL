@@ -647,9 +647,10 @@
 
 // // Note: KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
 // // The right function to use is sent_to_network() which will not return a Some(StreamId) but will
-// // always return None. This is because it always succeeds and doesn't need to be tracked internally.
-// // Do not use query_network() to send the command, if you do, it will succeed but you will get a
-// // wrong error. The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).
+// // always return None. This is because it always succeeds and doesn't need to be tracked
+// internally. // Do not use query_network() to send the command, if you do, it will succeed but you
+// will get a // wrong error. The wrong error will be NetworkError::StreamBufferOverflow, (which is
+// not correct).
 
 // // -- Tests for providers --
 // // See: `swarm_nl::testing_guide` for information on how to run these tests.
