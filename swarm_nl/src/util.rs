@@ -4,10 +4,12 @@
 //! Utility helper functions for reading from and writing to `.ini` config files.
 
 use crate::{
-	core::Core,
+	core::{
+		replication::{ReplBufferData, ReplConfigData},
+		ByteVector, Core, StringVector,
+	},
 	prelude::*,
 	setup::BootstrapConfig,
-	core::replication::{ReplBufferData, ReplConfigData},
 };
 use base58::FromBase58;
 use ini::Ini;
@@ -245,6 +247,91 @@ pub fn get_unix_timestamp() -> Seconds {
 	let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
 	// Return the Unix timestamp in seconds as a string
 	duration_since_epoch.as_secs()
+}
+
+/// Convert a [ByteVector] to a [StringVector].
+pub fn byte_vec_to_string_vec(input: ByteVector) -> StringVector {
+	input
+		.into_iter()
+		.map(|vec| String::from_utf8(vec).unwrap_or_else(|_| String::from("Invalid UTF-8")))
+		.collect()
+}
+
+/// Convert a [StringVector] to a [ByteVector]
+pub fn string_vec_to_byte_vec(input: StringVector) -> ByteVector {
+	input.into_iter().map(|s| s.into_bytes()).collect()
+}
+
+/// Marshall the shard network image into a [ByteVector].
+pub fn shard_image_to_bytes(input: HashMap<String, Vec<PeerId>>) -> Vec<u8> {
+	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
+    const PEER_SEPARATOR: &[u8] = b"%%";
+    const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
+
+    let mut result = Vec::new();
+
+    for (shard_id, peers) in input {
+        // Convert shard_id to bytes and append
+        result.extend_from_slice(shard_id.as_bytes());
+
+        // Add the separator for peers
+        result.extend_from_slice(SHARD_PEER_SEPARATOR);
+
+        // Convert each PeerId to bytes and append, separated by PEER_SEPARATOR
+        for peer in peers.iter() {
+            result.extend_from_slice(&peer.to_bytes());
+            result.extend_from_slice(PEER_SEPARATOR);
+        }
+
+        // Remove the last PEER_SEPARATOR if any
+        if !peers.is_empty() {
+            result.truncate(result.len() - PEER_SEPARATOR.len());
+        }
+
+        // Add the shard entry separator
+        result.extend_from_slice(SHARD_ENTRY_SEPARATOR);
+    }
+
+    result
+}
+
+/// Unmarshall the byte=re into the shard network image.
+pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, Vec<PeerId>> {
+    const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
+    const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
+    const PEER_SEPARATOR: &[u8] = b"%%";
+
+    let mut result = HashMap::new();
+
+    // Try to convert the input to a UTF-8 string, return empty HashMap if conversion fails
+    let input_str = match String::from_utf8(input) {
+        Ok(s) => s,
+        Err(_) => return result,
+    };
+
+    // Split the input by SHARD_ENTRY_SEPARATOR
+    for entry in input_str.split(std::str::from_utf8(SHARD_ENTRY_SEPARATOR).unwrap_or("@@@")) {
+        // Split the entry by SHARD_PEER_SEPARATOR
+        let parts: Vec<&str> = entry.split(std::str::from_utf8(SHARD_PEER_SEPARATOR).unwrap_or("&&&")).collect();
+        
+        // Ensure we have at least two parts (shard_id and peers)
+        if parts.len() >= 2 {
+            let shard_id = parts[0].to_string();
+            
+            // Split peers and convert to PeerIds
+            let peers: Vec<PeerId> = parts[1]
+                .split(std::str::from_utf8(PEER_SEPARATOR).unwrap_or("%%"))
+                .filter_map(|peer_str| PeerId::from_bytes(peer_str.as_bytes()).ok())
+                .collect();
+            
+            // Only insert if peers are not empty
+            if !peers.is_empty() {
+                result.insert(shard_id, peers);
+            }
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]

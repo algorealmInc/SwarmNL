@@ -40,6 +40,7 @@ use replication::{ConsistencyModel, ReplBufferData, ReplConfigData, ReplInfo, Re
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
+	shard_cfg::{ShardingInfo},
 };
 
 use super::*;
@@ -152,6 +153,9 @@ pub struct CoreBuilder {
 	),
 	/// The network data for replication operations
 	replication_cfg: (Rc<HashMap<String, ReplConfigData>>, ReplNetworkConfig),
+	/// The name of the entire shard network. This is important for quick broadcasting of changes
+	/// in the shard network as a whole.
+	sharding: ShardingInfo,
 }
 
 impl CoreBuilder {
@@ -225,6 +229,8 @@ impl CoreBuilder {
 			request_response: (request_response_behaviour, rpc_handler_fn),
 			gossipsub: (gossipsub_behaviour, gossip_filter_fn),
 			replication_cfg: (config.repl_cfg(), ReplNetworkConfig::Default),
+			// The default peers to be forwarded sharded data must be 25% of the total in a shard
+			sharding: Default::default()
 		}
 	}
 
@@ -287,10 +293,21 @@ impl CoreBuilder {
 		}
 	}
 
-	/// Configure the 'Replication` protocol for the network.
+	/// Configure the `Replication` protocol for the network.
 	pub fn with_replication(mut self, repl_cfg: ReplNetworkConfig) -> Self {
 		self.replication_cfg.1 = repl_cfg;
-		Self { ..self }
+		CoreBuilder { ..self }
+	}
+
+	/// Configure the `Sharding` protocol for the network.
+	pub fn with_sharding(self, network_id: String) -> Self {
+		CoreBuilder {
+			sharding: ShardingInfo {
+				id: network_id,
+				state: Default::default(),
+			},
+			..self
+		}
 	}
 
 	/// Configure the RPC protocol for the network.
@@ -641,6 +658,7 @@ impl CoreBuilder {
 			rpc_handler_fn: self.request_response.1,
 			gossip_filter_fn: self.gossipsub.1,
 			replication: repl_info,
+			sharding: self.sharding.clone(),
 		};
 
 		// Build the network core
@@ -655,6 +673,19 @@ impl CoreBuilder {
 			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.1.clone())),
 			network_info,
 		};
+
+		// Check if sharding is configured
+		if !self.sharding.id.is_empty() {
+			// Spin up task to init the network
+			let mut core = network_core.clone();
+			#[cfg(feature = "async-std-runtime")]
+			async_std::task::spawn(
+				async move { core.init_sharding(self.sharding.id.clone()).await },
+			);
+
+			#[cfg(feature = "tokio-runtime")]
+			tokio::task::spawn(async move { core.init_sharding(self.sharding.id.clone()).await });
+		}
 
 		// Ensure there is support for replication
 		if !network_core
@@ -673,7 +704,7 @@ impl CoreBuilder {
 			#[cfg(feature = "tokio-runtime")]
 			tokio::task::spawn(async move { core.init_replication().await });
 
-			// Now check whether the syncronization model is eventual consistency, if it is we need
+			// Now check whether the synchronization model is eventual consistency, if it is we need
 			// to spin up tasks that handle the synchronization per network
 			let core = network_core.clone();
 			match self.replication_cfg.1 {
@@ -786,9 +817,9 @@ impl Core {
 	/// replication.
 	pub const REPL_GOSSIP_FLAG: &'static str = "REPL_GOSSIP_FLAG__@@";
 
-	/// The gossip flag to indicate that incoming gossipsub message is actually data sent to the
-	/// node based on sharding.
-	pub const SHARD_GOSSIP_FLAG: &'static str = "SHARD_GOSSIP_FLAG__@@";
+	/// The RPC flag to indicate that incoming message is data that has been forwarded to the node
+	/// because it is a member of the logical shard to store the data.
+	pub const RPC_DATA_FORWARDING_FLAG: &'static str = "RPC_DATA_FORWARDING_FLAG__@@";
 
 	/// The gossip flag to indicate that incoming (or outgoing) gossipsub message is a part of the
 	/// strong consistency algorithm, intending to increase the confirmation count of a particular
@@ -803,8 +834,14 @@ impl Core {
 	/// synchronization.
 	pub const RPC_SYNC_PULL_FLAG: &'static str = "RPC_SYNC_PULL_FLAG__@@";
 
-	/// The RPC flag to add a remote node to a logical shard network
+	/// The RPC flag to add a remote node to the shard network
 	pub const RPC_SHARD_INVITATION_FLAG: &'static str = "RPC_SHARD_INVITATION_FLAG__@@";
+
+	/// The sharding gossip flag to indicate that a node has joined a shard network
+	pub const SHARD_GOSSIP_JOIN_FLAG: &'static str = "SHARD_GOSSIP_JOIN_FLAG__@@";
+
+	/// The sharding gossip flag to indicate that a node has exited a shard network
+	pub const SHARD_GOSSIP_EXIT_FLAG: &'static str = "SHARD_GOSSIP_EXIT_FLAG__@@";
 
 	/// The delimeter between the data fields of an entry in a dataset requested by a replica peer.
 	pub const FIELD_DELIMITER: &'static str = "_@_";
@@ -908,7 +945,7 @@ impl Core {
 	/// Explicitly retrieve the reponse to a request sent to the network layer.
 	/// This function is decoupled from the [`Core::send_to_network()`] method so as to prevent
 	/// blocking until the response is returned.
-	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult {
+	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult<AppResponse> {
 		#[cfg(feature = "async-std-runtime")]
 		{
 			let channel = self.clone();
@@ -983,13 +1020,54 @@ impl Core {
 	/// delay can be condoned. It will still timeout if the delay exceeds the configured period.
 	///
 	/// If the internal buffer is full, it will return an error.
-	pub async fn query_network(&mut self, request: AppData) -> NetworkResult {
+	pub async fn query_network(&mut self, request: AppData) -> NetworkResult<AppResponse> {
 		// Send request
 		if let Some(stream_id) = self.send_to_network(request).await {
 			// Wait to recieve response from the network
 			self.recv_from_network(stream_id).await
 		} else {
 			Err(NetworkError::StreamBufferOverflow)
+		}
+	}
+
+	/// Setup the necessary preliminaries for the sharding protocol
+	async fn init_sharding(&mut self, network_id: String) {
+		// We will setup the indelying gossip group that all nodes in the nwtwork must be a part of,
+		// to keep the state of the network consistent
+		let gossip_request = AppData::GossipsubJoinNetwork(network_id.clone());
+		let _ = self.query_network(gossip_request).await;
+	}
+
+	/// Update the state of the shard network. This is relevant when nodes join and leave the shard
+	/// network.
+	async fn update_shard_state(&mut self, peer: PeerId, shard_id: ShardId, join: bool) {
+		// Update state
+		let mut shard_state = self.network_info.sharding.state.lock().await;
+		let shard_entry = shard_state
+			.entry(shard_id.clone())
+			.or_insert(Default::default());
+
+		// If the node is joining
+		if join {
+			shard_entry.push(peer);
+
+			// Free `Core`
+			drop(shard_state);
+
+			// If you're the one that is joining, you must join the replica (shard) network for
+			// synchronization among the nodes of a particular logical shard
+			if peer == self.peer_id() {
+				// Join network
+				let _ = self.join_repl_network(shard_id).await;
+			}
+		} else {
+			shard_entry.retain(|entry| entry != &peer);
+
+			// Free `Core`
+			drop(shard_state);
+
+			// Leave replica network
+			let _ = self.leave_repl_network(shard_id);
 		}
 	}
 
@@ -1135,22 +1213,16 @@ impl Core {
 
 	/// Handle incmoing shard data. We will not be doing any internal buffering as the data would be
 	/// exposed as an event
-	async fn handle_incoming_shard_data(
-		&self,
-		message_id: String,
-		source: PeerId,
-		incoming_data: StringVector,
-	) {
+	async fn handle_incoming_shard_data(&mut self, shard_id: String, incoming_data: ByteVector) {
 		// Push into event queue
 		self.event_queue
 			.push(NetworkEvent::ShardDataIncoming {
-				data: incoming_data[3..].into(),
-				outgoing_timestamp: incoming_data[0].parse::<u64>().unwrap_or_default(),
-				incoming_timestamp: get_unix_timestamp(),
-				message_id,
-				source,
+				data: byte_vec_to_string_vec(incoming_data.clone()),
 			})
 			.await;
+
+		// Notify other nodes in the shard
+		let _ = self.replicate(incoming_data, &shard_id).await;
 	}
 
 	/// Consume data in replication buffer
@@ -1162,7 +1234,7 @@ impl Core {
 	/// If the consistency model is eventual, in no time the node's buffer will be up to date. But
 	/// if it's the case of a strong consistency model, we might have to call
 	/// [`Core::replicate_buffer`] to get up to date.
-	pub async fn join_network(&mut self, repl_network: String) -> NetworkResult {
+	pub async fn join_repl_network(&mut self, repl_network: String) -> NetworkResult<AppResponse> {
 		// Join the replication (gossip) network
 		let gossip_request = AppData::GossipsubJoinNetwork(repl_network.clone());
 		if let Ok(response) = self.query_network(gossip_request).await {
@@ -1181,7 +1253,7 @@ impl Core {
 
 	/// Leave a replica network. The messages on the internal replica queue are not discarded so as
 	/// to aid speedy recorvery in case of reconnection.
-	pub async fn leave_network(&mut self, repl_network: String) -> NetworkResult {
+	pub async fn leave_repl_network(&mut self, repl_network: String) -> NetworkResult<AppResponse> {
 		// Leave the replication (gossip) network
 		let gossip_request = AppData::GossipsubExitNetwork(repl_network.clone());
 		self.query_network(gossip_request).await
@@ -1238,7 +1310,11 @@ impl Core {
 
 	/// Send data to replica nodes. Function returns false if node is not a member of the replica
 	/// network specified, meaning the replication network has not been configured or joined.
-	pub async fn replicate(&mut self, mut replica_data: ByteVector, replica_network: &str) -> bool {
+	pub async fn replicate(
+		&mut self,
+		mut replica_data: ByteVector,
+		replica_network: &str,
+	) -> NetworkResult<()> {
 		if let Some(repl_network_data) = self
 			.network_info
 			.replication
@@ -1250,62 +1326,34 @@ impl Core {
 			// Increase the clock before sending data
 			let _ = repl_network_data.lamport_clock.saturating_add(1);
 
-			// So that we do not block the foreground operations, we will spawn a task to handle it
-			// and then return immediately
-
 			// Prepare the replication message
 			let mut node = self.clone();
 			let replica_network = replica_network.to_owned();
 			let replica_network_data = repl_network_data.to_owned();
 
-			#[cfg(feature = "tokio-runtime")]
-			tokio::task::spawn(async move {
-				// Construct replica message
-				let mut message = vec![
-					Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(), // Replica Gossip Flag
-					get_unix_timestamp().to_string().into(),    // Timestamp
-					replica_network_data.lamport_clock.to_string().into(), // Clock
-					replica_network.clone().into(),             // Replica network
-				];
-				// Then append data
-				message.append(&mut replica_data);
+			// Construct replica message
+			let mut message = vec![
+				Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(), // Replica Gossip Flag
+				get_unix_timestamp().to_string().into(),    // Timestamp
+				replica_network_data.lamport_clock.to_string().into(), // Clock
+				replica_network.clone().into(),             // Replica network
+			];
+			// Then append data
+			message.append(&mut replica_data);
 
-				// Prepare a gossip request
-				let gossip_request = AppData::GossipsubBroadcastMessage {
-					topic: replica_network.to_owned(),
-					message,
-				};
+			// Prepare a gossip request
+			let gossip_request = AppData::GossipsubBroadcastMessage {
+				topic: replica_network.to_owned(),
+				message,
+			};
 
-				// Gossip data to replica nodes
-				let _ = node.query_network(gossip_request).await;
-			});
+			// Gossip data to replica nodes
+			let _ = node.query_network(gossip_request).await?;
 
-			#[cfg(feature = "async-std-runtime")]
-			async_std::task::spawn(async move {
-				// Construct replica message
-				let mut message = vec![
-					Core::REPL_GOSSIP_FLAG.as_bytes().to_vec(), // Replica Gossip Flag
-					get_unix_timestamp().to_string().into(),    // Timestamp
-					replica_network_data.lamport_clock.to_string().into(), // Clock
-					replica_network.clone().into(),             // Replica network
-				];
-				// Then append data
-				message.append(&mut replica_data);
-
-				// Prepare a gossip request
-				let gossip_request = AppData::GossipsubBroadcastMessage {
-					topic: replica_network.to_owned(),
-					message,
-				};
-
-				// Gossip data to replica nodes
-				let _ = node.query_network(gossip_request).await;
-			});
-
-			return true;
+			Ok(())
+		} else {
+			Err(NetworkError::MissingReplNetwork)
 		}
-
-		false
 	}
 
 	/// Handle the responses coming from the network layer. This is usually as a result of a request
@@ -1873,7 +1921,6 @@ impl Core {
 																	Core::REPL_CFG_FLAG => {
 																		// Send the response, so as to return the RPC immediately
 																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
-
 																	}
 																	// It is a request to retrieve missing data the RPC sender node lacks
 																	Core::RPC_SYNC_PULL_FLAG => {
@@ -1888,15 +1935,34 @@ impl Core {
 																	}
 																	// It is a request to join a shard network
 																	Core::RPC_SHARD_INVITATION_FLAG => {
-																		// Attempt to decode the shard_id
-																		if let Ok(key_string) = String::from_utf8(data[1].clone()) {
+																		// Attempt to decode the sharding network id
+																		if let Ok(network_id) = String::from_utf8(data[1].clone()) {
 																			// Join the shard (gossip) network
-																			let gossip_request = AppData::GossipsubJoinNetwork(key_string.clone());
-																			let _ = network_core.clone().query_network(gossip_request).await;
+																			let gossip_request = AppData::GossipsubJoinNetwork(network_id.clone());
+																			if network_core.query_network(gossip_request).await.is_ok() {
+																				// Join the specific shard
+																				if let Ok(shard_id) = String::from_utf8(data[2].clone()) {
+																					let gossip_request = AppData::GossipsubJoinNetwork(shard_id.clone());
+																					let _ = network_core.query_network(gossip_request).await;
+
+																					// Initialize the shard network image
+																					let network_image = bytes_to_shard_image(data[3].clone());
+																					*network_core.network_info.sharding.state.lock().await = network_image;
+																				}
+																			}
 																		}
 
 																		// Send the response
 																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
+																	}
+																	// It is an incoming shard message forwarded from peer not permitted to store the data
+																	Core::RPC_DATA_FORWARDING_FLAG => {
+																		// Send the response, so as to return the RPC immediately
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
+
+																		let shard_id = String::from_utf8_lossy(&data[1]).to_string();
+																		// Handle incoming shard data
+																		network_core.handle_incoming_shard_data(shard_id, data[2..].into()).await;
 																	}
 																	// Normal RPC
 																	_ => {
@@ -1979,11 +2045,19 @@ impl Core {
 													// Synchronize the incoming replica node's buffer image with the local buffer image
 													network_core.replica_buffer.sync_buffer_image(network_core.clone(), gossip_data[1].clone(), gossip_data[2].clone(), (min_clock, max_clock), gossip_data[5..].to_owned()).await;
 												}
-												// It is an incoming shard message
-												Core::SHARD_GOSSIP_FLAG => {
-													let msg_source = if let Some(peer) = message.source { peer.clone() } else { propagation_source.clone() };
-													// Handle incoming shard data
-													network_core.handle_incoming_shard_data(message_id.to_string(), msg_source, gossip_data[1..].into()).await;
+												// It is a broadcast to inform us about the addition of a new node to a shard network
+												Core::SHARD_GOSSIP_JOIN_FLAG => {
+													// Upload sharding network state
+													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
+														let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), true /* join */).await;
+													}
+												}
+												// It is a broadcast to inform us about the exit of a node from a shard network
+												Core::SHARD_GOSSIP_EXIT_FLAG => {
+													// Upload sharding network state
+													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
+														let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), false /* exit */).await;
+													}
 												}
 												// Normal gossip
 												_ => {
