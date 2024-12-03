@@ -119,14 +119,14 @@ where
 		Ok(())
 	}
 
-	/// Join a shard network
+	/// Join a shard network.
 	async fn join_network(&self, core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> {
 		// We add ourself
 		let peer_id = core.peer_id();
 		self.add_node(core, shard_id, peer_id).await
 	}
 
-	/// Exit a shard network
+	/// Exit a shard network.
 	async fn exit_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> {
 		// First, we remove ourself from the network state
 		let mut shard_state = core.network_info.sharding.state.lock().await;
@@ -220,7 +220,7 @@ where
 		Err(NetworkError::DataForwardingError)
 	}
 
-	/// Fetch data from the shard network
+	/// Fetch data from the shard network.
 	async fn fetch(
 		&self,
 		mut core: Core,
@@ -251,7 +251,7 @@ where
 			return Ok(None);
 		}
 
-		// SHuffle the peers.
+		// Shuffle the peers.
 		let mut rng = StdRng::from_entropy();
 		nodes.shuffle(&mut rng);
 

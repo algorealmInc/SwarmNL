@@ -1226,7 +1226,7 @@ impl Core {
 	}
 
 	/// Handle incmoing shard data. We will not be doing any internal buffering as the data would be
-	/// exposed as an event
+	/// exposed as an event.
 	async fn handle_incoming_shard_data(&mut self, shard_id: String, incoming_data: ByteVector) {
 		// Push into event queue
 		self.event_queue
@@ -1239,7 +1239,7 @@ impl Core {
 		let _ = self.replicate(incoming_data, &shard_id).await;
 	}
 
-	/// Consume data in replication buffer
+	/// Consume data in replication buffer.
 	pub async fn consume_repl_data(&mut self, replica_network: &str) -> Option<ReplBufferData> {
 		self.replica_buffer.pop_front(replica_network).await
 	}
