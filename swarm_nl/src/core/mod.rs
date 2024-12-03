@@ -43,7 +43,7 @@ use replication::{
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
-	shard_cfg::{ShardingCfg, ShardingInfo},
+	sharding::{ShardingCfg, ShardingInfo},
 };
 
 use super::*;
@@ -58,6 +58,7 @@ use tokio::sync::Mutex;
 pub(crate) mod prelude;
 pub use prelude::*;
 pub mod replication;
+pub mod sharding;
 mod tests;
 
 /// The Core Behaviour implemented which highlights the various protocols
