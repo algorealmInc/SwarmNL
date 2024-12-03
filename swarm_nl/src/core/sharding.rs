@@ -282,3 +282,47 @@ where
 		Err(NetworkError::ShardingFetchError)
 	}
 }
+
+#[cfg(test)]
+mod tests {
+
+	use super::*;
+
+	#[test]
+	fn test_initial_shard_node_state() {
+		tokio::runtime::Runtime::new().unwrap().block_on(async {
+			// Initialize the shared state
+			let state = Arc::new(Mutex::new(HashMap::new()));
+			let config = ShardingCfg {
+				callback: |_rpc| RpcData::default(),
+			};
+			let sharding_info = ShardingInfo {
+				id: "test-network".to_string(),
+				config,
+				state: state.clone(),
+			};
+
+			// Simulate a shard node initialization
+			let shard_id = "shard-1".to_string();
+
+			{
+				let mut shard_state = state.lock().await;
+				shard_state.insert(shard_id.clone(), vec![]);
+			}
+
+			// Check the initial state
+			let shard_state = state.lock().await;
+			assert!(shard_state.contains_key(&shard_id), "Shard ID should exist in the state");
+			assert!(
+				shard_state.get(&shard_id).unwrap().is_empty(),
+				"Shard state for shard-1 should be empty"
+			);
+
+			// Validate network ID
+			assert_eq!(
+				sharding_info.id, "test-network",
+				"Sharding network ID should be set correctly"
+			);
+		});
+	}
+}
