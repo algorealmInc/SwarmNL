@@ -513,8 +513,15 @@ impl ReplicaBufferQueue {
 		lamports_clock_bound: (u64, u64),
 		replica_data_state: StringVector,
 	) {
-		// Convert replica data state into a set outside the mutex lock
-		let replica_buffer_state = replica_data_state.into_iter().collect::<BTreeSet<_>>();
+		// Convert replica data state into a set outside the mutex lock.
+		// Filter replica buffer too so it doesn't contain the data that we published.
+		// This is done using the messageId since by gossipsub, messageId = (Publishing peerId +
+		// Nonce)
+
+		let replica_buffer_state = replica_data_state
+			.into_iter()
+			.filter(|id| id.contains(&core.peer_id().to_base58()))
+			.collect::<BTreeSet<_>>();
 
 		// Extract local buffer state and filter it while keeping the mutex lock duration
 		// minimal
@@ -678,11 +685,10 @@ impl ReplicaBufferQueue {
 	}
 }
 
-
 #[cfg(test)]
 mod tests {
 
-    // use libp2p::dns::tokio;
+	// use libp2p::dns::tokio;
 	use super::*;
 
 	// Define custom ports for testing
@@ -699,15 +705,15 @@ mod tests {
 		CoreBuilder::with_config(config).build().await.unwrap()
 	}
 
-    #[test]
-    fn test_initialization_with_default_config() {
-        let buffer = ReplicaBufferQueue::new(ReplNetworkConfig::Default);
+	#[test]
+	fn test_initialization_with_default_config() {
+		let buffer = ReplicaBufferQueue::new(ReplNetworkConfig::Default);
 
-        match buffer.consistency_model() {
-            ConsistencyModel::Eventual => assert!(true),
-            _ => panic!("Consistency model not initialized correctly"),
-        }
-    }
+		match buffer.consistency_model() {
+			ConsistencyModel::Eventual => assert!(true),
+			_ => panic!("Consistency model not initialized correctly"),
+		}
+	}
 
 	#[test]
 	fn test_initialization_with_custom_config() {
@@ -725,40 +731,42 @@ mod tests {
 			_ => panic!("Consistency model not initialized correctly"),
 		}
 
-        // Verify queue length
-        match buffer.config {
-            ReplNetworkConfig::Custom { queue_length, .. } => {
-                assert_eq!(queue_length, 200);
-            },
-            _ => panic!("Queue length not initialized correctly"),
-        }
+		// Verify queue length
+		match buffer.config {
+			ReplNetworkConfig::Custom { queue_length, .. } => {
+				assert_eq!(queue_length, 200);
+			},
+			_ => panic!("Queue length not initialized correctly"),
+		}
 
-        // Verify expiry time
-        match buffer.config {
-            ReplNetworkConfig::Custom { expiry_time, .. } => {
-                assert_eq!(expiry_time, Some(120));
-            },
-            _ => panic!("Expiry time not initialized correctly"),
-        }
+		// Verify expiry time
+		match buffer.config {
+			ReplNetworkConfig::Custom { expiry_time, .. } => {
+				assert_eq!(expiry_time, Some(120));
+			},
+			_ => panic!("Expiry time not initialized correctly"),
+		}
 
-        // Verify sync wait time
-        match buffer.config {
-            ReplNetworkConfig::Custom { sync_wait_time, .. } => {
-                assert_eq!(sync_wait_time, 10);
-            },
-            _ => panic!("Sync wait time not initialized correctly"),
-        }
+		// Verify sync wait time
+		match buffer.config {
+			ReplNetworkConfig::Custom { sync_wait_time, .. } => {
+				assert_eq!(sync_wait_time, 10);
+			},
+			_ => panic!("Sync wait time not initialized correctly"),
+		}
 
-        // Verify data aging period
-        match buffer.config {
-            ReplNetworkConfig::Custom { data_aging_period, .. } => {
-                assert_eq!(data_aging_period, 15);
-            },
-            _ => panic!("Data aging period not initialized correctly"),
-        }
+		// Verify data aging period
+		match buffer.config {
+			ReplNetworkConfig::Custom {
+				data_aging_period, ..
+			} => {
+				assert_eq!(data_aging_period, 15);
+			},
+			_ => panic!("Data aging period not initialized correctly"),
+		}
 	}
 
-    // -- Buffer Queue Tests --
+	// -- Buffer Queue Tests --
 
 	#[test]
 	fn test_buffer_overflow_expiry_behavior() {
@@ -895,14 +903,14 @@ mod tests {
 		});
 	}
 
-    #[test]
-    fn test_pop_from_empty_buffer() {
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let config = ReplNetworkConfig::Default;
-            let buffer = ReplicaBufferQueue::new(config);
+	#[test]
+	fn test_pop_from_empty_buffer() {
+		tokio::runtime::Runtime::new().unwrap().block_on(async {
+			let config = ReplNetworkConfig::Default;
+			let buffer = ReplicaBufferQueue::new(config);
 
-            let result = buffer.pop_front("network1").await;
-            assert!(result.is_none(), "Buffer should be empty");
-        });
-    }
+			let result = buffer.pop_front("network1").await;
+			assert!(result.is_none(), "Buffer should be empty");
+		});
+	}
 }
