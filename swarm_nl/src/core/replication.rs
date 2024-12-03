@@ -699,16 +699,6 @@ mod tests {
 		CoreBuilder::with_config(config).build().await.unwrap()
 	}
 
-	// Setup a node using default config
-	pub async fn setup_node_with_replication(ports: (Port, Port)) -> Core {
-		let config = BootstrapConfig::default()
-			.with_tcp(ports.0)
-			.with_udp(ports.1);
-
-		// Set up network
-		CoreBuilder::with_config(config).build().await.unwrap()
-	}
-
     #[test]
     fn test_initialization_with_default_config() {
         let buffer = ReplicaBufferQueue::new(ReplNetworkConfig::Default);
@@ -861,7 +851,7 @@ mod tests {
 				data_aging_period: 10,
 			};
 
-			let network = setup_node((CUSTOM_TCP_PORT, CUSTOM_UDP_PORT)).await;
+			let network = setup_node((15555, 6666)).await;
 			let buffer = ReplicaBufferQueue::new(config);
 
 			for clock in 1..5 {
