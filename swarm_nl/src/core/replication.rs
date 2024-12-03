@@ -192,7 +192,7 @@ impl ReplicaBufferQueue {
 
 					// Identify expired items and collect them for removal
 					for entry in queue.iter() {
-						if current_time - entry.outgoing_timestamp >= Self::EXPIRY_TIME {
+						if current_time.saturating_sub(entry.outgoing_timestamp) >= Self::EXPIRY_TIME {
 							expired_items.push(entry.clone());
 						}
 					}
@@ -246,7 +246,7 @@ impl ReplicaBufferQueue {
 
 								// Identify expired items and collect them for removal
 								for entry in queue.iter() {
-									if current_time - entry.outgoing_timestamp >= expiry_time {
+									if current_time.saturating_sub(entry.outgoing_timestamp) >= expiry_time {
 										expired_items.push(entry.clone());
 									}
 								}
@@ -400,7 +400,7 @@ impl ReplicaBufferQueue {
 				// Remove expired items
 				if let Some(expiry_time) = expiry_time {
 					public_queue
-						.retain(|entry| current_time - entry.outgoing_timestamp < expiry_time);
+						.retain(|entry| current_time.saturating_sub(entry.outgoing_timestamp) < expiry_time);
 				}
 
 				// Remove oldest items if queue exceeds capacity
@@ -449,7 +449,7 @@ impl ReplicaBufferQueue {
 				let local_data = local_data_state
 					.iter()
 					.filter(|&d| {
-						util::get_unix_timestamp() - d.incoming_timestamp > data_aging_time
+						util::get_unix_timestamp().saturating_sub(d.incoming_timestamp) > data_aging_time
 					})
 					.cloned()
 					.collect::<BTreeSet<_>>();
@@ -787,6 +787,7 @@ mod tests {
 			let network = setup_node((CUSTOM_TCP_PORT, CUSTOM_UDP_PORT)).await;
 			let buffer = ReplicaBufferQueue::new(config);
 
+            // Fill up buffer
 			for clock in 1..5 {
 				let data = ReplBufferData {
 					data: vec!["Data 1".into()],
@@ -808,6 +809,9 @@ mod tests {
 
 			tokio::time::sleep(std::time::Duration::from_secs(expiry_period)).await; // Wait for expiry
 
+            // Buffer length should be 3 now
+            assert_eq!(buffer.queue.lock().await.get("network1").unwrap().len(), 3);
+
 			// Fill up buffer
 			buffer
 				.push(
@@ -824,6 +828,9 @@ mod tests {
 					},
 				)
 				.await;
+
+                // Verify buffer length is now 4
+                assert_eq!(buffer.queue.lock().await.get("network1").unwrap().len(), 4);
 
 			// Overflow buffer
 			buffer
@@ -842,7 +849,7 @@ mod tests {
 				)
 				.await;
 
-			// We expect that 6 is the first element and 42 is the second as they have not aged out
+            // We expect that 6 is the first element and 42 is the second as they have not aged out
 			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 6);
 			assert_eq!(
 				buffer.pop_front("network1").await.unwrap().lamport_clock,
