@@ -841,6 +841,11 @@ pub mod shard_cfg {
 			// If all peers fail, return an error.
 			Err(NetworkError::DataForwardingError)
 		}
+
+		/// Fetch data from the shard network
+		async fn fetch(&self, core: Core, key: &Self::Key) {
+			
+		}
 	}
 }
 

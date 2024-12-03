@@ -16,7 +16,6 @@ futures-time = "3.0.0"
 serde = { version = "1.0.2", features = ["derive"] }
 base58 = "0.2.0"
 async-trait = "0.1.83"
-bincode = "1.3.3"
 
 [dependencies.async-std]
 version = "1.12.0"
