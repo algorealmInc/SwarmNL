@@ -43,7 +43,7 @@ use replication::{
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
-	shard_cfg::ShardingInfo,
+	shard_cfg::{ShardingCfg, ShardingInfo},
 };
 
 use super::*;
@@ -233,7 +233,13 @@ impl CoreBuilder {
 			gossipsub: (gossipsub_behaviour, gossip_filter_fn),
 			replication_cfg: (config.repl_cfg(), ReplNetworkConfig::Default),
 			// The default peers to be forwarded sharded data must be 25% of the total in a shard
-			sharding: Default::default(),
+			sharding: ShardingInfo {
+				id: Default::default(),
+				config: ShardingCfg {
+					callback: rpc_handler_fn,
+				},
+				state: Default::default(),
+			},
 		}
 	}
 
@@ -303,10 +309,11 @@ impl CoreBuilder {
 	}
 
 	/// Configure the `Sharding` protocol for the network.
-	pub fn with_sharding(self, network_id: String) -> Self {
+	pub fn with_sharding(self, network_id: String, callback: fn(RpcData) -> RpcData) -> Self {
 		CoreBuilder {
 			sharding: ShardingInfo {
 				id: network_id,
+				config: ShardingCfg { callback },
 				state: Default::default(),
 			},
 			..self
@@ -837,14 +844,17 @@ impl Core {
 	/// synchronization.
 	pub const RPC_SYNC_PULL_FLAG: &'static str = "RPC_SYNC_PULL_FLAG__@@";
 
-	/// The RPC flag to add a remote node to the shard network
-	pub const RPC_SHARD_INVITATION_FLAG: &'static str = "RPC_SHARD_INVITATION_FLAG__@@";
+	/// The RPC flag to add a remote node to the shard network.
+	pub const SHARD_RPC_INVITATION_FLAG: &'static str = "SHARD_RPC_INVITATION_FLAG__@@";
 
-	/// The sharding gossip flag to indicate that a node has joined a shard network
+	/// The sharding gossip flag to indicate that a node has joined a shard network.
 	pub const SHARD_GOSSIP_JOIN_FLAG: &'static str = "SHARD_GOSSIP_JOIN_FLAG__@@";
 
-	/// The sharding gossip flag to indicate that a node has exited a shard network
+	/// The sharding gossip flag to indicate that a node has exited a shard network.
 	pub const SHARD_GOSSIP_EXIT_FLAG: &'static str = "SHARD_GOSSIP_EXIT_FLAG__@@";
+
+	/// The RPC flag to request a data from a node in a logical shard.
+	pub const SHARD_RPC_REQUEST_FLAG: &'static str = "SHARD_RPC_REQUEST_FLAG__@@";
 
 	/// The delimeter between the data fields of an entry in a dataset requested by a replica peer.
 	pub const FIELD_DELIMITER: &'static str = "_@_";
@@ -1937,7 +1947,7 @@ impl Core {
 																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: requested_msgs });
 																	}
 																	// It is a request to join a shard network
-																	Core::RPC_SHARD_INVITATION_FLAG => {
+																	Core::SHARD_RPC_INVITATION_FLAG => {
 																		// Attempt to decode the sharding network id
 																		if let Ok(network_id) = String::from_utf8(data[1].clone()) {
 																			// Join the shard (gossip) network
@@ -1966,6 +1976,13 @@ impl Core {
 																		let shard_id = String::from_utf8_lossy(&data[1]).to_string();
 																		// Handle incoming shard data
 																		network_core.handle_incoming_shard_data(shard_id, data[2..].into()).await;
+																	}
+																	// It is an incmoing request to ask for data on this node because it is a member of a logical shard
+																	Core::SHARD_RPC_REQUEST_FLAG => {
+																		// Pass request data to configured shard request handler
+																		let response_data = (network_info.sharding.config.callback)(data[1..].into());
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
 																	}
 																	// Normal RPC
 																	_ => {

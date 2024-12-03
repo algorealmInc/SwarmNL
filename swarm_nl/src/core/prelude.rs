@@ -191,6 +191,8 @@ pub enum NetworkError {
 	DataForwardingError,
 	#[error("failed to shard data")]
 	ShardingFailureError,
+	#[error("failed to fetch sharded data")]
+	ShardingFetchError,
 }
 
 /// A simple struct used to track requests sent from the application layer to the network layer.
@@ -637,14 +639,24 @@ pub mod ping_config {
 pub mod shard_cfg {
 	use super::*;
 	use async_trait::async_trait;
+	use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
 	/// Important data for the operation of the sharding protocol.
-	#[derive(Debug, Clone, Default)]
+	#[derive(Debug, Clone)]
 	pub struct ShardingInfo {
 		/// The id of the entire sharding network.
 		pub id: String,
+		/// Shard configuration.
+		pub config: ShardingCfg,
 		/// The shards and the various nodes they contain.
 		pub state: Arc<Mutex<HashMap<ShardId, Vec<PeerId>>>>,
+	}
+
+	/// Important config for the operation of the sharding protocol.
+	#[derive(Debug, Clone)]
+	pub struct ShardingCfg {
+		/// Callback to handle explicit network requests.
+		pub callback: fn(RpcData) -> RpcData,
 	}
 
 	/// Trait that specifies sharding logic and behaviour of shards.
@@ -678,7 +690,7 @@ pub mod shard_cfg {
 			if peer != core.peer_id() {
 				// Prepare the message to invite the peer to the shard gossip network.
 				let mut message = vec![
-					Core::RPC_SHARD_INVITATION_FLAG.as_bytes().to_vec(), /* Flag to join shard
+					Core::SHARD_RPC_INVITATION_FLAG.as_bytes().to_vec(), /* Flag to join shard
 					                                                      * network. */
 					shard_network_id.clone(),          // Shard (gossip) network ID.
 					shard_id.to_string().into_bytes(), // Shard ID.
@@ -805,7 +817,7 @@ pub mod shard_cfg {
 			};
 
 			// If no nodes exist for the shard, return an error.
-			let nodes = match nodes {
+			let mut nodes = match nodes {
 				Some(nodes) => nodes,
 				None => return Err(NetworkError::ShardingFailureError),
 			};
@@ -825,6 +837,10 @@ pub mod shard_cfg {
 			];
 			message.extend(data); // Append the data payload.
 
+			// Shuffle nodes so their order of query is randomized
+			let mut rng = StdRng::from_entropy();
+			nodes.shuffle(&mut rng);
+
 			// Attempt to forward the data to peers.
 			for peer in nodes {
 				let rpc_request = AppData::FetchData {
@@ -843,8 +859,65 @@ pub mod shard_cfg {
 		}
 
 		/// Fetch data from the shard network
-		async fn fetch(&self, core: Core, key: &Self::Key) {
-			
+		async fn fetch(
+			&self,
+			mut core: Core,
+			key: &Self::Key,
+			mut data: ByteVector
+		) -> NetworkResult<Option<ByteVector>> {
+			// Locate the shard that would store the key.
+			let shard_id = match self.locate_shard(key) {
+				Some(shard_id) => shard_id,
+				None => return Err(NetworkError::ShardingFailureError),
+			};
+
+			// Retrieve the nodes in the logical shard.
+			let nodes = {
+				let shard_state = core.network_info.sharding.state.lock().await;
+				shard_state.get(&shard_id.to_string()).cloned()
+			};
+
+			// If no nodes exist for the shard, return an error.
+			let mut nodes = match nodes {
+				Some(nodes) => nodes,
+				None => return Err(NetworkError::ShardingFetchError),
+			};
+
+			// Check if the current node is part of the shard.
+			if nodes.contains(&core.peer_id()) {
+				// Return `None`
+				return Ok(None);
+			}
+
+			// SHuffle the peers.
+			let mut rng = StdRng::from_entropy();
+			nodes.shuffle(&mut rng);
+
+			// Prepare an RPC to ask for the data from nodes in the shard.
+			let mut message = vec![
+				Core::SHARD_RPC_REQUEST_FLAG.as_bytes().to_vec(), /* Flag to indicate shard data
+				                                                   * request */
+			];
+
+			message.append(&mut data);
+
+			// Attempt to forward the data to peers.
+			for peer in nodes {
+				let rpc_request = AppData::FetchData {
+					keys: message.clone(),
+					peer: peer.clone(),
+				};
+
+				// Query the network and return the response on the first successful response.
+				if let Ok(response) = core.query_network(rpc_request).await {
+					if let AppResponse::FetchData(data) = response {
+						return Ok(Some(data));
+					}
+				}
+			}
+
+			// Fetch Failed
+			Err(NetworkError::ShardingFetchError)
 		}
 	}
 }
