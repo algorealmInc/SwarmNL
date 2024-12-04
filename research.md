@@ -60,4 +60,28 @@ In the **Eventual Consistency** model, replicated data is immediately stored in 
 
 In the eventual consistency model, the application layer operates with the expectation that data becomes consistent over time, even if it has been consumed from the buffer.
 
-The node exposes some functions that 
+## **Scaling**
+
+Scaling the network is primarily achieved through **replication** and **sharding**. Replication has already been discussed in the context of fault tolerance. Scaling enables improved read and write performance by partitioning the network into logical `shards`, each responsible for a subset of the data. A `shard` may span multiple nodes, and each shard manages its own data storage and operations.
+
+### **Sharding in SwarmNL**
+
+SwarmNL provides a trait called `Sharding` to implement sharding. To maintain flexibility and configurability, developers are required to implement the `locate_shard()` function within the trait. This function maps a key or data item to a logical shard, allowing developers to define sharding strategies tailored to their application's needs.
+
+The `Sharding` trait also includes generic functions for:
+
+- Adding nodes to a shard.
+- Joining or exiting a shard.
+- Fetching data over the network.
+- Storing data in the appropriate shard.
+- **Data forwarding**, explained below.
+
+### **Data Forwarding**
+
+Data forwarding occurs when a node receives data it is not configured to store or process due to the shard's configuration. In such cases, the node identifies the appropriate shard and forwards the data to the corresponding nodes within that shard.
+
+### **Shards and Replication**
+
+All nodes within a shard act as replicas of each other and synchronize their data based on the consistency model configured during replication setup. This tight integration between sharding and replication ensures that the data within each shard is reliable and consistent, as defined by the application's requirements.
+
+By combining replication and sharding, SwarmNL offers a scalable and fault-tolerant framework for managing decentralized networks while giving developers the freedom to design shard configurations that align with their use case.
