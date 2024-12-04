@@ -516,16 +516,12 @@ pub enum NetworkEvent {
 		/// Sender PeerId
 		source: PeerId,
 	},
-	/// Event that announces the arrival of a sharded data content
+	/// Event that announces the arrival of a forwarded sharded data
 	///
 	/// # Fields
 	///
 	/// - `data`: The data contained in the gossip message.
-	/// - `outgoing_timestamp`: The time the message left the source
-	/// - `outgoing_timestamp`: The time the message was recieved
-	/// - `message_id`: The unique id of the message
-	/// - `source`: The `PeerId` of the source peer.
-	ShardDataIncoming {
+	IncomingForwardedData {
 		/// Data
 		data: StringVector,
 		// Sender PeerId

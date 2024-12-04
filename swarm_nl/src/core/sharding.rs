@@ -155,6 +155,20 @@ where
 		// Gossip data to replica nodes
 		let _ = core.query_network(gossip_request).await?;
 
+		// Check if we're in any shard
+		let shard_state = core.network_info.sharding.state.lock().await;
+		if !shard_state
+			.iter()
+			.any(|(_, peers)| peers.contains(&core.peer_id()))
+		{
+			// Release `core`
+			drop(shard_state);
+
+			// Leave the underlying sharding (gossip) network
+			let gossip_request = AppData::GossipsubJoinNetwork(shard_id.to_string());
+			core.query_network(gossip_request).await?;
+		}
+
 		Ok(())
 	}
 
@@ -312,7 +326,10 @@ mod tests {
 
 			// Check the initial state
 			let shard_state = state.lock().await;
-			assert!(shard_state.contains_key(&shard_id), "Shard ID should exist in the state");
+			assert!(
+				shard_state.contains_key(&shard_id),
+				"Shard ID should exist in the state"
+			);
 			assert!(
 				shard_state.get(&shard_id).unwrap().is_empty(),
 				"Shard state for shard-1 should be empty"

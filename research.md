@@ -60,6 +60,4 @@ In the **Eventual Consistency** model, replicated data is immediately stored in 
 
 In the eventual consistency model, the application layer operates with the expectation that data becomes consistent over time, even if it has been consumed from the buffer.
 
----
-
-By supporting both strong and eventual consistency, SwarmNL provides flexibility for developers to balance consistency guarantees with system performance based on their application's needs.
+The node exposes some functions that 

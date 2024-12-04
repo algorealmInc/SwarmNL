@@ -1230,7 +1230,7 @@ impl Core {
 	async fn handle_incoming_shard_data(&mut self, shard_id: String, incoming_data: ByteVector) {
 		// Push into event queue
 		self.event_queue
-			.push(NetworkEvent::ShardDataIncoming {
+			.push(NetworkEvent::IncomingForwardedData {
 				data: byte_vec_to_string_vec(incoming_data.clone()),
 			})
 			.await;
