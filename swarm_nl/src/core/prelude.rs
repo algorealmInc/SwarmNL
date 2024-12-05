@@ -183,6 +183,8 @@ pub enum NetworkError {
 	GossipsubBroadcastMessageError,
 	#[error("failed to join a mesh network")]
 	GossipsubJoinNetworkError,
+	#[error("failed to exit a mesh network")]
+	GossipsubExitNetworkError,
 	#[error("internal stream failed to transport data")]
 	InternalStreamError,
 	#[error("replica network not found")]

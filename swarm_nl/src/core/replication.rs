@@ -61,7 +61,7 @@ pub enum ReplNetworkConfig {
 	///   data in the buffer.
 	/// - `consistency_model`: The data consistency model to be supported by the node. This must be
 	///   uniform across all nodes to prevent undefined behaviour.
-	/// - `data_wait_period`: When data has arrived and is saved into the buffer, the time to wait
+	/// - `data_aging_period`: When data has arrived and is saved into the buffer, the time to wait
 	///   for it to get to other peers after which it can be picked for synchronization.
 	Custom {
 		queue_length: u64,
@@ -292,6 +292,8 @@ impl ReplicaBufferQueue {
 						// Insert data into queue. Confirmation count is already 1
 						temp_queue.insert(data.message_id.clone(), data);
 
+						println!("{:#?}", temp_queue);
+
 						// Start strong consistency synchronization algorithm:
 						// Broadcast just recieved message to peers to increase the
 						// confirmation. It is just the message ID that will be broadcast
@@ -308,7 +310,9 @@ impl ReplicaBufferQueue {
 						};
 
 						// Gossip data to replica nodes
-						let _ = core.query_network(gossip_request).await;
+						if let Err(e) = core.query_network(gossip_request).await {
+							println!("Error: {}", e.to_string());
+						}
 					},
 				}
 			},
@@ -369,6 +373,7 @@ impl ReplicaBufferQueue {
 			if let Some(temp_queue) = temporary_queue.get_mut(&replica_network) {
 				if let Some(data_entry) = temp_queue.get_mut(&message_id) {
 					// Increment confirmation count
+					println!("confirmations >> {:?}", data_entry.confirmations);
 					data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
 					// Check if confirmations meet required peers
 					flag = peers_count != 0 && data_entry.confirmations == Some(peers_count);
@@ -377,6 +382,7 @@ impl ReplicaBufferQueue {
 
 			flag
 		};
+		println!("Here <><>");
 
 		// If fully confirmed, move data to the public queue
 		if is_fully_confirmed {

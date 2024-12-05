@@ -1,38 +1,32 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! This example models a distributed network and is a rough sketch to help in determining concrete
-//! features to be built
+//! This example demonstrates the replication configurations and operations offered by SwarmNL. Here
+//! we are spinning up three replica nodes that accept data from standard input and then immedately
+//! replicates the data accross its replica peers.. We will make us of both eventual and string
+//! consistency. We use conditional compilation to run the example with different consistency
+//! models.
 
-use std::{
-	collections::HashMap,
-	io::{self, Write},
-	time::Duration,
-};
+use std::{collections::HashMap, io, time::Duration};
 
 use swarm_nl::{
-	core::{gossipsub_cfg::GossipsubConfig, Core, CoreBuilder, NetworkEvent, RpcConfig},
+	core::{
+		gossipsub_cfg::GossipsubConfig,
+		replication::{ConsensusModel, ConsistencyModel, ReplConfigData, ReplNetworkConfig},
+		Core, CoreBuilder, NetworkEvent, RpcConfig
+	},
 	setup::BootstrapConfig,
-	Keypair, MessageId, PeerId, Port, ReplConfigData,
+	Keypair, MessageId, MultiaddrString, PeerId, PeerIdString, Port,
 };
 
-/// The id of the gossip mesh network
-pub const GOSSIP_NETWORK: &str = "random";
-
-/// The name/key of the replication network
-pub const REPLICA_NETWORK_KEY: &str = "@@___REPLICA";
-
-/// Amount of time to wait for proper sync
-pub const WAIT_TIME: u64 = 3;
+/// The constant that represents the id of the replica network. Should be kept as a secret
+pub const REPL_NETWORK_ID: &'static str = "replica_xx";
+/// The time to wait for events, if necessary
+pub const WAIT_TIME: u64 = 2;
 
 /// Handle incoming RPC
 fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
-	// Return verbatim
+	// Just return incomding data
 	data
-}
-
-// Handle incoming replication data
-fn repl_msg_handler(data: &Vec<String>) {
-	println!("Incoming >> {:?}", data);
 }
 
 /// Handle gissiping
@@ -46,11 +40,11 @@ fn gossipsub_filter_fn(
 	true
 }
 
-/// Create a deterministic node
-async fn setup_node_1(
+// Create a detereministic node that will serve as the coordinator
+async fn setup_coordinator(
 	ports: (Port, Port),
 	deterministic_protobuf: &[u8],
-	repl_cfg: ReplConfigData,
+	repl_nodes: HashMap<PeerIdString, MultiaddrString>,
 ) -> Core {
 	// Configure the node deterministically so we can connect to it
 	let mut protobuf = &mut deterministic_protobuf.to_owned()[..];
@@ -59,57 +53,85 @@ async fn setup_node_1(
 		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
 		.with_tcp(ports.0)
 		.with_udp(ports.1)
-		// Configure replication data
-		.with_replication(repl_cfg);
+		// configure replica nodes
+		.with_replication(
+			REPL_NETWORK_ID.to_string(),
+			ReplConfigData {
+				lamport_clock: 1,
+				nodes: repl_nodes,
+			},
+		);
 
 	// Set up network
-	let builder = CoreBuilder::with_config(config)
-		.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
-		// .with_replication(REPLICA_NETWORK_KEY.to_string(), repl_msg_handler);
+	let mut builder = CoreBuilder::with_config(config);
+
+	// Configure RPC handling
+	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
 
 	// Configure gossipsub
 	// Specify the gossip filter algorithm
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
 
-	// Finish build
-	builder.build().await.unwrap()
+	// Configure node for replication, we will be using a strong consistency model here
+	let repl_config = ReplNetworkConfig::Custom {
+		queue_length: 150,
+		expiry_time: Some(10),
+		sync_wait_time: 5,
+		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		data_aging_period: 2,
+	};
+
+	builder.with_replication(repl_config).build().await.unwrap()
 }
 
-/// Create a detereministic node
-async fn setup_node(ports: (Port, Port), deterministic_protobuf: &[u8]) -> Core {
+// Create a determininstic node
+async fn setup_node(
+	ports: (Port, Port),
+	deterministic_protobuf: &[u8],
+	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+) -> Core {
 	// Configure the node deterministically so we can connect to it
 	let mut protobuf = &mut deterministic_protobuf.to_owned()[..];
 
 	let config = BootstrapConfig::default()
 		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
 		.with_tcp(ports.0)
-		.with_udp(ports.1);
+		.with_udp(ports.1)
+		// configure bootnodes, so we can connect to our sister nodes
+		.with_bootnodes(boot_nodes);
 
 	// Set up network
-	let builder = CoreBuilder::with_config(config)
-		// Configure RPC handling
-		.with_rpc(RpcConfig::Default, rpc_incoming_message_handler)
-		// Configure replication handler
-		.with_replication(REPLICA_NETWORK_KEY.to_string(), repl_msg_handler);
+	let mut builder = CoreBuilder::with_config(config);
+
+	// Configure RPC handling
+	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
 
 	// Configure gossipsub
 	// Specify the gossip filter algorithm
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
 
-	// Finish build
-	builder.build().await.unwrap()
+	// Configure node for replication, we will be using a strong consistency model here
+	let repl_config = ReplNetworkConfig::Custom {
+		queue_length: 150,
+		expiry_time: Some(10),
+		sync_wait_time: 5,
+		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		data_aging_period: 2,
+	};
+
+	builder.with_replication(repl_config).build().await.unwrap()
 }
 
 // #[cfg(feature = "first-node")]
 async fn run_node(
+	name: &str,
 	ports_1: (Port, Port),
 	ports_2: (Port, Port),
 	ports_3: (Port, Port),
 	peer_ids: (PeerId, PeerId),
 	keypair: [u8; 68],
-	node_1: bool,
 ) {
 	// Bootnodes
 	let mut bootnodes = HashMap::new();
@@ -118,25 +140,21 @@ async fn run_node(
 		format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 	);
 
-	// bootnodes.insert(
-	// 	peer_ids.1.to_base58(),
-	// 	format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
-	// );
+	bootnodes.insert(
+		peer_ids.1.to_base58(),
+		format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
+	);
 
-	// Configure replication
-	let mut repl_cfg = HashMap::new();
-	repl_cfg.insert(String::from(REPLICA_NETWORK_KEY), bootnodes.clone());
+	// Setup node 1 and try to connect to node 2 and 3
 
-	let mut node = if node_1 {
-		setup_node_1(ports_1, &keypair[..], vec![repl_cfg]).await
+	let mut node = if name.contains("1") {
+		setup_coordinator(ports_1, &keypair[..], bootnodes).await
 	} else {
-		setup_node(ports_1, &keypair[..]).await
+		setup_node(ports_1, &keypair[..], bootnodes).await
 	};
 
 	// Wait a little for setup and connections
 	tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
-
-	println!("{:?}", node.next_event().await);
 
 	// Read events generated at setup
 	while let Some(event) = node.next_event().await {
@@ -163,33 +181,62 @@ async fn run_node(
 		}
 	}
 
-	loop {
-		// Create a buffer to store the input
-		let mut input = String::new();
+	// Spin up a task to listen for replication events and handle replication
+	let new_node = node.clone();
+	tokio::task::spawn(async move {
+		let mut node = new_node.clone();
+		loop {
+			if let Some(event) = node.next_event().await {
+				// Check for only incoming repl data
+				if let NetworkEvent::ReplicaDataIncoming { source, .. } = event {
+					println!("Recieved incoming replica data from {}", source.to_base58());
 
-		// Prompt the user for input
-		print!("Enter some text (type 'exit' to quit): ");
-		io::stdout().flush().unwrap(); // Flush to ensure the prompt is displayed
-
-		// Read from stdin
-		match io::stdin().read_line(&mut input) {
-			Ok(_) => {
-				let trimmed_input = input.trim(); // Trim the input to remove newline characters
-
-				// Check if the user wants to exit
-				if trimmed_input.eq_ignore_ascii_case("exit") {
-					println!("Exiting program. Goodbye!");
-					break;
+					// Then try to read the data from the buffer. Since we are using a strong
+					// consistency model, we will not be able to read anything unless the
+					// confirmations are complete
+					if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
+						println!(
+							"Data removed from buffer: {} ({} confirmations)",
+							repl_data.data[0],
+							repl_data.confirmations.unwrap()
+						);
+					} else {
+						println!("Confirmations not complete, hence the buffer is empty");
+					}
 				}
+			}
 
-				// Replicate accross replica network
-				node.replicate(vec![trimmed_input.clone().into()], REPLICA_NETWORK_KEY)
-					.await;
-			},
-			Err(e) => {
-				// Handle errors if any
-				eprintln!("Failed to read input: {}", e);
-			},
+			// Sleep
+			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+		}
+	});
+
+	// Wait for some time for replication protocol intitialization across the network
+	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
+
+	// Read input from standard input and then replicate it to peers
+	let stdin = io::stdin();
+	loop {
+		print!("Enter some input: ");
+		io::Write::flush(&mut io::stdout()).unwrap(); // Ensure the prompt is displayed immediately
+
+		let mut input = String::new();
+		stdin.read_line(&mut input).unwrap();
+		let trimmed_input = input.trim();
+
+		if trimmed_input == "exit" {
+			break;
+		}
+
+		println!("Replicating...");
+
+		// Replicate input
+		match node
+			.replicate(vec![trimmed_input.into()], REPL_NETWORK_ID)
+			.await
+		{
+			Ok(_) => println!("Replication successful"),
+			Err(e) => println!("Replication failed: {}", e.to_string()),
 		}
 	}
 }
@@ -237,58 +284,49 @@ async fn main() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (49152, 55003);
+	let ports_1: (Port, Port) = (49555, 55003);
 	let ports_2: (Port, Port) = (49153, 55001);
 	let ports_3: (Port, Port) = (49154, 55002);
 
-	// Spin up first server
-	#[cfg(feature = "first-node")]
+	// Spin up the coordinator node
+	#[cfg(feature = "third-node")]
 	{
 		run_node(
+			"Node 1",
 			ports_1,
 			ports_2,
 			ports_3,
 			(peer_id_2, peer_id_3),
 			node_1_keypair,
-			true,
 		)
 		.await;
 	}
 
-	// Spin up second server
+	// Spin up second node
 	#[cfg(feature = "second-node")]
 	{
 		run_node(
+			"Node 2",
 			ports_2,
 			ports_1,
 			ports_3,
 			(peer_id_1, peer_id_3),
 			node_2_keypair,
-			false,
 		)
 		.await;
 	}
 
-	// Spin up third server
-	#[cfg(feature = "third-node")]
+	// Spin up third node
+	#[cfg(feature = "first-node")]
 	{
 		run_node(
+			"Node 3",
 			ports_3,
 			ports_1,
 			ports_2,
 			(peer_id_1, peer_id_2),
 			node_3_keypair,
-			false,
 		)
 		.await;
-	}
-
-	// Spin up client
-	#[cfg(feature = "client")]
-	{
-		// Initialize client
-		let file_name = "client/file.txt";
-		// Run
-		util::run_client(file_name, http_ports).await;
 	}
 }
