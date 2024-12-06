@@ -1,6 +1,6 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! This example demonstrates the replication of data accross nodes in a network using the strong consistency synchronization model. Here
+//! This example demonstrates the replication of data accross nodes in a network using the strong eventual synchronization model. Here
 //! we are spinning up three replica nodes that accept data from standard input and then immedately
 //! replicates the data accross its replica peers.. 
 
@@ -68,7 +68,7 @@ async fn setup_coordinator(
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		consistency_model: ConsistencyModel::Eventual,
 		data_aging_period: 2,
 	};
 

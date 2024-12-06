@@ -40,43 +40,6 @@ fn gossipsub_filter_fn(
 	true
 }
 
-// Create a detereministic node that will serve as the coordinator
-async fn setup_coordinator(
-	ports: (Port, Port),
-	deterministic_protobuf: &[u8],
-	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
-) -> Core {
-	// Configure the node deterministically so we can connect to it
-	let mut protobuf = &mut deterministic_protobuf.to_owned()[..];
-
-	let config = BootstrapConfig::default()
-		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
-		.with_tcp(ports.0)
-		.with_udp(ports.1);
-
-	// Set up network
-	let mut builder = CoreBuilder::with_config(config);
-
-	// Configure RPC handling
-	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
-
-	// Configure gossipsub
-	// Specify the gossip filter algorithm
-	let filter_fn = gossipsub_filter_fn;
-	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
-
-	// Configure node for replication, we will be using a strong consistency model here
-	let repl_config = ReplNetworkConfig::Custom {
-		queue_length: 150,
-		expiry_time: Some(10),
-		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
-		data_aging_period: 2,
-	};
-
-	builder.with_replication(repl_config).build().await.unwrap()
-}
-
 // Create a determininstic node
 async fn setup_node(
 	ports: (Port, Port),
@@ -138,12 +101,7 @@ async fn run_node(
 	);
 
 	// Setup node 1 and try to connect to node 2 and 3
-
-	let mut node = if name.contains("1") {
-		setup_coordinator(ports_1, &keypair[..], bootnodes).await
-	} else {
-		setup_node(ports_1, &keypair[..], bootnodes).await
-	};
+	setup_node(ports_1, &keypair[..], bootnodes).await
 
 	// Join replica network
 	println!("Joining replication network");
