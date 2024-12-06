@@ -192,7 +192,9 @@ impl ReplicaBufferQueue {
 
 					// Identify expired items and collect them for removal
 					for entry in queue.iter() {
-						if current_time.saturating_sub(entry.outgoing_timestamp) >= Self::EXPIRY_TIME {
+						if current_time.saturating_sub(entry.outgoing_timestamp)
+							>= Self::EXPIRY_TIME
+						{
 							expired_items.push(entry.clone());
 						}
 					}
@@ -246,7 +248,9 @@ impl ReplicaBufferQueue {
 
 								// Identify expired items and collect them for removal
 								for entry in queue.iter() {
-									if current_time.saturating_sub(entry.outgoing_timestamp) >= expiry_time {
+									if current_time.saturating_sub(entry.outgoing_timestamp)
+										>= expiry_time
+									{
 										expired_items.push(entry.clone());
 									}
 								}
@@ -286,32 +290,55 @@ impl ReplicaBufferQueue {
 							}
 						}
 
-						// Get message ID
-						let message_id = data.message_id.clone();
+						// Check whether we are 1 of 2 members of the replica network.
+						// Send a request to swarm
+						let request = AppData::GossipsubGetInfo;
 
-						// Insert data into queue. Confirmation count is already 1
-						temp_queue.insert(data.message_id.clone(), data);
+						let mut replica_peers = 0;
+						if let Ok(response) = core.query_network(request).await {
+							if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = response {
+								if mesh_peers
+									.iter()
+									.all(|(_, networks)| networks.contains(&replica_network))
+								{
+									replica_peers += 1;
+								}
+							}
+						}
 
-						println!("{:#?}", temp_queue);
+						println!("NUmber of peers: {}", replica_peers);
 
-						// Start strong consistency synchronization algorithm:
-						// Broadcast just recieved message to peers to increase the
-						// confirmation. It is just the message ID that will be broadcast
-						let message = vec![
-							Core::STRONG_CONSISTENCY_FLAG.as_bytes().to_vec(), /* Strong Consistency Sync Gossip Flag */
-							replica_network.clone().into(),                    /* Replica network */
-							message_id.as_bytes().into(),                      /* Message id */
-						];
+						// Put into the primary public buffer directly
+						if replica_peers == 1 {
+							let mut queue = self.queue.lock().await;
+							let entry = queue.entry(data.message_id.clone()).or_default();
 
-						// Prepare a gossip request
-						let gossip_request = AppData::GossipsubBroadcastMessage {
-							topic: replica_network.into(),
-							message,
-						};
+							// Insert into queue
+							entry.insert(data);
+						} else {
+							// Get message ID
+							let message_id = data.message_id.clone();
 
-						// Gossip data to replica nodes
-						if let Err(e) = core.query_network(gossip_request).await {
-							println!("Error: {}", e.to_string());
+							// Insert data into queue. Confirmation count is already 1
+							temp_queue.insert(data.message_id.clone(), data);
+
+							// Start strong consistency synchronization algorithm:
+							// Broadcast just recieved message to peers to increase the
+							// confirmation. It is just the message ID that will be broadcast
+							let message = vec![
+								Core::STRONG_CONSISTENCY_FLAG.as_bytes().to_vec(), /* Strong Consistency Sync Gossip Flag */
+								replica_network.clone().into(),                    /* Replica network */
+								message_id.as_bytes().into(),                      /* Message id */
+							];
+
+							// Prepare a gossip request
+							let gossip_request = AppData::GossipsubBroadcastMessage {
+								topic: replica_network.into(),
+								message,
+							};
+
+							// Gossip data to replica nodes
+							let _ = core.query_network(gossip_request).await;
 						}
 					},
 				}
@@ -405,8 +432,9 @@ impl ReplicaBufferQueue {
 
 				// Remove expired items
 				if let Some(expiry_time) = expiry_time {
-					public_queue
-						.retain(|entry| current_time.saturating_sub(entry.outgoing_timestamp) < expiry_time);
+					public_queue.retain(|entry| {
+						current_time.saturating_sub(entry.outgoing_timestamp) < expiry_time
+					});
 				}
 
 				// Remove oldest items if queue exceeds capacity
@@ -455,7 +483,8 @@ impl ReplicaBufferQueue {
 				let local_data = local_data_state
 					.iter()
 					.filter(|&d| {
-						util::get_unix_timestamp().saturating_sub(d.incoming_timestamp) > data_aging_time
+						util::get_unix_timestamp().saturating_sub(d.incoming_timestamp)
+							> data_aging_time
 					})
 					.cloned()
 					.collect::<BTreeSet<_>>();
@@ -793,7 +822,7 @@ mod tests {
 			let network = setup_node((CUSTOM_TCP_PORT, CUSTOM_UDP_PORT)).await;
 			let buffer = ReplicaBufferQueue::new(config);
 
-            // Fill up buffer
+			// Fill up buffer
 			for clock in 1..5 {
 				let data = ReplBufferData {
 					data: vec!["Data 1".into()],
@@ -815,8 +844,8 @@ mod tests {
 
 			tokio::time::sleep(std::time::Duration::from_secs(expiry_period)).await; // Wait for expiry
 
-            // Buffer length should be 3 now
-            assert_eq!(buffer.queue.lock().await.get("network1").unwrap().len(), 3);
+			// Buffer length should be 3 now
+			assert_eq!(buffer.queue.lock().await.get("network1").unwrap().len(), 3);
 
 			// Fill up buffer
 			buffer
@@ -835,8 +864,8 @@ mod tests {
 				)
 				.await;
 
-                // Verify buffer length is now 4
-                assert_eq!(buffer.queue.lock().await.get("network1").unwrap().len(), 4);
+			// Verify buffer length is now 4
+			assert_eq!(buffer.queue.lock().await.get("network1").unwrap().len(), 4);
 
 			// Overflow buffer
 			buffer
@@ -855,7 +884,7 @@ mod tests {
 				)
 				.await;
 
-            // We expect that 6 is the first element and 42 is the second as they have not aged out
+			// We expect that 6 is the first element and 42 is the second as they have not aged out
 			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 6);
 			assert_eq!(
 				buffer.pop_front("network1").await.unwrap().lamport_clock,

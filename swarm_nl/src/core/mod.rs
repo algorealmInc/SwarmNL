@@ -1158,6 +1158,7 @@ impl Core {
 									keys: vec![
 										Core::REPL_CFG_FLAG.to_owned().into(),
 										repl_network.clone().into(),
+										
 									],
 									peer: peer_id,
 								};
