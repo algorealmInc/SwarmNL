@@ -7,7 +7,6 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::core::gossipsub_cfg::Blacklist;
-use crate::core::replication::ReplConfigData;
 pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
 
@@ -27,8 +26,6 @@ pub struct BootstrapConfig {
 	boot_nodes: Nodes,
 	/// Blacklisted peers
 	blacklist: Blacklist,
-	/// Configuration data for replication
-	replication_cfg: Rc<HashMap<String, ReplConfigData>>,
 }
 
 impl BootstrapConfig {
@@ -56,8 +53,6 @@ impl BootstrapConfig {
 			boot_nodes: Default::default(),
 			// List of blacklisted peers
 			blacklist: Default::default(),
-			// List containing nodes for replication
-			replication_cfg: Default::default(),
 		}
 	}
 
@@ -94,26 +89,6 @@ impl BootstrapConfig {
 			BootstrapConfig { udp_port, ..self }
 		} else {
 			self
-		}
-	}
-
-	/// Configure nodes for replication and add them to bootnodes for connection initiation.
-	pub fn with_replication(mut self, repl_network_key: String, repl_data: ReplConfigData) -> Self {
-		// A connection request must be sent to the replica nodes on startup, so we will add it to
-		// our list of bootnodes
-		let mut bootnodes = HashMap::new();
-		bootnodes.extend(repl_data.nodes.clone().into_iter());
-
-		// Update self
-		self = self.with_bootnodes(bootnodes);
-
-		// Set up replica network config
-		let mut repl_network_data = HashMap::new();
-		repl_network_data.insert(repl_network_key, repl_data);
-
-		Self {
-			replication_cfg: Rc::new(repl_network_data),
-			..self
 		}
 	}
 
@@ -206,11 +181,6 @@ impl BootstrapConfig {
 	/// Return the 	`PeerId`'s of nodes that are to be blacklisted.
 	pub fn blacklist(&self) -> Blacklist {
 		self.blacklist.clone()
-	}
-
-	/// Return the configuration data for replication
-	pub fn repl_cfg(&self) -> Rc<HashMap<String, ReplConfigData>> {
-		self.replication_cfg.clone()
 	}
 }
 

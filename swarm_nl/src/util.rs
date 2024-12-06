@@ -74,27 +74,12 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			Default::default()
 		};
 
-		// Now, read replication config data if any
-		let replica_network_data = if let Some(section) = config.section(Some("repl")) {
-			// Get the configured replica nodes
-			parse_replication_data(section.get("replica_nodes").unwrap_or_default())
-		} else {
-			Default::default()
-		};
-
-		let mut bootstrap_data = BootstrapConfig::new()
+		Ok(BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type, &mut serialized_keypair)
 			.with_bootnodes(boot_nodes)
 			.with_blacklist(blacklist)
 			.with_tcp(tcp_port)
-			.with_udp(udp_port);
-
-		// Loop to configure replication data if any
-		for (network_key, repl_data) in replica_network_data {
-			bootstrap_data = bootstrap_data.with_replication(network_key, repl_data);
-		}
-
-		Ok(bootstrap_data)
+			.with_udp(udp_port))
 	} else {
 		// Return error
 		Err(SwarmNlError::BoostrapFileReadError(file_path.to_owned()))

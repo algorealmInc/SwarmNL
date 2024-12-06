@@ -1,15 +1,17 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! This example demonstrates the replication of data accross nodes in a network using the strong consistency synchronization model. Here
+//! This example demonstrates the replication configurations and operations offered by SwarmNL. Here
 //! we are spinning up three replica nodes that accept data from standard input and then immedately
-//! replicates the data accross its replica peers.. 
+//! replicates the data accross its replica peers.. We will make us of both eventual and string
+//! consistency. We use conditional compilation to run the example with different consistency
+//! models.
 
 use std::{collections::HashMap, io, time::Duration};
 
 use swarm_nl::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
-		replication::{ConsensusModel, ConsistencyModel, ReplNetworkConfig},
+		replication::{ConsensusModel, ConsistencyModel, ReplConfigData, ReplNetworkConfig},
 		Core, CoreBuilder, NetworkEvent, RpcConfig,
 	},
 	setup::BootstrapConfig,

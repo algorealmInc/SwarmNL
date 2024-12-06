@@ -22,7 +22,7 @@ use base58::FromBase58;
 
 use futures::{
 	channel::mpsc::{self, Receiver, Sender},
-	select, FutureExt, SinkExt, StreamExt,
+	select, SinkExt, StreamExt,
 };
 use libp2p::{
 	gossipsub::{self, IdentTopic, TopicHash},
@@ -156,7 +156,7 @@ pub struct CoreBuilder {
 		fn(PeerId, MessageId, Option<PeerId>, String, Vec<String>) -> bool,
 	),
 	/// The network data for replication operations
-	replication_cfg: (Rc<HashMap<String, ReplConfigData>>, ReplNetworkConfig),
+	replication_cfg: ReplNetworkConfig,
 	/// The name of the entire shard network. This is important for quick broadcasting of changes
 	/// in the shard network as a whole.
 	sharding: ShardingInfo,
@@ -232,7 +232,7 @@ impl CoreBuilder {
 			identify,
 			request_response: (request_response_behaviour, rpc_handler_fn),
 			gossipsub: (gossipsub_behaviour, gossip_filter_fn),
-			replication_cfg: (config.repl_cfg(), ReplNetworkConfig::Default),
+			replication_cfg: ReplNetworkConfig::Default,
 			// The default peers to be forwarded sharded data must be 25% of the total in a shard
 			sharding: ShardingInfo {
 				id: Default::default(),
@@ -305,7 +305,7 @@ impl CoreBuilder {
 
 	/// Configure the `Replication` protocol for the network.
 	pub fn with_replication(mut self, repl_cfg: ReplNetworkConfig) -> Self {
-		self.replication_cfg.1 = repl_cfg;
+		self.replication_cfg = repl_cfg;
 		CoreBuilder { ..self }
 	}
 
@@ -649,9 +649,8 @@ impl CoreBuilder {
 		};
 
 		// Set up Replication information
-		let repl_cfg = self.replication_cfg.0;
 		let repl_info = ReplInfo {
-			state: Arc::new(Mutex::new((*repl_cfg).clone())),
+			state: Arc::new(Mutex::new(Default::default())),
 		};
 
 		// Initials stream id
@@ -681,7 +680,7 @@ impl CoreBuilder {
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
 			// Initialize an empty event queue
 			event_queue: DataQueue::new(),
-			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.1.clone())),
+			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.clone())),
 			network_info,
 		};
 
@@ -707,18 +706,10 @@ impl CoreBuilder {
 			.await
 			.is_empty()
 		{
-			// Spin up task to handle replication per configured network
-			let core = network_core.clone();
-			#[cfg(feature = "async-std-runtime")]
-			async_std::task::spawn(async move { core.init_replication().await });
-
-			#[cfg(feature = "tokio-runtime")]
-			tokio::task::spawn(async move { core.init_replication().await });
-
 			// Now check whether the synchronization model is eventual consistency, if it is we need
 			// to spin up tasks that handle the synchronization per network
 			let core = network_core.clone();
-			match self.replication_cfg.1 {
+			match self.replication_cfg {
 				// Default consistency model is eventual
 				ReplNetworkConfig::Default => {
 					// Spin up task to ensure data consistency across the network
@@ -1082,109 +1073,6 @@ impl Core {
 
 			// Leave replica network
 			let _ = self.leave_repl_network(shard_id);
-		}
-	}
-
-	/// Initiate the replication protocol
-	async fn init_replication(&self) {
-		// On setup, we added the replica nodes to our list of bootstrap nodes, so we can
-		// assume they have been dialed and a connection has been established.
-
-		// For setting up the replication protocol, we first send an RPC to the replica nodes
-		// and specify the first element of the vector as "REPL_CFG_FLAG_@@". We then add the
-		// network key/name as the second argument. When the replica nodes recieve this, they then
-		// join the network using the key specified, so replication can take place.
-
-		// Join private replication network
-		let repl_data = self.network_info.replication.state.clone();
-
-		for (repl_network, repl_data) in repl_data.lock().await.iter() {
-			// Clone variables before moving them into a task
-			let repl_network = repl_network.to_owned();
-			let repl_data = repl_data.to_owned();
-			let mut core = self.clone();
-
-			// Spawn an task to join replica network and propel others to join as well
-			#[cfg(feature = "tokio-runtime")]
-			tokio::task::spawn(async move {
-				// Join private replication network
-				let gossip_request = AppData::GossipsubJoinNetwork(repl_network.clone());
-				if let Ok(_) = core.query_network(gossip_request).await {
-					for (peer_id_str, _) in repl_data.nodes.iter() {
-						// Parse the peer ID
-						match peer_id_str.parse::<PeerId>() {
-							Ok(peer_id) => {
-								// Prepare fetch request
-								let fetch_request = AppData::FetchData {
-									keys: vec![
-										Core::REPL_CFG_FLAG.to_owned().into(),
-										repl_network.clone().into(),
-									],
-									peer: peer_id,
-								};
-
-								// Send the fetch request
-								if let Err(e) = core.query_network(fetch_request).await {
-									eprintln!(
-										"Failed to query network for peer {}: {:?}",
-										peer_id_str, e
-									);
-								}
-							},
-							Err(_) => {
-								eprintln!(
-									"Failed to parse peer ID specified as replica node: {}",
-									peer_id_str
-								);
-							},
-						}
-					}
-				} else {
-					eprintln!("Failed to send gossip request for key: {}", repl_network);
-				}
-			});
-
-			#[cfg(feature = "async-std-runtime")]
-			async_std::task::spawn(async move {
-				// Join private replication network
-				let gossip_request = AppData::GossipsubJoinNetwork(repl_network.clone());
-				if let Ok(_) = core.query_network(gossip_request).await {
-					for (peer_id_str, _) in repl_data.nodes.iter() {
-						// Parse the peer ID
-						match peer_id_str.parse::<PeerId>() {
-							Ok(peer_id) => {
-								// Prepare fetch request
-								let fetch_request = AppData::FetchData {
-									keys: vec![
-										Core::REPL_CFG_FLAG.to_owned().into(),
-										repl_network.clone().into(),
-									],
-									peer: peer_id,
-								};
-
-								// Send the fetch request
-								if let Err(e) = core.query_network(fetch_request).await {
-									eprintln!(
-										"Failed to query network for peer {}: {:?}",
-										peer_id_str, e
-									);
-								}
-							},
-							Err(_) => {
-								eprintln!(
-									"Failed to parse peer ID specified as replica node: {}",
-									peer_id_str
-								);
-							},
-						}
-					}
-				} else {
-					eprintln!(
-						"Failed to send gossip request for network: {}",
-						repl_network
-					);
-				}
-			});
 		}
 	}
 
