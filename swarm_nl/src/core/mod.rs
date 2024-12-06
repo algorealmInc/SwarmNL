@@ -1158,7 +1158,6 @@ impl Core {
 									keys: vec![
 										Core::REPL_CFG_FLAG.to_owned().into(),
 										repl_network.clone().into(),
-										
 									],
 									peer: peer_id,
 								};
@@ -1205,8 +1204,6 @@ impl Core {
 			})
 			.await;
 
-		println!("{}", repl_network);
-
 		// Compare and increment the lamport's clock for the replica node
 		if let Some(repl_network_data) = self
 			.network_info
@@ -1225,8 +1222,6 @@ impl Core {
 			self.replica_buffer
 				.push(self.clone(), repl_network, repl_data)
 				.await;
-		} else {
-			println!("Not recognized");
 		}
 	}
 
@@ -1411,7 +1406,7 @@ impl Core {
 	///
 	/// Important information are sent to the application layer over a (mpsc) stream.
 	async fn handle_async_operations(
-		swarm: Swarm<CoreBehaviour>,
+		mut swarm: Swarm<CoreBehaviour>,
 		mut network_sender: Sender<StreamData>,
 		mut receiver: Receiver<StreamData>,
 		mut network_core: Core,
@@ -1422,42 +1417,29 @@ impl Core {
 		let data_queue_3 = DataQueue::new();
 		let data_queue_4 = DataQueue::new();
 
-		// Queues supporting the strong consistency algorithm, used to ask the network layer for the
-		// current number of nodes in a replica group
-		let (query_sender, mut query_reciever) = mpsc::channel::<String>(STREAM_BUFFER_CAPACITY);
-		let (mut result_sender, mut result_reciever) = mpsc::channel::<u64>(STREAM_BUFFER_CAPACITY);
-
 		// Network information
 		let mut network_info = network_core.network_info.clone();
-
-		// Wrap swarm in a mutex and reference counter to prevent blocking of the reciever channel
-		let swarm = Arc::new(Mutex::new(swarm));
 
 		// Loop to handle incoming application streams indefinitely
 		loop {
 			select! {
-				// Handle incoming stream data
-				stream_data = receiver.next() => {
-					match stream_data {
-						Some(incoming_data) => {
-							match incoming_data {
-								StreamData::FromApplication(stream_id, app_data) => {
-									let mut network_sender = network_sender.clone();
-									// Trackable stream id
-									let stream_id = stream_id;
-									match app_data {
-										// Put back into the stream what we read from it
-										AppData::Echo(message) => {
-											// Send the response back to the application layer
-											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Echo(message))).await;
-										},
-										AppData::DailPeer(peer_id, multiaddr) => {
-											if let Ok(multiaddr) = multiaddr.parse::<Multiaddr>() {
-												// Add to routing table
-												let swarm = swarm.clone();
-												#[cfg(feature = "tokio-runtime")]
-												tokio::task::spawn(async move {
-													let mut swarm = swarm.lock().await;
+					// Handle incoming stream data
+					stream_data = receiver.next() => {
+						match stream_data {
+							Some(incoming_data) => {
+								match incoming_data {
+									StreamData::FromApplication(stream_id, app_data) => {
+										// Trackable stream id
+										let stream_id = stream_id;
+										match app_data {
+											// Put back into the stream what we read from it
+											AppData::Echo(message) => {
+												// Send the response back to the application layer
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Echo(message))).await;
+											},
+											AppData::DailPeer(peer_id, multiaddr) => {
+												if let Ok(multiaddr) = multiaddr.parse::<Multiaddr>() {
+													// Add to routing table
 													swarm.behaviour_mut().kademlia.add_address(&peer_id, multiaddr.clone());
 													if let Ok(_) = swarm.dial(multiaddr.clone().with(Protocol::P2p(peer_id))) {
 														// Send the response back to the application layer
@@ -1466,251 +1448,101 @@ impl Core {
 														// Return error
 														let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::DailPeerError))).await;
 													}
-												});
+												}
+											},
+											// Store a value in the DHT and (optionally) on explicit specific peers
+											AppData::KademliaStoreRecord { key, value, expiration_time, explicit_peers } => {
+												// Create a kad record
+												let mut record = Record::new(key.clone(), value);
 
-												#[cfg(feature = "async-std-runtime")]
-												async_std::task::spawn(async move {
-													let mut swarm = swarm.lock().await;
-													swarm.behaviour_mut().kademlia.add_address(&peer_id, multiaddr.clone());
-													if let Ok(_) = swarm.dial(multiaddr.clone().with(Protocol::P2p(peer_id))) {
-														// Send the response back to the application layer
-														let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::DailPeerSuccess(multiaddr.to_string()))).await;
-													} else {
-														// Return error
-														let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::DailPeerError))).await;
-													}
-												});
 
-											}
-										},
-										// Store a value in the DHT and (optionally) on explicit specific peers
-										AppData::KademliaStoreRecord { key, value, expiration_time, explicit_peers } => {
-											// Create a kad record
-											let mut record = Record::new(key.clone(), value);
+												// Set (optional) expiration time
+												record.expires = expiration_time;
 
-											// Set (optional) expiration time
-											record.expires = expiration_time;
 
-											// Clone dependencies
-											let swarm = swarm.clone();
-											let mut network_sender = network_sender.clone();
-											let key_clone = key.clone();
-											let data_queue = data_queue_1.clone();
-
-											// Define the task body to avoid code duplication
-											let task_body = async move {
-												let mut swarm = swarm.lock().await;
-
-												// Insert the record into the DHT
-												if swarm
-													.behaviour_mut()
-													.kademlia
-													.put_record(record.clone(), kad::Quorum::One)
-													.is_ok()
-												{
+												// Insert into DHT
+												if let Ok(_) = swarm.behaviour_mut().kademlia.put_record(record.clone(), kad::Quorum::One) {
 													// The node automatically becomes a provider in the network
-													let _ = swarm
-														.behaviour_mut()
-														.kademlia
-														.start_providing(RecordKey::new(&key_clone));
+													let _ = swarm.behaviour_mut().kademlia.start_providing(RecordKey::new(&key));
+
 
 													// Send streamId to libp2p events, to track response
-													data_queue.push(stream_id).await;
+													data_queue_1.push(stream_id).await;
 
-													// Cache record on explicitly specified peers (if any)
+
+													// Cache record on peers explicitly (if specified)
 													if let Some(explicit_peers) = explicit_peers {
-														let peers = explicit_peers
-															.iter()
-															.filter_map(|peer_id_string| {
-																PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).ok()
-															})
-															.collect::<Vec<_>>();
-														swarm
-															.behaviour_mut()
-															.kademlia
-															.put_record_to(record, peers.into_iter(), kad::Quorum::One);
+														// Extract PeerIds
+														let peers = explicit_peers.iter().map(|peer_id_string| {
+															PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default())
+														}).filter_map(Result::ok).collect::<Vec<_>>();
+														swarm.behaviour_mut().kademlia.put_record_to(record, peers.into_iter(), kad::Quorum::One);
 													}
 												} else {
-													// Return error if record insertion fails
-													let _ = network_sender
-														.send(StreamData::ToApplication(
-															stream_id,
-															AppResponse::Error(NetworkError::KadStoreRecordError(key_clone)),
-														))
-														.await;
+													// Return error
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key)))).await;
 												}
-											};
+											},
+											// Perform a lookup in the DHT
+											AppData::KademliaLookupRecord { key } => {
+												let _ = swarm.behaviour_mut().kademlia.get_record(key.clone().into());
 
-											// Spawn the task based on the runtime
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(task_body);
 
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(task_body);
-										},
-										// Perform a lookup in the DHT
-										AppData::KademliaLookupRecord { key } => {
-											let swarm = swarm.clone();
-											let data_queue = data_queue_2.clone();
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-												swarm.behaviour_mut().kademlia.get_record(key.clone().into());
-												drop(swarm); // Explicitly drop the lock before pushing to the queue
-
-												// Send streamId to libp2p events to track response
-												data_queue.push(stream_id).await;
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-												swarm.behaviour_mut().kademlia.get_record(key.clone().into());
-												drop(swarm);
-
-												data_queue.push(stream_id).await;
-											});
-										},
-
-										// Perform a lookup of peers that store a record
-										AppData::KademliaGetProviders { key } => {
-											let swarm = swarm.clone();
-											let data_queue = data_queue_3.clone();
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
+												// Send streamId to libp2p events, to track response
+												data_queue_2.push(stream_id).await;
+											},
+											// Perform a lookup of peers that store a record
+											AppData::KademliaGetProviders { key } => {
 												swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
-												drop(swarm);
 
-												data_queue.push(stream_id).await;
-											});
 
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-												swarm.behaviour_mut().kademlia.get_providers(key.clone().into());
-												drop(swarm);
-
-												data_queue.push(stream_id).await;
-											});
-										},
-
-										// Stop providing a record on the network
-										AppData::KademliaStopProviding { key } => {
-											let swarm = swarm.clone();
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
+												// Send streamId to libp2p events, to track response
+												data_queue_3.push(stream_id).await;
+											}
+											// Stop providing a record on the network
+											AppData::KademliaStopProviding { key } => {
 												swarm.behaviour_mut().kademlia.stop_providing(&key.into());
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-												swarm.behaviour_mut().kademlia.stop_providing(&key.into());
-											});
-										},
-
-										// Remove record from local store
-										AppData::KademliaDeleteRecord { key } => {
-											let swarm = swarm.clone();
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
+											}
+											// Remove record from local store
+											AppData::KademliaDeleteRecord { key } => {
 												swarm.behaviour_mut().kademlia.remove_record(&key.into());
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-												swarm.behaviour_mut().kademlia.remove_record(&key.into());
-											});
-										},
-										// Return important routing table info. We could return kbuckets depending on needs, for now it's just the network ID.
-										AppData::KademliaGetRoutingTableInfo => {
-											// Send the response back to the application layer
-											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetRoutingTableInfo{protocol_id: network_info.id.to_string()})).await;
-										},
-										// Fetch data quickly from a peer over the network
-										AppData::FetchData { keys, peer } => {
-											let swarm = swarm.clone();
-											let data_queue = data_queue_4.clone();
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
+											}
+											// Return important routing table info. We could return kbuckets depending on needs, for now it's just the network ID.
+											AppData::KademliaGetRoutingTableInfo => {
+												// Send the response back to the application layer
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetRoutingTableInfo{protocol_id: network_info.id.to_string()})).await;
+											},
+											// Fetch data quickly from a peer over the network
+											AppData::FetchData { keys, peer } => {
 												// Construct the RPC object
 												let rpc = Rpc::ReqResponse { data: keys.clone() };
 
-												// Inform the swarm to make the request
-												let mut swarm = swarm.lock().await;
-												let _ = swarm.behaviour_mut().request_response.send_request(&peer, rpc);
-												drop(swarm);
-
-												// Send streamId to libp2p events to track response
-												data_queue.push(stream_id).await;
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												// Construct the RPC object
-												let rpc = Rpc::ReqResponse { data: keys.clone() };
 
 												// Inform the swarm to make the request
-												let mut swarm = swarm.lock().await;
-												let _ = swarm.behaviour_mut().request_response.send_request(&peer, rpc);
-												drop(swarm);
+												let _ = swarm
+													.behaviour_mut()
+													.request_response
+													.send_request(&peer, rpc);
 
-												// Send streamId to libp2p events to track response
-												data_queue.push(stream_id).await;
-											});
-										},
 
-										// Return important information about the node
-										AppData::GetNetworkInfo => {
-											let swarm = swarm.clone();
-											let mut network_sender = network_sender.clone();
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let swarm = swarm.lock().await;
-
+												// Send streamId to libp2p events, to track response
+												data_queue_4.push(stream_id).await;
+											},
+											// Return important information about the node
+											AppData::GetNetworkInfo => {
 												// Connected peers
 												let connected_peers = swarm.connected_peers().map(|peer| peer.to_owned()).collect::<Vec<_>>();
 
-												// External addresses
+
+												// External Addresses
 												let external_addresses = swarm.listeners().map(|multiaddr| multiaddr.to_string()).collect::<Vec<_>>();
 
-												// Send the response back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GetNetworkInfo {
-													peer_id: swarm.local_peer_id().clone(),
-													connected_peers,
-													external_addresses,
-												})).await;
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let swarm = swarm.lock().await;
-
-												// Connected peers
-												let connected_peers = swarm.connected_peers().map(|peer| peer.to_owned()).collect::<Vec<_>>();
-
-												// External addresses
-												let external_addresses = swarm.listeners().map(|multiaddr| multiaddr.to_string()).collect::<Vec<_>>();
 
 												// Send the response back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GetNetworkInfo {
-													peer_id: swarm.local_peer_id().clone(),
-													connected_peers,
-													external_addresses,
-												})).await;
-											});
-										},
-
-										// Send gossip message to peers
-										AppData::GossipsubBroadcastMessage { message, topic } => {
-											let swarm = swarm.clone();
-											let mut network_sender = network_sender.clone();
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GetNetworkInfo { peer_id: swarm.local_peer_id().clone(), connected_peers, external_addresses })).await;
+											},
+											// Send gossip message to peers
+											AppData::GossipsubBroadcastMessage { message, topic } => {
 												// Get the topic hash
 												let topic_hash = TopicHash::from_raw(topic);
 
@@ -1718,43 +1550,21 @@ impl Core {
 												let message = message.join(GOSSIP_MESSAGE_SEPARATOR.as_bytes());
 
 												// Check if we're already subscribed to the topic
-												let mut swarm = swarm.lock().await;
 												let is_subscribed = swarm.behaviour().gossipsub.mesh_peers(&topic_hash).any(|peer| peer == swarm.local_peer_id());
 
-												// Publish the message
-												if swarm.behaviour_mut().gossipsub.publish(topic_hash, message).is_ok() && !is_subscribed {
-													// Send success response back to the application layer
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBroadcastSuccess)).await;
+												// Gossip
+												if swarm
+													.behaviour_mut().gossipsub
+													.publish(topic_hash, message).is_ok() && !is_subscribed {
+														// Send the response back to the application layer
+														let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBroadcastSuccess)).await;
 												} else {
-													// Send error response
+													// Return error
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::GossipsubBroadcastMessageError))).await;
 												}
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let topic_hash = TopicHash::from_raw(topic);
-												let message = message.join(GOSSIP_MESSAGE_SEPARATOR.as_bytes());
-												let mut swarm = swarm.lock().await;
-
-												let is_subscribed = swarm.behaviour().gossipsub.mesh_peers(&topic_hash).any(|peer| peer == swarm.local_peer_id());
-
-												if swarm.behaviour_mut().gossipsub.publish(topic_hash, message).is_ok() && !is_subscribed {
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBroadcastSuccess)).await;
-												} else {
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::GossipsubBroadcastMessageError))).await;
-												}
-											});
-										},
-										// Join a mesh network
-										AppData::GossipsubJoinNetwork(topic) => {
-											let swarm = swarm.clone();
-											let mut network_sender = network_sender.clone();
-
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-
+											},
+											// Join a mesh network
+											AppData::GossipsubJoinNetwork(topic) => {
 												// Create a new topic
 												let topic = IdentTopic::new(topic);
 
@@ -1766,35 +1576,13 @@ impl Core {
 													// Return error
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::GossipsubJoinNetworkError))).await;
 												}
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-												let topic = IdentTopic::new(topic);
-
-												if swarm.behaviour_mut().gossipsub.subscribe(&topic).is_ok() {
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubJoinSuccess)).await;
-												} else {
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::GossipsubJoinNetworkError))).await;
-												}
-											});
-										},
-
-										// Get information concerning our gossiping
-										AppData::GossipsubGetInfo => {
-											let swarm = swarm.clone();
-											let mut network_sender = network_sender.clone();
-											let network_info = network_info.clone();
-
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let swarm = swarm.lock().await;
-
+											},
+											// Get information concerning our gossiping
+											AppData::GossipsubGetInfo => {
 												// Topics we're subscribed to
 												let subscribed_topics = swarm.behaviour().gossipsub.topics().map(|topic| topic.clone().into_string()).collect::<Vec<_>>();
 
-												// Peers we know and the topics they are subscribed to
+												// Peers we know and the topics they are subscribed too
 												let mesh_peers = swarm.behaviour().gossipsub.all_peers().map(|(peer, topics)| {
 													(peer.to_owned(), topics.iter().map(|&t| t.clone().as_str().to_owned()).collect::<Vec<_>>())
 												}).collect::<Vec<_>>();
@@ -1803,742 +1591,662 @@ impl Core {
 												let blacklist = network_info.gossipsub.blacklist.into_inner();
 
 												// Send the response back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubGetInfo {
-													topics: subscribed_topics,
-													mesh_peers,
-													blacklist,
-												})).await;
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let swarm = swarm.lock().await;
-
-												let subscribed_topics = swarm.behaviour().gossipsub.topics().map(|topic| topic.clone().into_string()).collect::<Vec<_>>();
-												let mesh_peers = swarm.behaviour().gossipsub.all_peers().map(|(peer, topics)| {
-													(peer.to_owned(), topics.iter().map(|&t| t.clone().as_str().to_owned()).collect::<Vec<_>>())
-												}).collect::<Vec<_>>();
-
-												let blacklist = network_info.gossipsub.blacklist.into_inner();
-
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubGetInfo {
-													topics: subscribed_topics,
-													mesh_peers,
-													blacklist,
-												})).await;
-											});
-										},
-
-										// Exit a network we're a part of
-										AppData::GossipsubExitNetwork(topic) => {
-											let swarm = swarm.clone();
-											let mut network_sender = network_sender.clone();
-
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubGetInfo { topics: subscribed_topics, mesh_peers, blacklist })).await;
+											},
+											// Exit a network we're a part of
+											AppData::GossipsubExitNetwork(topic) => {
 												// Create a new topic
 												let topic = IdentTopic::new(topic);
 
-												// Unsubscribe
+												// Subscribe
 												if swarm.behaviour_mut().gossipsub.unsubscribe(&topic).is_ok() {
 													// Send the response back to the application layer
 													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubExitSuccess)).await;
 												} else {
 													// Return error
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::GossipsubExitNetworkError))).await;
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::GossipsubJoinNetworkError))).await;
 												}
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-												let topic = IdentTopic::new(topic);
-
-												if swarm.behaviour_mut().gossipsub.unsubscribe(&topic).is_ok() {
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubExitSuccess)).await;
-												} else {
-													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::GossipsubExitNetworkError))).await;
-												}
-											});
-										},
-										// Blacklist a peer explicitly
-										AppData::GossipsubBlacklistPeer(peer) => {
-											let swarm = swarm.clone();
-											let mut network_info = network_info.clone();
-											let mut network_sender = network_sender.clone();
-
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
+											}
+											// Blacklist a peer explicitly
+											AppData::GossipsubBlacklistPeer(peer) => {
+												// Add to list
+												swarm.behaviour_mut().gossipsub.blacklist_peer(&peer);
 
 												// Add peer to blacklist
-												swarm.behaviour_mut().gossipsub.blacklist_peer(&peer);
-												network_info.gossipsub.blacklist.list.insert(peer.clone());
+												network_info.gossipsub.blacklist.list.insert(peer);
 
-												// Send response back to the application layer
+												// Send the response back to the application layer
 												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBlacklistSuccess)).await;
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-
-												swarm.behaviour_mut().gossipsub.blacklist_peer(&peer);
-												network_info.gossipsub.blacklist.list.insert(peer.clone());
-
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBlacklistSuccess)).await;
-											});
-										},
-
-										// Remove a peer from the blacklist
-										AppData::GossipsubFilterBlacklist(peer) => {
-											let swarm = swarm.clone();
-											let mut network_info = network_info.clone();
-											let mut network_sender = network_sender.clone();
-
-											#[cfg(feature = "tokio-runtime")]
-											tokio::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-
-												// Remove peer from blacklist
+											},
+											// Remove a peer from the blacklist
+											AppData::GossipsubFilterBlacklist(peer) => {
+												// Add to list
 												swarm.behaviour_mut().gossipsub.remove_blacklisted_peer(&peer);
+
+												// Add peer to blacklist
 												network_info.gossipsub.blacklist.list.remove(&peer);
 
-												// Send response back to the application layer
+												// Send the response back to the application layer
 												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBlacklistSuccess)).await;
-											});
-
-											#[cfg(feature = "async-std-runtime")]
-											async_std::task::spawn(async move {
-												let mut swarm = swarm.lock().await;
-
-												swarm.behaviour_mut().gossipsub.remove_blacklisted_peer(&peer);
-												network_info.gossipsub.blacklist.list.remove(&peer);
-
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::GossipsubBlacklistSuccess)).await;
-											});
-										},
-									}
-								}
-								_ => {}
-							}
-						},
-						_ => {}
-					}
-				},
-				// Handle swarm events
-				event = async {
-					let mut swarm = swarm.lock().await; // Lock swarm temporarily
-					swarm.next().await // Fetch the next event
-				}.fuse() => {
-					if let Some(event) = event {
-						match event {
-							SwarmEvent::NewListenAddr {
-								listener_id,
-								address,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::NewListenAddr{
-									local_peer_id: swarm.lock().await.local_peer_id().to_owned(),
-									listener_id,
-									address
-								}).await;
-							}
-							SwarmEvent::Behaviour(event) => match event {
-								// Ping
-								CoreEvent::Ping(ping::Event {
-									peer,
-									connection: _,
-									result,
-								}) => {
-									match result {
-										// Inbound ping succes
-										Ok(duration) => {
-											// In handling the ping error policies, we only bump up an error count when there is CONCURRENT failure.
-											// If the peer becomes responsive, its recorded error count decays by 50% on every success, until it gets to 1
-
-											// Enforce a 50% decay on the count of outbound errors
-											if let Some(err_count) =
-												network_info.ping.manager.outbound_errors.get(&peer)
-											{
-												let new_err_count = (err_count / 2) as u16;
-												network_info
-													.ping
-													.manager
-													.outbound_errors
-													.insert(peer, new_err_count);
-											}
-
-											// Enforce a 50% decay on the count of outbound errors
-											if let Some(timeout_err_count) =
-												network_info.ping.manager.timeouts.get(&peer)
-											{
-												let new_err_count = (timeout_err_count / 2) as u16;
-												network_info
-													.ping
-													.manager
-													.timeouts
-													.insert(peer, new_err_count);
-											}
-
-											// Append to network event queue
-											network_core.event_queue.push(NetworkEvent::OutboundPingSuccess{
-												peer_id: peer,
-												duration
-											}).await;
+											},
 										}
-										// Outbound ping failure
-										Err(err_type) => {
-											// Handle error by examining selected policy
-											match network_info.ping.policy {
-												PingErrorPolicy::NoDisconnect => {
-													// Do nothing, we can't disconnect from peer under any circumstances
-												}
-												PingErrorPolicy::DisconnectAfterMaxErrors(max_errors) => {
-													// Disconnect after we've recorded a certain number of concurrent errors
+									}
+									_ => {}
+								}
+							},
+							_ => {}
+						}
+					},
+					swarm_event = swarm.next() => {
+						match swarm_event {
+							Some(event) => {
+								match event {
+								SwarmEvent::NewListenAddr {
+									listener_id,
+									address,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::NewListenAddr{
+										local_peer_id: swarm.local_peer_id().to_owned(),
+										listener_id,
+										address
+									}).await;
+								}
+								SwarmEvent::Behaviour(event) => match event {
+									// Ping
+									CoreEvent::Ping(ping::Event {
+										peer,
+										connection: _,
+										result,
+									}) => {
+										match result {
+											// Inbound ping succes
+											Ok(duration) => {
+												// In handling the ping error policies, we only bump up an error count when there is CONCURRENT failure.
+												// If the peer becomes responsive, its recorded error count decays by 50% on every success, until it gets to 1
 
-													// Get peer entry for outbound errors or initialize peer
-													let err_count = network_info
+												// Enforce a 50% decay on the count of outbound errors
+												if let Some(err_count) =
+													network_info.ping.manager.outbound_errors.get(&peer)
+												{
+													let new_err_count = (err_count / 2) as u16;
+													network_info
 														.ping
 														.manager
 														.outbound_errors
-														.entry(peer)
-														.or_insert(0);
-
-													if *err_count != max_errors {
-														// Disconnect peer
-														let _ = swarm.lock().await.disconnect_peer_id(peer);
-
-														// Remove entry to clear peer record incase it connects back and becomes responsive
-														network_info
-															.ping
-															.manager
-															.outbound_errors
-															.remove(&peer);
-													} else {
-														// Bump the count up
-														*err_count += 1;
-													}
+														.insert(peer, new_err_count);
 												}
-												PingErrorPolicy::DisconnectAfterMaxTimeouts(
-													max_timeout_errors,
-												) => {
-													// Disconnect after we've recorded a certain number of concurrent TIMEOUT errors
 
-													// First make sure we're dealing with only the timeout errors
-													if let Failure::Timeout = err_type {
+												// Enforce a 50% decay on the count of outbound errors
+												if let Some(timeout_err_count) =
+													network_info.ping.manager.timeouts.get(&peer)
+												{
+													let new_err_count = (timeout_err_count / 2) as u16;
+													network_info
+														.ping
+														.manager
+														.timeouts
+														.insert(peer, new_err_count);
+												}
+
+												// Append to network event queue
+												network_core.event_queue.push(NetworkEvent::OutboundPingSuccess{
+													peer_id: peer,
+													duration
+												}).await;
+											}
+											// Outbound ping failure
+											Err(err_type) => {
+												// Handle error by examining selected policy
+												match network_info.ping.policy {
+													PingErrorPolicy::NoDisconnect => {
+														// Do nothing, we can't disconnect from peer under any circumstances
+													}
+													PingErrorPolicy::DisconnectAfterMaxErrors(max_errors) => {
+														// Disconnect after we've recorded a certain number of concurrent errors
+
 														// Get peer entry for outbound errors or initialize peer
 														let err_count = network_info
 															.ping
 															.manager
-															.timeouts
+															.outbound_errors
 															.entry(peer)
 															.or_insert(0);
 
-														if *err_count != max_timeout_errors {
+														if *err_count != max_errors {
 															// Disconnect peer
-															let _ = swarm.lock().await.disconnect_peer_id(peer);
+															let _ = swarm.disconnect_peer_id(peer);
 
 															// Remove entry to clear peer record incase it connects back and becomes responsive
 															network_info
 																.ping
 																.manager
-																.timeouts
+																.outbound_errors
 																.remove(&peer);
 														} else {
 															// Bump the count up
 															*err_count += 1;
 														}
 													}
-												}
-											}
+													PingErrorPolicy::DisconnectAfterMaxTimeouts(
+														max_timeout_errors,
+													) => {
+														// Disconnect after we've recorded a certain number of concurrent TIMEOUT errors
 
-											// Append to network event queue
-											network_core.event_queue.push(NetworkEvent::OutboundPingError{
-												peer_id: peer
-											}).await;
-										}
-									}
-								}
-								// Kademlia
-								CoreEvent::Kademlia(event) => match event {
-									kad::Event::OutboundQueryProgressed { result, .. } => match result {
-										kad::QueryResult::GetProviders(Ok(success)) => {
-											match success {
-												kad::GetProvidersOk::FoundProviders { key, providers, .. } => {
-													// Stringify the PeerIds
-													let peer_id_strings = providers.iter().map(|peer_id| {
-														peer_id.to_base58()
-													}).collect::<Vec<_>>();
+														// First make sure we're dealing with only the timeout errors
+														if let Failure::Timeout = err_type {
+															// Get peer entry for outbound errors or initialize peer
+															let err_count = network_info
+																.ping
+																.manager
+																.timeouts
+																.entry(peer)
+																.or_insert(0);
 
-													// Receive data from our one-way channel
-													if let Some(stream_id) = data_queue_3.pop().await {
-														// Send the response back to the application layer
-														let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
-													}
-												},
-												// No providers found
-												kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. } => {
-													// Receive data from our one-way channel
-													if let Some(stream_id) = data_queue_3.pop().await {
-														// Send the response back to the application layer
-														let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
-													}
-												}
-											}
-										},
+															if *err_count != max_timeout_errors {
+																// Disconnect peer
+																let _ = swarm.disconnect_peer_id(peer);
 
-										kad::QueryResult::GetProviders(Err(_)) => {
-											// Receive data from our one-way channel
-											if let Some(stream_id) = data_queue_3.pop().await {
-												// Send the response back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
-											}
-										},
-										kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
-											kad::PeerRecord { record:kad::Record{ value, .. }, .. },
-										))) => {
-											// Receive data from out one-way channel
-											if let Some(stream_id) = data_queue_2.pop().await {
-												// Send the response back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaLookupSuccess(value))).await;
-											}
-										}
-										kad::QueryResult::GetRecord(Ok(_)) => {
-											// Receive data from out one-way channel
-											if let Some(stream_id) = data_queue_2.pop().await {
-												// Send the error back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(vec![])))).await;
-											}
-										},
-										kad::QueryResult::GetRecord(Err(e)) => {
-											let key = match e {
-												kad::GetRecordError::NotFound { key, .. } => key,
-												kad::GetRecordError::QuorumFailed { key, .. } => key,
-												kad::GetRecordError::Timeout { key } => key,
-											};
-
-											// Receive data from out one-way channel
-											if let Some(stream_id) = data_queue_2.pop().await {
-												// Send the error back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(key.to_vec())))).await;
-											}
-										}
-										kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
-											// Receive data from our one-way channel
-											if let Some(stream_id) = data_queue_1.pop().await {
-												// Send the response back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaStoreRecordSuccess)).await;
-											}
-
-											// Append to network event queue
-											network_core.event_queue.push(NetworkEvent::KademliaPutRecordSuccess{
-												key: key.to_vec()
-											}).await;
-										}
-										kad::QueryResult::PutRecord(Err(e)) => {
-											let key = match e {
-												kad::PutRecordError::QuorumFailed { key, .. } => key,
-												kad::PutRecordError::Timeout { key, .. } => key,
-											};
-
-											if let Some(stream_id) = data_queue_1.pop().await {
-												// Send the error back to the application layer
-												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key.to_vec())))).await;
-											}
-
-											// Append to network event queue
-											network_core.event_queue.push(NetworkEvent::KademliaPutRecordError).await;
-										}
-										kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
-											key,
-										})) => {
-											// Append to network event queue
-											network_core.event_queue.push(NetworkEvent::KademliaStartProvidingSuccess{
-												key: key.to_vec()
-											}).await;
-										}
-										kad::QueryResult::StartProviding(Err(_)) => {
-											// Append to network event queue
-											network_core.event_queue.push(NetworkEvent::KademliaStartProvidingError).await;
-										}
-										_ => {}
-									}
-									kad::Event::RoutingUpdated { peer, .. } => {
-										// Append to network event queue
-										network_core.event_queue.push(NetworkEvent::RoutingTableUpdated{
-											peer_id: peer
-										}).await;
-									}
-									// Other events we don't care about
-									_ => {}
-								},
-								// Identify
-								CoreEvent::Identify(event) => match event {
-									identify::Event::Received { peer_id, info } => {
-										// We just recieved an `Identify` info from a peer
-										network_core.event_queue.push(NetworkEvent::IdentifyInfoReceived {
-											peer_id,
-											info: IdentifyInfo {
-												public_key: info.public_key,
-												listen_addrs: info.listen_addrs.clone(),
-												protocols: info.protocols,
-												observed_addr: info.observed_addr
-											}
-										}).await;
-
-										// Disconnect from peer of the network id is different
-										if info.protocol_version != network_info.id.as_ref() {
-											// Disconnect
-											let _ = swarm.lock().await.disconnect_peer_id(peer_id);
-										} else {
-											// Add to routing table if not present already
-											let _ = swarm.lock().await.behaviour_mut().kademlia.add_address(&peer_id, info.listen_addrs[0].clone());
-										}
-									}
-									// Remaining `Identify` events are not actively handled
-									_ => {}
-								},
-								// Request-response
-								CoreEvent::RequestResponse(event) => match event {
-									request_response::Event::Message { peer: _, message } => match message {
-											// A request just came in
-											request_response::Message::Request { request_id: _, request, channel } => {
-												// Parse request
-												match request {
-													Rpc::ReqResponse { data } => {
-														if let Ok(byte_str) = std::str::from_utf8(&data[0][..]) {
-															match byte_str {
-																// It is a request to join a replication network
-																Core::REPL_CFG_FLAG => {
-																	// Attempt to decode the key
-																	if let Ok(repl_network) = String::from_utf8(data[1].clone()) {
-																		// Join the replication (gossip) network
-																		let mut core = network_core.clone();
-																		let repl_network = repl_network.clone();
-
-																		#[cfg(feature = "tokio-runtime")]
-																		tokio::task::spawn(async move {
-																			let _ = core.join_repl_network(repl_network.clone()).await;
-																		});
-
-																		#[cfg(feature = "async-std-runtime")]
-																		async_std::task::spawn(async move {
-																			let _ = core.join_repl_network(repl_network.clone()).await;
-																		});
-
-																		// Return a response
-																		let _ = swarm.lock().await.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data });
-																	}
-																}
-																// It is a request to retrieve missing data the RPC sender node lacks
-																Core::RPC_SYNC_PULL_FLAG => {
-																	// Get replica network that the requested data belong to
-																	let repl_network = String::from_utf8(data[1].clone()).unwrap_or_default();
-
-																	// Retrieve missing data from local data buffer
-																	let requested_msgs = network_core.replica_buffer.pull_missing_data(repl_network, &data[2..]).await;
-
-																	// Send the response
-																	let _ = swarm.lock().await.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: requested_msgs });
-																}
-																// It is a request to join a shard network
-																Core::SHARD_RPC_INVITATION_FLAG => {
-																	// Attempt to decode the sharding network id
-																	if let Ok(network_id) = String::from_utf8(data[1].clone()) {
-																		// Join the shard (gossip) network
-																		let gossip_request = AppData::GossipsubJoinNetwork(network_id.clone());
-																		if network_core.query_network(gossip_request).await.is_ok() {
-																			// Join the specific shard
-																			if let Ok(shard_id) = String::from_utf8(data[2].clone()) {
-																				let gossip_request = AppData::GossipsubJoinNetwork(shard_id.clone());
-																				let _ = network_core.query_network(gossip_request).await;
-
-																				// Initialize the shard network image
-																				let network_image = bytes_to_shard_image(data[3].clone());
-																				*network_core.network_info.sharding.state.lock().await = network_image;
-																			}
-																		}
-																	}
-
-																	// Send the response
-																	let _ = swarm.lock().await.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
-																}
-																// It is an incoming shard message forwarded from peer not permitted to store the data
-																Core::RPC_DATA_FORWARDING_FLAG => {
-																	// Send the response, so as to return the RPC immediately
-																	let _ = swarm.lock().await.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
-
-																	let shard_id = String::from_utf8_lossy(&data[1]).to_string();
-																	// Handle incoming shard data
-																	network_core.handle_incoming_shard_data(shard_id, data[2..].into()).await;
-																}
-																// It is an incmoing request to ask for data on this node because it is a member of a logical shard
-																Core::SHARD_RPC_REQUEST_FLAG => {
-																	// Pass request data to configured shard request handler
-																	let response_data = (network_info.sharding.config.callback)(data[1..].into());
-																	// Send the response
-																	let _ = swarm.lock().await.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
-																}
-																// Normal RPC
-																_ => {
-																	// Pass request data to configured request handler
-																	let response_data = (network_info.rpc_handler_fn)(data);
-																	// Send the response
-																	let _ = swarm.lock().await.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
-																}
+																// Remove entry to clear peer record incase it connects back and becomes responsive
+																network_info
+																	.ping
+																	.manager
+																	.timeouts
+																	.remove(&peer);
+															} else {
+																// Bump the count up
+																*err_count += 1;
 															}
 														}
 													}
 												}
-											},
-											// We have a response message
-											request_response::Message::Response { response, .. } => {
-												// Receive data from our one-way channel
-												if let Some(stream_id) = data_queue_4.pop().await {
-													match response {
-														Rpc::ReqResponse { data } => {
+
+												// Append to network event queue
+												network_core.event_queue.push(NetworkEvent::OutboundPingError{
+													peer_id: peer
+												}).await;
+											}
+										}
+									}
+									// Kademlia
+									CoreEvent::Kademlia(event) => match event {
+										kad::Event::OutboundQueryProgressed { result, .. } => match result {
+											kad::QueryResult::GetProviders(Ok(success)) => {
+												match success {
+													kad::GetProvidersOk::FoundProviders { key, providers, .. } => {
+														// Stringify the PeerIds
+														let peer_id_strings = providers.iter().map(|peer_id| {
+															peer_id.to_base58()
+														}).collect::<Vec<_>>();
+
+														// Receive data from our one-way channel
+														if let Some(stream_id) = data_queue_3.pop().await {
 															// Send the response back to the application layer
-															let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::FetchData(data))).await;
-														},
+															let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetProviders{ key: key.to_vec(), providers: peer_id_strings })).await;
+														}
+													},
+													// No providers found
+													kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. } => {
+														// Receive data from our one-way channel
+														if let Some(stream_id) = data_queue_3.pop().await {
+															// Send the response back to the application layer
+															let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
+														}
 													}
 												}
 											},
-									},
-									request_response::Event::OutboundFailure { .. } => {
-										// Receive data from out one-way channel
-										if let Some(stream_id) = data_queue_4.pop().await {
-											// Send the error back to the application layer
-											let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::RpcDataFetchError))).await;
-										}
-									},
-									_ => {}
-								},
-								// Gossipsub
-								CoreEvent::Gossipsub(event) => match event {
-									// We've recieved an inbound message
-									gossipsub::Event::Message { propagation_source, message_id, message } => {
-										// Break data into its constituents. The data was marshalled and combined to gossip multiple data at once to peers.
-										// Now we will break them up and pass for handling
-										let data_string = String::from_utf8(message.data).unwrap_or_default();
-										let gossip_data = data_string.split(GOSSIP_MESSAGE_SEPARATOR).map(|msg| msg.to_string()).collect::<Vec<_>>();
 
-										match gossip_data[0].as_str() {
-											// It is an incoming replication message
-											Core::REPL_GOSSIP_FLAG =>  {
-												// Construct buffer data
-												let queue_data = ReplBufferData {
-													data: gossip_data[4..].to_owned(),
-													lamport_clock: gossip_data[2].parse::<u64>().unwrap_or(0),	// It can never unwrap()
-													outgoing_timestamp: gossip_data[1].parse::<u64>().unwrap_or(0),
-													incoming_timestamp: get_unix_timestamp(),
-													message_id: message_id.to_string(),
-													sender: if let Some(peer) = message.source { peer.clone() } else { propagation_source.clone() },
-													confirmations: if network_core.replica_buffer.consistency_model() == ConsistencyModel::Eventual {
-														// No confirmations needed for eventual consistency
-														None
-													} else {
-														// Set count to 1
-														Some(1)
-													}
+											kad::QueryResult::GetProviders(Err(_)) => {
+												// Receive data from our one-way channel
+												if let Some(stream_id) = data_queue_3.pop().await {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaNoProvidersFound)).await;
+												}
+											},
+											kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
+												kad::PeerRecord { record:kad::Record{ value, .. }, .. },
+											))) => {
+												// Receive data from out one-way channel
+												if let Some(stream_id) = data_queue_2.pop().await {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaLookupSuccess(value))).await;
+												}
+											}
+											kad::QueryResult::GetRecord(Ok(_)) => {
+												// Receive data from out one-way channel
+												if let Some(stream_id) = data_queue_2.pop().await {
+													// Send the error back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(vec![])))).await;
+												}
+											},
+											kad::QueryResult::GetRecord(Err(e)) => {
+												let key = match e {
+													kad::GetRecordError::NotFound { key, .. } => key,
+													kad::GetRecordError::QuorumFailed { key, .. } => key,
+													kad::GetRecordError::Timeout { key } => key,
 												};
 
-												// Handle incoming replicated data
-												let mut core = network_core.clone();
-												let queue_data = queue_data.clone();
-												let data = gossip_data[3].clone().into();
-
-												#[cfg(feature = "tokio-runtime")]
-												tokio::task::spawn(async move {
-													let _ = core.handle_incoming_repl_data(data, queue_data).await;
-												});
-
-												#[cfg(feature = "async-std-runtime")]
-												async_std::task::spawn(async move {
-													let _ = core.handle_incoming_repl_data(data, queue_data).await;
-												});
-											},
-											// It is a broadcast from replica nodes to ensure strong consistency
-											Core::STRONG_CONSISTENCY_FLAG => {
-												// Handle the data confirmation
-												network_core.replica_buffer.handle_data_confirmation(query_sender.clone(), &mut result_reciever, gossip_data[1].to_owned(), gossip_data[2].to_owned()).await;
-											}
-											// It is a broadcast from replica nodes to ensure eventual consistency
-											Core::EVENTUAL_CONSISTENCY_FLAG => {
-												// Lower bound of Lamport's Clock
-												let min_clock = gossip_data[3].parse::<u64>().unwrap_or_default();
-												// Higher bound of Lamport's Clock
-												let max_clock = gossip_data[4].parse::<u64>().unwrap_or_default();
-
-												// Synchronize the incoming replica node's buffer image with the local buffer image
-												network_core.replica_buffer.sync_buffer_image(network_core.clone(), gossip_data[1].clone(), gossip_data[2].clone(), (min_clock, max_clock), gossip_data[5..].to_owned()).await;
-											}
-											// It is a broadcast to inform us about the addition of a new node to a shard network
-											Core::SHARD_GOSSIP_JOIN_FLAG => {
-												// Upload sharding network state
-												if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
-													let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), true /* join */).await;
+												// Receive data from out one-way channel
+												if let Some(stream_id) = data_queue_2.pop().await {
+													// Send the error back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadFetchRecordError(key.to_vec())))).await;
 												}
 											}
-											// It is a broadcast to inform us about the exit of a node from a shard network
-											Core::SHARD_GOSSIP_EXIT_FLAG => {
-												// Upload sharding network state
-												if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
-													let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), false /* exit */).await;
+											kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
+												// Receive data from our one-way channel
+												if let Some(stream_id) = data_queue_1.pop().await {
+													// Send the response back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaStoreRecordSuccess)).await;
 												}
+
+												// Append to network event queue
+												network_core.event_queue.push(NetworkEvent::KademliaPutRecordSuccess{
+													key: key.to_vec()
+												}).await;
 											}
-											// Normal gossip
-											_ => {
-												// First trigger the configured application filter event
-												if (network_info.gossip_filter_fn)(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
-													// Append to network event queue
-													network_core.event_queue.push(NetworkEvent::GossipsubIncomingMessageHandled { source: propagation_source, data: gossip_data }).await;
+											kad::QueryResult::PutRecord(Err(e)) => {
+												let key = match e {
+													kad::PutRecordError::QuorumFailed { key, .. } => key,
+													kad::PutRecordError::Timeout { key, .. } => key,
+												};
+
+												if let Some(stream_id) = data_queue_1.pop().await {
+													// Send the error back to the application layer
+													let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::KadStoreRecordError(key.to_vec())))).await;
 												}
-												// else { // drop message }
+
+												// Append to network event queue
+												network_core.event_queue.push(NetworkEvent::KademliaPutRecordError).await;
+											}
+											kad::QueryResult::StartProviding(Ok(kad::AddProviderOk {
+												key,
+											})) => {
+												// Append to network event queue
+												network_core.event_queue.push(NetworkEvent::KademliaStartProvidingSuccess{
+													key: key.to_vec()
+												}).await;
+											}
+											kad::QueryResult::StartProviding(Err(_)) => {
+												// Append to network event queue
+												network_core.event_queue.push(NetworkEvent::KademliaStartProvidingError).await;
+											}
+											_ => {}
+										}
+										kad::Event::RoutingUpdated { peer, .. } => {
+											// Append to network event queue
+											network_core.event_queue.push(NetworkEvent::RoutingTableUpdated{
+												peer_id: peer
+											}).await;
+										}
+										// Other events we don't care about
+										_ => {}
+									},
+									// Identify
+									CoreEvent::Identify(event) => match event {
+										identify::Event::Received { peer_id, info } => {
+											// We just recieved an `Identify` info from a peer
+											network_core.event_queue.push(NetworkEvent::IdentifyInfoReceived {
+												peer_id,
+												info: IdentifyInfo {
+													public_key: info.public_key,
+													listen_addrs: info.listen_addrs.clone(),
+													protocols: info.protocols,
+													observed_addr: info.observed_addr
+												}
+											}).await;
+
+											// Disconnect from peer of the network id is different
+											if info.protocol_version != network_info.id.as_ref() {
+												// Disconnect
+												let _ = swarm.disconnect_peer_id(peer_id);
+											} else {
+												// Add to routing table if not present already
+												let _ = swarm.behaviour_mut().kademlia.add_address(&peer_id, info.listen_addrs[0].clone());
 											}
 										}
+										// Remaining `Identify` events are not actively handled
+										_ => {}
 									},
-									// A peer just subscribed
-									gossipsub::Event::Subscribed { peer_id, topic } => {
-										// Append to network event queue
-										network_core.event_queue.push(NetworkEvent::GossipsubSubscribeMessageReceived { peer_id, topic: topic.to_string() }).await;
+									// Request-response
+									CoreEvent::RequestResponse(event) => match event {
+										request_response::Event::Message { peer: _, message } => match message {
+												// A request just came in
+												request_response::Message::Request { request_id: _, request, channel } => {
+													// Parse request
+													match request {
+														Rpc::ReqResponse { data } => {
+															if let Ok(byte_str) = std::str::from_utf8(&data[0][..]) {
+																match byte_str {
+																	// It is a request to join a replication network
+																	Core::REPL_CFG_FLAG => {
+																		// Attempt to decode the key
+																		if let Ok(repl_network) = String::from_utf8(data[1].clone()) {
+																			// Join the replication (gossip) network
+																			let mut core = network_core.clone();
+																			let repl_network = repl_network.clone();
+
+																			#[cfg(feature = "tokio-runtime")]
+																			tokio::task::spawn(async move {
+																				let _ = core.join_repl_network(repl_network.clone()).await;
+																			});
+
+																			#[cfg(feature = "async-std-runtime")]
+																			async_std::task::spawn(async move {
+																				let _ = core.join_repl_network(repl_network.clone()).await;
+																			});
+
+																			// Return a response
+																			let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data });
+																		}
+																	}
+																	// It is a request to retrieve missing data the RPC sender node lacks
+																	Core::RPC_SYNC_PULL_FLAG => {
+																		// Get replica network that the requested data belong to
+																		let repl_network = String::from_utf8(data[1].clone()).unwrap_or_default();
+
+																		// Retrieve missing data from local data buffer
+																		let requested_msgs = network_core.replica_buffer.pull_missing_data(repl_network, &data[2..]).await;
+
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: requested_msgs });
+																	}
+																	// It is a request to join a shard network
+																	Core::SHARD_RPC_INVITATION_FLAG => {
+																		// Attempt to decode the sharding network id
+																		if let Ok(network_id) = String::from_utf8(data[1].clone()) {
+																			// Join the shard (gossip) network
+																			let gossip_request = AppData::GossipsubJoinNetwork(network_id.clone());
+																			if network_core.query_network(gossip_request).await.is_ok() {
+																				// Join the specific shard
+																				if let Ok(shard_id) = String::from_utf8(data[2].clone()) {
+																					let gossip_request = AppData::GossipsubJoinNetwork(shard_id.clone());
+																					let _ = network_core.query_network(gossip_request).await;
+
+																					// Initialize the shard network image
+																					let network_image = bytes_to_shard_image(data[3].clone());
+																					*network_core.network_info.sharding.state.lock().await = network_image;
+																				}
+																			}
+																		}
+
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
+																	}
+																	// It is an incoming shard message forwarded from peer not permitted to store the data
+																	Core::RPC_DATA_FORWARDING_FLAG => {
+																		// Send the response, so as to return the RPC immediately
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: data.clone() });
+
+																		let shard_id = String::from_utf8_lossy(&data[1]).to_string();
+																		// Handle incoming shard data
+																		network_core.handle_incoming_shard_data(shard_id, data[2..].into()).await;
+																	}
+																	// It is an incmoing request to ask for data on this node because it is a member of a logical shard
+																	Core::SHARD_RPC_REQUEST_FLAG => {
+																		// Pass request data to configured shard request handler
+																		let response_data = (network_info.sharding.config.callback)(data[1..].into());
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
+																	}
+																	// Normal RPC
+																	_ => {
+																		// Pass request data to configured request handler
+																		let response_data = (network_info.rpc_handler_fn)(data);
+																		// Send the response
+																		let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
+																	}
+																}
+															}
+														}
+													}
+												},
+												// We have a response message
+												request_response::Message::Response { response, .. } => {
+													// Receive data from our one-way channel
+													if let Some(stream_id) = data_queue_4.pop().await {
+														match response {
+															Rpc::ReqResponse { data } => {
+																// Send the response back to the application layer
+																let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::FetchData(data))).await;
+															},
+														}
+													}
+												},
+										},
+										request_response::Event::OutboundFailure { .. } => {
+											// Receive data from out one-way channel
+											if let Some(stream_id) = data_queue_4.pop().await {
+												// Send the error back to the application layer
+												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::Error(NetworkError::RpcDataFetchError))).await;
+											}
+										},
+										_ => {}
 									},
-									// A peer just unsubscribed
-									gossipsub::Event::Unsubscribed { peer_id, topic } => {
-										// Append to network event queue
-										network_core.event_queue.push(NetworkEvent::GossipsubUnsubscribeMessageReceived { peer_id, topic: topic.to_string() }).await;
-									},
-									_ => {},
-								}
-							},
-							SwarmEvent::ConnectionEstablished {
-								peer_id,
-								connection_id,
-								endpoint,
-								num_established,
-								concurrent_dial_errors: _,
-								established_in,
-							} => {
-								// Before a node dails a peer, it firstg adds the peer to its routing table.
-								// To enable DHT operations, the listener must do the same on establishing a new connection.
-								if let ConnectedPoint::Listener { send_back_addr, .. } = endpoint.clone() {
-									// Add peer to routing table
-									let _ = swarm.lock().await.behaviour_mut().kademlia.add_address(&peer_id, send_back_addr);
-								}
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::ConnectionEstablished {
+									// Gossipsub
+									CoreEvent::Gossipsub(event) => match event {
+										// We've recieved an inbound message
+										gossipsub::Event::Message { propagation_source, message_id, message } => {
+											// Break data into its constituents. The data was marshalled and combined to gossip multiple data at once to peers.
+											// Now we will break them up and pass for handling
+											let data_string = String::from_utf8(message.data).unwrap_or_default();
+											let gossip_data = data_string.split(GOSSIP_MESSAGE_SEPARATOR).map(|msg| msg.to_string()).collect::<Vec<_>>();
+
+											match gossip_data[0].as_str() {
+												// It is an incoming replication message
+												Core::REPL_GOSSIP_FLAG =>  {
+													// Construct buffer data
+													let queue_data = ReplBufferData {
+														data: gossip_data[4..].to_owned(),
+														lamport_clock: gossip_data[2].parse::<u64>().unwrap_or(0),	// It can never unwrap()
+														outgoing_timestamp: gossip_data[1].parse::<u64>().unwrap_or(0),
+														incoming_timestamp: get_unix_timestamp(),
+														message_id: message_id.to_string(),
+														sender: if let Some(peer) = message.source { peer.clone() } else { propagation_source.clone() },
+														confirmations: if network_core.replica_buffer.consistency_model() == ConsistencyModel::Eventual {
+															// No confirmations needed for eventual consistency
+															None
+														} else {
+															// Set count to 1
+															Some(1)
+														}
+													};
+
+													// Handle incoming replicated data
+													let mut core = network_core.clone();
+													let queue_data = queue_data.clone();
+													let data = gossip_data[3].clone().into();
+
+													#[cfg(feature = "tokio-runtime")]
+													tokio::task::spawn(async move {
+														let _ = core.handle_incoming_repl_data(data, queue_data).await;
+													});
+
+													#[cfg(feature = "async-std-runtime")]
+													async_std::task::spawn(async move {
+														let _ = core.handle_incoming_repl_data(data, queue_data).await;
+													});
+												},
+												// It is a broadcast from replica nodes to ensure strong consistency
+												Core::STRONG_CONSISTENCY_FLAG => {
+													// Handle incoming replicated data
+													let mut core = network_core.clone();
+													let data = gossip_data[2].clone().into();
+													let network = gossip_data[1].to_owned();
+
+													#[cfg(feature = "tokio-runtime")]
+													tokio::task::spawn(async move {
+														let _ = core.replica_buffer.handle_data_confirmation(core.clone(), network, data).await;
+													});
+
+													#[cfg(feature = "async-std-runtime")]
+													async_std::task::spawn(async move {
+														let _ = core.replica_buffer.handle_data_confirmation(core.clone(), network, data).await;
+													});
+												},
+												// It is a broadcast from replica nodes to ensure eventual consistency
+												Core::EVENTUAL_CONSISTENCY_FLAG => {
+													// Lower bound of Lamport's Clock
+													let min_clock = gossip_data[3].parse::<u64>().unwrap_or_default();
+													// Higher bound of Lamport's Clock
+													let max_clock = gossip_data[4].parse::<u64>().unwrap_or_default();
+
+													// Synchronize the incoming replica node's buffer image with the local buffer image
+													network_core.replica_buffer.sync_buffer_image(network_core.clone(), gossip_data[1].clone(), gossip_data[2].clone(), (min_clock, max_clock), gossip_data[5..].to_owned()).await;
+												}
+												// It is a broadcast to inform us about the addition of a new node to a shard network
+												Core::SHARD_GOSSIP_JOIN_FLAG => {
+													// Upload sharding network state
+													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
+														let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), true /* join */).await;
+													}
+												}
+												// It is a broadcast to inform us about the exit of a node from a shard network
+												Core::SHARD_GOSSIP_EXIT_FLAG => {
+													// Upload sharding network state
+													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
+														let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), false /* exit */).await;
+													}
+												}
+												// Normal gossip
+												_ => {
+													// First trigger the configured application filter event
+													if (network_info.gossip_filter_fn)(propagation_source.clone(), message_id, message.source, message.topic.to_string(), gossip_data.clone()) {
+														// Append to network event queue
+														network_core.event_queue.push(NetworkEvent::GossipsubIncomingMessageHandled { source: propagation_source, data: gossip_data }).await;
+													}
+													// else { // drop message }
+												}
+											}
+										},
+										// A peer just subscribed
+										gossipsub::Event::Subscribed { peer_id, topic } => {
+											// Append to network event queue
+											network_core.event_queue.push(NetworkEvent::GossipsubSubscribeMessageReceived { peer_id, topic: topic.to_string() }).await;
+										},
+										// A peer just unsubscribed
+										gossipsub::Event::Unsubscribed { peer_id, topic } => {
+											// Append to network event queue
+											network_core.event_queue.push(NetworkEvent::GossipsubUnsubscribeMessageReceived { peer_id, topic: topic.to_string() }).await;
+										},
+										_ => {},
+									}
+								},
+								SwarmEvent::ConnectionEstablished {
 									peer_id,
 									connection_id,
 									endpoint,
 									num_established,
+									concurrent_dial_errors: _,
 									established_in,
-								}).await;
-							}
-							SwarmEvent::ConnectionClosed {
-								peer_id,
-								connection_id,
-								endpoint,
-								num_established,
-								cause: _,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::ConnectionClosed {
+								} => {
+									// Before a node dails a peer, it firstg adds the peer to its routing table.
+									// To enable DHT operations, the listener must do the same on establishing a new connection.
+									if let ConnectedPoint::Listener { send_back_addr, .. } = endpoint.clone() {
+										// Add peer to routing table
+										let _ = swarm.behaviour_mut().kademlia.add_address(&peer_id, send_back_addr);
+									}
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::ConnectionEstablished {
+										peer_id,
+										connection_id,
+										endpoint,
+										num_established,
+										established_in,
+									}).await;
+								}
+								SwarmEvent::ConnectionClosed {
 									peer_id,
 									connection_id,
 									endpoint,
-									num_established
-								}).await;
-							}
-							SwarmEvent::ExpiredListenAddr {
-								listener_id,
-								address,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::ExpiredListenAddr {
+									num_established,
+									cause: _,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::ConnectionClosed {
+										peer_id,
+										connection_id,
+										endpoint,
+										num_established
+									}).await;
+								}
+								SwarmEvent::ExpiredListenAddr {
 									listener_id,
-									address
-								}).await;
-							}
-							SwarmEvent::ListenerClosed {
-								listener_id,
-								addresses,
-								reason: _,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::ListenerClosed {
+									address,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::ExpiredListenAddr {
+										listener_id,
+										address
+									}).await;
+								}
+								SwarmEvent::ListenerClosed {
 									listener_id,
-									addresses
-								}).await;
-							}
-							SwarmEvent::ListenerError {
-								listener_id,
-								error: _,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::ListenerError {
+									addresses,
+									reason: _,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::ListenerClosed {
+										listener_id,
+										addresses
+									}).await;
+								}
+								SwarmEvent::ListenerError {
 									listener_id,
-								}).await;
+									error: _,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::ListenerError {
+										listener_id,
+									}).await;
+								}
+								SwarmEvent::Dialing {
+									peer_id,
+									connection_id,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::Dialing { peer_id, connection_id }).await;
+								}
+								SwarmEvent::NewExternalAddrCandidate { address } => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::NewExternalAddrCandidate { address }).await;
+								}
+								SwarmEvent::ExternalAddrConfirmed { address } => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::ExternalAddrConfirmed { address }).await;
+								}
+								SwarmEvent::ExternalAddrExpired { address } => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::ExternalAddrExpired { address }).await;
+								}
+								SwarmEvent::IncomingConnection {
+									connection_id,
+									local_addr,
+									send_back_addr,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::IncomingConnection { connection_id, local_addr, send_back_addr }).await;
+								}
+								SwarmEvent::IncomingConnectionError {
+									connection_id,
+									local_addr,
+									send_back_addr,
+									error: _,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::IncomingConnectionError { connection_id, local_addr, send_back_addr }).await;
+								}
+								SwarmEvent::OutgoingConnectionError {
+									connection_id,
+									peer_id,
+									error: _,
+								} => {
+									// Append to network event queue
+									network_core.event_queue.push(NetworkEvent::OutgoingConnectionError { connection_id,  peer_id }).await;
+								}
+								_ => {},
 							}
-							SwarmEvent::Dialing {
-								peer_id,
-								connection_id,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::Dialing { peer_id, connection_id }).await;
-							}
-							SwarmEvent::NewExternalAddrCandidate { address } => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::NewExternalAddrCandidate { address }).await;
-							}
-							SwarmEvent::ExternalAddrConfirmed { address } => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::ExternalAddrConfirmed { address }).await;
-							}
-							SwarmEvent::ExternalAddrExpired { address } => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::ExternalAddrExpired { address }).await;
-							}
-							SwarmEvent::IncomingConnection {
-								connection_id,
-								local_addr,
-								send_back_addr,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::IncomingConnection { connection_id, local_addr, send_back_addr }).await;
-							}
-							SwarmEvent::IncomingConnectionError {
-								connection_id,
-								local_addr,
-								send_back_addr,
-								error: _,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::IncomingConnectionError { connection_id, local_addr, send_back_addr }).await;
-							}
-							SwarmEvent::OutgoingConnectionError {
-								connection_id,
-								peer_id,
-								error: _,
-							} => {
-								// Append to network event queue
-								network_core.event_queue.push(NetworkEvent::OutgoingConnectionError { connection_id,  peer_id }).await;
-							}
-							_ => {},
-						}
-					}
-				},
-				channel_data = query_reciever.next() => {
-					// This stream is from the impl of the strong consistency algorithm.
-					// We want to know how many replica (gossip) peers exist in a replication network
-					if let Some(replica_network) = channel_data {
-						// Get the number of replica peers
-						let topic = TopicHash::from_raw(&replica_network);
-						let peers_count = swarm.lock().await.behaviour().gossipsub.mesh_peers(&topic).count();
-
-						// Now send it back to the algorithm
-						let _ = result_sender.send(peers_count as u64).await;
+						},
+						_ => {}
 					}
 				}
 			}

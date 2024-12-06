@@ -12,7 +12,7 @@ use swarm_nl::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
 		replication::{ConsensusModel, ConsistencyModel, ReplConfigData, ReplNetworkConfig},
-		Core, CoreBuilder, NetworkEvent, RpcConfig
+		Core, CoreBuilder, NetworkEvent, RpcConfig,
 	},
 	setup::BootstrapConfig,
 	Keypair, MessageId, MultiaddrString, PeerId, PeerIdString, Port,
@@ -181,30 +181,29 @@ async fn run_node(
 		}
 	}
 
-	// Spin up a task to listen for replication events and handle replication
+	// Spin up a task to listen for replication events
 	let new_node = node.clone();
 	tokio::task::spawn(async move {
 		let mut node = new_node.clone();
 		loop {
+			// Check for incoming data events
 			if let Some(event) = node.next_event().await {
 				// Check for only incoming repl data
 				if let NetworkEvent::ReplicaDataIncoming { source, .. } = event {
 					println!("Recieved incoming replica data from {}", source.to_base58());
-
-					// Then try to read the data from the buffer. Since we are using a strong
-					// consistency model, we will not be able to read anything unless the
-					// confirmations are complete
-					if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
-						println!(
-							"Data removed from buffer: {} ({} confirmations)",
-							repl_data.data[0],
-							repl_data.confirmations.unwrap()
-						);
-					} else {
-						println!("Confirmations not complete, hence the buffer is empty");
-					}
 				}
 			}
+
+			// Try to read the data from the buffer. Since we are using a strong
+			// consistency model, we will not be able to read anything unless the
+			// confirmations are complete
+			if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
+				println!(
+					"Data gotten from replica: {} ({} confirmations)",
+					repl_data.data[0],
+					repl_data.confirmations.unwrap()
+				);
+			} 
 
 			// Sleep
 			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;

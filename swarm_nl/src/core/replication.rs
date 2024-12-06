@@ -48,7 +48,7 @@ pub enum ConsensusModel {
 }
 
 /// Enum containing configurations for replication.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ReplNetworkConfig {
 	/// A custom configuration.
 	///
@@ -293,25 +293,21 @@ impl ReplicaBufferQueue {
 						// Check whether we are 1 of 2 members of the replica network.
 						// Send a request to swarm
 						let request = AppData::GossipsubGetInfo;
-
 						let mut replica_peers = 0;
 						if let Ok(response) = core.query_network(request).await {
 							if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = response {
-								if mesh_peers
-									.iter()
-									.all(|(_, networks)| networks.contains(&replica_network))
-								{
-									replica_peers += 1;
+								for (_, networks) in mesh_peers {
+									if networks.contains(&replica_network) {
+										replica_peers += 1;
+									}
 								}
 							}
 						}
 
-						println!("NUmber of peers: {}", replica_peers);
-
-						// Put into the primary public buffer directly
+						// Put into the primary public buffer directly if we are
 						if replica_peers == 1 {
 							let mut queue = self.queue.lock().await;
-							let entry = queue.entry(data.message_id.clone()).or_default();
+							let entry = queue.entry(replica_network.clone()).or_default();
 
 							// Insert into queue
 							entry.insert(data);
@@ -363,8 +359,7 @@ impl ReplicaBufferQueue {
 
 	pub async fn handle_data_confirmation(
 		&self,
-		mut query_sender: Sender<String>,
-		data_receiver: &mut Receiver<u64>,
+		mut core: Core,
 		replica_network: String,
 		message_id: String,
 	) {
@@ -376,23 +371,25 @@ impl ReplicaBufferQueue {
 				ConsistencyModel::Eventual => 0,
 				ConsistencyModel::Strong(consensus_model) => match consensus_model {
 					ConsensusModel::All => {
-						// Query for real-time peer count
-						if query_sender.send(replica_network.clone()).await.is_ok() {
-							if let Some(peers_count) = data_receiver.next().await {
-								peers_count.saturating_sub(1) // Exclude self
-							} else {
-								0
+						let request = AppData::GossipsubGetInfo;
+						let mut replica_peers = 0;
+						if let Ok(response) = core.query_network(request).await {
+							if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = response {
+								for (_, networks) in mesh_peers {
+									if networks.contains(&replica_network) {
+										replica_peers += 1;
+									}
+								}
 							}
-						} else {
-							0
 						}
-					},
+						replica_peers // Return the count
+					}
 					ConsensusModel::MinPeers(required_peers) => required_peers,
 				},
 			},
 			ReplNetworkConfig::Default => 0,
 		};
-
+		
 		// Update confirmation count while holding the lock minimally
 		let is_fully_confirmed = {
 			let mut flag = false;
@@ -400,7 +397,6 @@ impl ReplicaBufferQueue {
 			if let Some(temp_queue) = temporary_queue.get_mut(&replica_network) {
 				if let Some(data_entry) = temp_queue.get_mut(&message_id) {
 					// Increment confirmation count
-					println!("confirmations >> {:?}", data_entry.confirmations);
 					data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
 					// Check if confirmations meet required peers
 					flag = peers_count != 0 && data_entry.confirmations == Some(peers_count);
@@ -409,7 +405,6 @@ impl ReplicaBufferQueue {
 
 			flag
 		};
-		println!("Here <><>");
 
 		// If fully confirmed, move data to the public queue
 		if is_fully_confirmed {
