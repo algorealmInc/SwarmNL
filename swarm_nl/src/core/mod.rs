@@ -863,6 +863,24 @@ impl Core {
 		self.event_queue.pop().await
 	}
 
+	/// Return the number of replica peers in a network, with the node exclusive.
+	pub async fn replica_peers(&mut self, replica_network: &str) -> Vec<PeerId> {
+		let mut peers = Vec::new();
+
+		// Check gossip group
+		let request = AppData::GossipsubGetInfo;
+		if let Ok(response) = self.query_network(request).await {
+			if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = response {
+				for (peer_id, networks) in mesh_peers {
+					if networks.contains(&replica_network.to_string()) {
+						peers.push(peer_id);
+					}
+				}
+			}
+		}
+		peers
+	}
+
 	/// Send data to the network layer and recieve a unique `StreamId` to track the request.
 	///
 	/// If the internal stream buffer is full, `None` will be returned.
