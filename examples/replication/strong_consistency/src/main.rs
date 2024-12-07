@@ -101,7 +101,7 @@ async fn run_node(
 	);
 
 	// Setup node 1 and try to connect to node 2 and 3
-	setup_node(ports_1, &keypair[..], bootnodes).await
+	let mut node = setup_node(ports_1, &keypair[..], bootnodes).await;
 
 	// Join replica network
 	println!("Joining replication network");

@@ -12,6 +12,8 @@ use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::SystemTime};
 pub struct ReplConfigData {
 	/// Lamport's clock for synchronization.
 	pub lamport_clock: Nonce,
+	/// Clock of last data consumed from the replica buffer
+	pub last_clock: Nonce,
 	/// Replica nodes described by their addresses.
 	pub nodes: HashMap<String, String>,
 }
@@ -343,12 +345,25 @@ impl ReplicaBufferQueue {
 	}
 
 	// Pop the front (earliest data) from the queue
-	pub async fn pop_front(&self, replica_network: &str) -> Option<ReplBufferData> {
+	pub async fn pop_front(&self, core: Core, replica_network: &str) -> Option<ReplBufferData> {
 		let mut queue = self.queue.lock().await;
 
 		// Filter into replica network the data belongs to
 		if let Some(queue) = queue.get_mut(replica_network) {
 			if let Some(first) = queue.iter().next().cloned() {
+				// Store last data clock before popping
+				let mut cfg = core.network_info.replication.state.lock().await;
+				let entry = cfg
+					.entry(replica_network.to_owned())
+					.or_insert(ReplConfigData {
+						lamport_clock: 0,
+						last_clock: first.lamport_clock,
+						nodes: Default::default(),
+					});
+
+				// Update clock
+				entry.last_clock = first.lamport_clock;
+
 				// Remove the front element
 				queue.remove(&first);
 				return Some(first);
@@ -383,13 +398,13 @@ impl ReplicaBufferQueue {
 							}
 						}
 						replica_peers // Return the count
-					}
+					},
 					ConsensusModel::MinPeers(required_peers) => required_peers,
 				},
 			},
 			ReplNetworkConfig::Default => 0,
 		};
-		
+
 		// Update confirmation count while holding the lock minimally
 		let is_fully_confirmed = {
 			let mut flag = false;
@@ -452,9 +467,6 @@ impl ReplicaBufferQueue {
 
 	/// Synchronize the data in the buffer queue using eventual consistency.
 	pub async fn sync_with_eventual_consistency(&self, core: Core, repl_network: String) {
-		// The oldest clock of the previous sync
-		let mut prev_clock = 0;
-
 		loop {
 			let repl_network = repl_network.clone();
 			let mut core = core.clone();
@@ -493,39 +505,33 @@ impl ReplicaBufferQueue {
 						(0, 0)
 					};
 
-				// Only sync if the max clock is greater than the previous clock
-				if max_clock > prev_clock {
-					// Extract message IDs for synchronization
-					let mut message_ids = local_data
-						.iter()
-						.map(|data| data.message_id.clone().into())
-						.collect::<ByteVector>();
+				// Extract message IDs for synchronization
+				let mut message_ids = local_data
+					.iter()
+					.map(|data| data.message_id.clone().into())
+					.collect::<ByteVector>();
 
-					// Prepare gossip message
-					let mut message = vec![
-						// Strong Consistency Sync Gossip Flag
-						Core::EVENTUAL_CONSISTENCY_FLAG.as_bytes().to_vec(),
-						// Node's Peer ID
-						core.peer_id().into(),
-						repl_network.clone().into(),
-						min_clock.to_string().into(),
-						max_clock.to_string().into(),
-					];
+				// Prepare gossip message
+				let mut message = vec![
+					// Strong Consistency Sync Gossip Flag
+					Core::EVENTUAL_CONSISTENCY_FLAG.as_bytes().to_vec(),
+					// Node's Peer ID
+					core.peer_id().to_base58().into(),
+					repl_network.clone().into(),
+					min_clock.to_string().into(),
+					max_clock.to_string().into(),
+				];
 
-					// Append the message IDs
-					message.append(&mut message_ids);
+				// Append the message IDs
+				message.append(&mut message_ids);
 
-					// Broadcast gossip request
-					let gossip_request = AppData::GossipsubBroadcastMessage {
-						topic: repl_network.into(),
-						message,
-					};
+				// Broadcast gossip request
+				let gossip_request = AppData::GossipsubBroadcastMessage {
+					topic: repl_network.into(),
+					message,
+				};
 
-					let _ = core.query_network(gossip_request).await;
-
-					// Update the previous clock
-					prev_clock = max_clock;
-				}
+				let _ = core.query_network(gossip_request).await;
 			}
 
 			// Wait for a defined duration before the next sync
@@ -546,15 +552,32 @@ impl ReplicaBufferQueue {
 		lamports_clock_bound: (u64, u64),
 		replica_data_state: StringVector,
 	) {
+		// Only when the clock of the last consumed buffer is greater than or equal to the higher
+		// clock sync bound, will the synchronizatio occur
+		let state = core.network_info.replication.state.lock().await;
+		if let Some(state) = state.get(&repl_network) {
+			if state.last_clock >= lamports_clock_bound.1 {
+				return;
+			}
+		}
+
+		// Free `Core`
+		drop(state);
+
 		// Convert replica data state into a set outside the mutex lock.
 		// Filter replica buffer too so it doesn't contain the data that we published.
-		// This is done using the messageId since by gossipsub, messageId = (Publishing peerId +
-		// Nonce)
+		// This is done using the messageId since by gossipsub, messageId = (Publishing
+		// peerId + Nonce)
+
+		println!(">>>>? {:#?}", replica_data_state);
+		println!(">>>>? {:?}", &core.peer_id().to_bytes());
 
 		let replica_buffer_state = replica_data_state
 			.into_iter()
-			.filter(|id| id.contains(&core.peer_id().to_base58()))
+			.filter(|id| !id.contains(&core.peer_id().to_base58()))
 			.collect::<BTreeSet<_>>();
+
+		println!("{:#?}", replica_buffer_state);
 
 		// Extract local buffer state and filter it while keeping the mutex lock duration
 		// minimal
@@ -581,33 +604,39 @@ impl ReplicaBufferQueue {
 			}
 		};
 
-		// Prepare an RPC fetch request for missing messages
-		if let Ok(repl_peer_id) = repl_peer_id.parse::<PeerId>() {
-			let mut rpc_data: ByteVector = vec![
-				Core::RPC_SYNC_PULL_FLAG.into(), // RPC sync pull flag
-				repl_network.clone().into(),     // Replica network
-			];
+		println!("missing messages: {:#?}", missing_msgs);
 
-			// Append the missing message ids to the request data
-			rpc_data.append(&mut missing_msgs);
+		if !missing_msgs.is_empty() {
+			// Prepare an RPC fetch request for missing messages
+			if let Ok(repl_peer_id) = repl_peer_id.parse::<PeerId>() {
+				let mut rpc_data: ByteVector = vec![
+					Core::RPC_SYNC_PULL_FLAG.into(), // RPC sync pull flag
+					repl_network.clone().into(),     // Replica network
+				];
 
-			// Prepare an RPC to ask the replica node for missing data
-			let fetch_request = AppData::FetchData {
-				keys: missing_msgs.clone(),
-				peer: repl_peer_id,
-			};
+				// Append the missing message ids to the request data
+				rpc_data.append(&mut missing_msgs);
 
-			// Send the fetch request
-			if let Ok(response) = core.query_network(fetch_request).await {
-				if let AppResponse::FetchData(messages) = response {
-					// Parse response
-					let response = util::unmarshal_messages(messages);
+				// Prepare an RPC to ask the replica node for missing data
+				let fetch_request = AppData::FetchData {
+					keys: rpc_data,
+					peer: repl_peer_id,
+				};
 
-					// Re-lock the mutex only for inserting new messages
-					let mut queue = self.queue.lock().await;
-					if let Some(local_state) = queue.get_mut(&repl_network) {
-						for missing_msg in response {
-							local_state.insert(missing_msg);
+				println!("I need to pull data");
+
+				// Send the fetch request
+				if let Ok(response) = core.query_network(fetch_request).await {
+					if let AppResponse::FetchData(messages) = response {
+						// Parse response
+						let response = util::unmarshal_messages(messages);
+
+						// Re-lock the mutex only for inserting new messages
+						let mut queue = self.queue.lock().await;
+						if let Some(local_state) = queue.get_mut(&repl_network) {
+							for missing_msg in response {
+								local_state.insert(missing_msg);
+							}
 						}
 					}
 				}

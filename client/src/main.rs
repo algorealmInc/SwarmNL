@@ -1,10 +1,10 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! This example demonstrates the replication of data accross nodes in a network using the strong eventual synchronization model. Here
-//! we are spinning up three replica nodes that accept data from standard input and then immedately
-//! replicates the data accross its replica peers.. 
+//! This example demonstrates the replication of data accross nodes in a network using the strong
+//! eventual synchronization model. Here we are spinning up three replica nodes that accept data
+//! from standard input and then immedately replicates the data accross its replica peers..
 
-use std::{collections::HashMap, io, time::Duration};
+use std::{collections::HashMap, io::{self, Write}, time::Duration};
 
 use swarm_nl::{
 	core::{
@@ -36,43 +36,6 @@ fn gossipsub_filter_fn(
 	data: Vec<String>,
 ) -> bool {
 	true
-}
-
-// Create a detereministic node that will serve as the coordinator
-async fn setup_coordinator(
-	ports: (Port, Port),
-	deterministic_protobuf: &[u8],
-	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
-) -> Core {
-	// Configure the node deterministically so we can connect to it
-	let mut protobuf = &mut deterministic_protobuf.to_owned()[..];
-
-	let config = BootstrapConfig::default()
-		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
-		.with_tcp(ports.0)
-		.with_udp(ports.1);
-
-	// Set up network
-	let mut builder = CoreBuilder::with_config(config);
-
-	// Configure RPC handling
-	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
-
-	// Configure gossipsub
-	// Specify the gossip filter algorithm
-	let filter_fn = gossipsub_filter_fn;
-	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
-
-	// Configure node for replication, we will be using a strong consistency model here
-	let repl_config = ReplNetworkConfig::Custom {
-		queue_length: 150,
-		expiry_time: Some(10),
-		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Eventual,
-		data_aging_period: 2,
-	};
-
-	builder.with_replication(repl_config).build().await.unwrap()
 }
 
 // Create a determininstic node
@@ -107,7 +70,7 @@ async fn setup_node(
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		consistency_model: ConsistencyModel::Eventual,
 		data_aging_period: 2,
 	};
 
@@ -135,13 +98,8 @@ async fn run_node(
 		format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 	);
 
-	// Setup node 1 and try to connect to node 2 and 3
-
-	let mut node = if name.contains("1") {
-		setup_coordinator(ports_1, &keypair[..], bootnodes).await
-	} else {
-		setup_node(ports_1, &keypair[..], bootnodes).await
-	};
+	// Setup node
+	let mut node = setup_node(ports_1, &keypair[..], bootnodes).await;
 
 	// Join replica network
 	println!("Joining replication network");
@@ -192,17 +150,6 @@ async fn run_node(
 				}
 			}
 
-			// Try to read the data from the buffer. Since we are using a strong
-			// consistency model, we will not be able to read anything unless the
-			// confirmations are complete
-			if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
-				println!(
-					"Data gotten from replica: {} ({} confirmations)",
-					repl_data.data[0],
-					repl_data.confirmations.unwrap()
-				);
-			} 
-
 			// Sleep
 			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
 		}
@@ -211,29 +158,54 @@ async fn run_node(
 	// Wait for some time for replication protocol intitialization across the network
 	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
-	// Read input from standard input and then replicate it to peers
-	let stdin = io::stdin();
+	println!("\n===================");
+	println!("Replication Test Menu");
+	println!("Usage:");
+	println!("repl <data> - Replicate to peers");
+	println!("read        - Read content from buffer");
+	println!("exit        - Exit the application");
 	loop {
-		print!("Enter some input: ");
-		io::Write::flush(&mut io::stdout()).unwrap(); // Ensure the prompt is displayed immediately
-
+		// Read user input
 		let mut input = String::new();
-		stdin.read_line(&mut input).unwrap();
-		let trimmed_input = input.trim();
+		print!("> ");
+		
+		io::stdout().flush().unwrap(); // Flush stdout to display prompt
+		io::stdin().read_line(&mut input).unwrap();
 
-		if trimmed_input == "exit" {
-			break;
-		}
+		// Trim input and split into parts
+		let mut parts = input.trim().split_whitespace();
+		let command = parts.next(); // Get the first word
+		let data = parts.collect::<Vec<_>>().join(" "); // Collect the rest as data
 
-		println!("Replicating...");
-
-		// Replicate input
-		match node
-			.replicate(vec![trimmed_input.into()], REPL_NETWORK_ID)
-			.await
-		{
-			Ok(_) => println!("Replication successful"),
-			Err(e) => println!("Replication failed: {}", e.to_string()),
+		// Match the first word and take action
+		match command {
+			Some("repl") => {
+				if !data.is_empty() {
+					println!("Replicating data: {}", data);
+					// Replicate input
+					match node
+						.replicate(vec![data.into()], REPL_NETWORK_ID)
+						.await
+					{
+						Ok(_) => println!("Replication successful"),
+						Err(e) => println!("Replication failed: {}", e.to_string()),
+					}
+				} else {
+					println!("Error: No data provided to replicate.");
+				}
+			},
+			Some("read") => {
+				println!("Reading contents from buffer...");
+				while let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
+					println!("Buffer Data: {}", repl_data.data[0],);
+				} 
+			},
+			Some("exit") => {
+				println!("Exiting the application. Goodbye!");
+				break;
+			},
+			Some(unknown) => println!("Unknown command: '{}'. Please try again.", unknown),
+			None => println!("No command entered. Please try again."),
 		}
 	}
 }

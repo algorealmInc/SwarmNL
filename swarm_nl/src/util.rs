@@ -158,6 +158,7 @@ fn parse_replication_data(input: &str) -> Vec<(String, ReplConfigData)> {
 			// Set up replica network config data
 			let cfg = ReplConfigData {
 				lamport_clock: 0, // Set clock to 0
+				last_clock: 0,
 				nodes: inner_map, // Replica nodes
 			};
 
