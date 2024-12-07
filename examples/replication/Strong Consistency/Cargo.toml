@@ -1,5 +1,5 @@
 [package]
-name = "model"
+name = "strong_consistency_example"
 version = "0.2.0"
 edition = "2021"
 
