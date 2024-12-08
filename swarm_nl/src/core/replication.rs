@@ -299,17 +299,7 @@ impl ReplicaBufferQueue {
 
 						// Check whether we are 1 of 2 members of the replica network.
 						// Send a request to swarm
-						let request = AppData::GossipsubGetInfo;
-						let mut replica_peers = 0;
-						if let Ok(response) = core.query_network(request).await {
-							if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = response {
-								for (_, networks) in mesh_peers {
-									if networks.contains(&replica_network) {
-										replica_peers += 1;
-									}
-								}
-							}
-						}
+						let replica_peers = core.replica_peers(&replica_network).await.len();
 
 						// Put into the primary public buffer directly if we are
 						if replica_peers == 1 {
