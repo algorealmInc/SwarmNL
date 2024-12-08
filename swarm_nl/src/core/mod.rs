@@ -1130,20 +1130,23 @@ impl Core {
 		let gossip_request = AppData::GossipsubJoinNetwork(repl_network.clone());
 		let _ = self.query_network(gossip_request).await?;
 
-		// Spin up task to ensure data consistency across the network
-		let core = self.clone();
-		let network = repl_network.clone();
-		#[cfg(feature = "tokio-runtime")]
-		tokio::task::spawn(async move {
-			let buffer = core.replica_buffer.clone();
-			buffer.sync_with_eventual_consistency(core, network).await;
-		});
+		// Check if the consistency model is eventual
+		if let ConsistencyModel::Eventual = self.replica_buffer.consistency_model() {
+			// Spin up task to ensure data consistency across the network
+			let core = self.clone();
+			let network = repl_network.clone();
+			#[cfg(feature = "tokio-runtime")]
+			tokio::task::spawn(async move {
+				let buffer = core.replica_buffer.clone();
+				buffer.sync_with_eventual_consistency(core, network).await;
+			});
 
-		#[cfg(feature = "async-std-runtime")]
-		async_std::task::spawn(async move {
-			let buffer = core.replica_buffer.clone();
-			buffer.sync_with_eventual_consistency(core, network).await;
-		});
+			#[cfg(feature = "async-std-runtime")]
+			async_std::task::spawn(async move {
+				let buffer = core.replica_buffer.clone();
+				buffer.sync_with_eventual_consistency(core, network).await;
+			});
+		}
 
 		Ok(())
 	}
@@ -1156,7 +1159,7 @@ impl Core {
 		self.query_network(gossip_request).await
 	}
 
-	/// Replicate a replica node's current buffer image. This is necessary in case of
+	/// Clone a replica node's current buffer image. This is necessary in case of
 	/// joining a replica network with a strong consistency model.
 	pub async fn replicate_buffer(
 		&self,

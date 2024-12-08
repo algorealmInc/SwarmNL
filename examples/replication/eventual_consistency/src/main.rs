@@ -65,7 +65,7 @@ async fn setup_node(
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
 
-	// Configure node for replication, we will be using a strong consistency model here
+	// Configure node for replication, we will be using an eventual consistency model here
 	let repl_config = ReplNetworkConfig::Custom {
 		queue_length: 150,
 		expiry_time: Some(10),

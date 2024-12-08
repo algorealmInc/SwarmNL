@@ -447,19 +447,22 @@ impl ReplicaBufferQueue {
 				..
 			} = self.config
 			{
-				let current_time = SystemTime::now()
-					.duration_since(SystemTime::UNIX_EPOCH)
-					.unwrap()
-					.as_secs();
+				// Remove oldest items if queue exceeds capacity, expired first
+				if public_queue.len() as u64 >= queue_length {
+					let current_time = SystemTime::now()
+						.duration_since(SystemTime::UNIX_EPOCH)
+						.unwrap()
+						.as_secs();
 
-				// Remove expired items
-				if let Some(expiry_time) = expiry_time {
-					public_queue.retain(|entry| {
-						current_time.saturating_sub(entry.outgoing_timestamp) < expiry_time
-					});
+					// Remove expired items
+					if let Some(expiry_time) = expiry_time {
+						public_queue.retain(|entry| {
+							current_time.saturating_sub(entry.outgoing_timestamp) < expiry_time
+						});
+					}
 				}
 
-				// Remove oldest items if queue exceeds capacity
+				// If no expired content, or expiry is disabled, then remove first queue element
 				while public_queue.len() as u64 >= queue_length {
 					if let Some(first) = public_queue.iter().next().cloned() {
 						public_queue.remove(&first);
@@ -574,7 +577,6 @@ impl ReplicaBufferQueue {
 		// clock sync bound, will the synchronizatio occur
 		let state = core.network_info.replication.state.lock().await;
 		if let Some(state) = state.get(&repl_network) {
-			println!("{} <<----->> {}", state.last_clock, lamports_clock_bound.1);
 			if state.last_clock >= lamports_clock_bound.1 {
 				return;
 			}
@@ -672,11 +674,17 @@ impl ReplicaBufferQueue {
 
 		// If the local state exists, process the message retrieval
 		if let Some(local_state) = local_state {
-			// Retrieve messages that match the requested message IDs
-			let requested_msgs = local_state
-				.iter()
-				.filter(|&data| message_ids.contains(&data.message_id.as_bytes().to_vec()))
-				.collect::<Vec<_>>();
+			// Check if it a clone request
+			let requested_msgs = if message_ids[0].is_empty() {
+				// Retrieve all messages in buffer
+				local_state.iter().collect::<Vec<_>>()
+			} else {
+				// Retrieve messages that match the requested message IDs
+				local_state
+					.iter()
+					.filter(|&data| message_ids.contains(&data.message_id.as_bytes().to_vec()))
+					.collect::<Vec<_>>()
+			};
 
 			// Prepare the result buffer
 			let mut result = Vec::new();
