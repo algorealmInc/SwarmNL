@@ -4,7 +4,9 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
 
-use crate::{core::{AppData, AppResponse, Core, CoreBuilder, DataQueue, NetworkEvent}, setup::BootstrapConfig, Port};
+use std::collections::HashMap;
+
+use crate::{core::{AppData, AppResponse, Core, CoreBuilder, DataQueue, NetworkError, NetworkEvent}, setup::BootstrapConfig, Port, DEFAULT_NETWORK_ID};
 
 use super::*;
 use libp2p::{
@@ -784,7 +786,7 @@ fn gossipsub_message_itest_works() {
 fn gossipsub_message_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// Set up the second node that will dial
-		let (mut node_2, _) = setup_node_2((49885, 49889), (51887, 51887)).await;
+		let (mut node_2, _) = setup_node_2((49885, 49889), (51887, 51888)).await;
 
 		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
@@ -795,7 +797,7 @@ fn gossipsub_message_itest_works() {
 			// Prepare broadcast query
 			let gossip_request = AppData::GossipsubBroadcastMessage {
 				topic: GOSSIP_NETWORK.to_string(),
-				message: vec!["Apple".to_string(), "nike".to_string()],
+				message: vec!["Apple".to_string().into(), "nike".to_string().into()],
 			};
 
 			if let Ok(result) = node_2.query_network(gossip_request).await {
