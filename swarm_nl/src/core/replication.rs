@@ -56,7 +56,7 @@ pub enum ReplNetworkConfig {
 	Custom {
         /// Max capacity for transient storage.
 		queue_length: u64,
-        /// Expiry time of data in the buffer if the buffer is full. If a `NoExpiry`.
+        /// Expiry time of data in the buffer if the buffer is full. Set to `None` for no expiry.
 		expiry_time: Option<Seconds>,
         /// Epoch to wait before attempting the next network synchronization of data in the buffer.
 		sync_wait_time: Seconds,
