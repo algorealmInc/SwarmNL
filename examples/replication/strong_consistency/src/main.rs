@@ -1,20 +1,15 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! This example demonstrates the complete replication of a node's buffer data (cloning).
-//! Particularly useful when a strong synchronization model is in effect, hence bringing the new
-//! node up to speed quickly. The data is stored directly into the primary public buffer for the
-//! application layer's consumption instead of the transient buffer.
+//! This example demonstrates the replication of data accross nodes in a network using the
+//! strong data consistency synchronization model. Here we are spinning up three replica nodes that accept data
+//! from standard input and then immedately replicates the data across the replica network.
 
-use std::{
-	collections::HashMap,
-	io::{self, Write},
-	time::Duration,
-};
+use std::{collections::HashMap, io, time::Duration};
 
 use swarm_nl::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
-		replication::{ConsensusModel, ConsistencyModel, ReplNetworkConfig},
+		replication::{ConsensusModel, ConsistencyModel, ReplConfigData, ReplNetworkConfig},
 		Core, CoreBuilder, NetworkEvent, RpcConfig,
 	},
 	setup::BootstrapConfig,
@@ -103,7 +98,7 @@ async fn run_node(
 		format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 	);
 
-	// Setup node
+	// Setup node 1 and try to connect to node 2 and 3
 	let mut node = setup_node(ports_1, &keypair[..], bootnodes).await;
 
 	// Join replica network
@@ -155,6 +150,17 @@ async fn run_node(
 				}
 			}
 
+			// Try to read the data from the buffer. Since we are using a strong
+			// consistency model, we will not be able to read anything unless the
+			// confirmations are complete
+			if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
+				println!(
+					"Data gotten from replica: {} ({} confirmations)",
+					repl_data.data[0],
+					repl_data.confirmations.unwrap()
+				);
+			} 
+
 			// Sleep
 			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
 		}
@@ -163,77 +169,29 @@ async fn run_node(
 	// Wait for some time for replication protocol intitialization across the network
 	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
-	println!("\n===================");
-	println!("Replication Test Menu");
-	println!("Usage:");
-	println!("repl <data>       - Replicate to peers");
-	println!("read              - Read content from buffer");
-	println!("clone <peer_id>   - Clone a node and replicate it's buffer");
-	println!("exit              - Exit the application");
+	// Read input from standard input and then replicate it to peers
+	let stdin = io::stdin();
 	loop {
-		// Read user input
+		print!("Enter some input: ");
+		io::Write::flush(&mut io::stdout()).unwrap(); // Ensure the prompt is displayed immediately
+
 		let mut input = String::new();
-		print!("> ");
+		stdin.read_line(&mut input).unwrap();
+		let trimmed_input = input.trim();
 
-		io::stdout().flush().unwrap(); // Flush stdout to display prompt
-		io::stdin().read_line(&mut input).unwrap();
+		if trimmed_input == "exit" {
+			break;
+		}
 
-		// Trim input and split into parts
-		let mut parts = input.trim().split_whitespace();
-		let command = parts.next(); // Get the first word
-		let data = parts.collect::<Vec<_>>().join(" "); // Collect the rest as data
+		println!("Replicating...");
 
-		// Match the first word and take action
-		match command {
-			Some("repl") => {
-				if !data.is_empty() {
-					println!("Replicating data: {}", data);
-					// Replicate input
-					match node.replicate(vec![data.into()], REPL_NETWORK_ID).await {
-						Ok(_) => println!("Replication successful"),
-						Err(e) => println!("Replication failed: {}", e.to_string()),
-					}
-				} else {
-					println!("Error: No data provided to replicate.");
-				}
-			},
-			Some("clone") => {
-				if !data.is_empty() {
-					if let Some(peer_str) = data.split(" ").next() {
-						match peer_str.parse::<PeerId>() {
-							Ok(peer_id) => {
-								// Clone
-								println!("Attempting to clone replica peer: {}", peer_id);
-								match node.replicate_buffer(REPL_NETWORK_ID.into(), peer_id).await {
-									Ok(_) => println!("Replication successful: {}", peer_id),
-									Err(e) => {
-										println!("Error: Failed to clone peer {}: {:?}", peer_id, e)
-									},
-								}
-							},
-							Err(_) => {
-								println!("Error: Invalid PeerId provided. Please ensure the ID is in the correct format.");
-							},
-						}
-					} else {
-						println!("Error: Could not parse peer ID. Please provide a valid ID.");
-					}
-				} else {
-					println!("Error: No data provided to replicate. Usage: clone <peer_id>");
-				}
-			},
-			Some("read") => {
-				println!("Reading contents from buffer...");
-				while let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
-					println!("Buffer Data: {}", repl_data.data[0],);
-				}
-			},
-			Some("exit") => {
-				println!("Exiting the application. Goodbye!");
-				break;
-			},
-			Some(unknown) => println!("Unknown command: '{}'. Please try again.", unknown),
-			None => println!("No command entered. Please try again."),
+		// Replicate input
+		match node
+			.replicate(vec![trimmed_input.into()], REPL_NETWORK_ID)
+			.await
+		{
+			Ok(_) => println!("Replication successful"),
+			Err(e) => println!("Replication failed: {}", e.to_string()),
 		}
 	}
 }

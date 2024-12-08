@@ -1,15 +1,10 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! This example demonstrates the complete replication of a node's buffer data (cloning).
-//! Particularly useful when a strong synchronization model is in effect, hence bringing the new
-//! node up to speed quickly. The data is stored directly into the primary public buffer for the
-//! application layer's consumption instead of the transient buffer.
+//! This example demonstrates the replication of data accross nodes in a network using the
+//! eventual data consistency synchronization model. Here we are spinning up three replica nodes that accept data
+//! from standard input to read contents off the replica buffer or to immedately replicates the input data across its replica network.
 
-use std::{
-	collections::HashMap,
-	io::{self, Write},
-	time::Duration,
-};
+use std::{collections::HashMap, io::{self, Write}, time::Duration};
 
 use swarm_nl::{
 	core::{
@@ -70,12 +65,12 @@ async fn setup_node(
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
 
-	// Configure node for replication, we will be using a strong consistency model here
+	// Configure node for replication, we will be using an eventual consistency model here
 	let repl_config = ReplNetworkConfig::Custom {
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		consistency_model: ConsistencyModel::Eventual,
 		data_aging_period: 2,
 	};
 
@@ -115,7 +110,7 @@ async fn run_node(
 	}
 
 	// Wait a little for setup and connections
-	tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+	async_std::task::sleep(Duration::from_secs(WAIT_TIME)).await;
 
 	// Read events generated at setup
 	while let Some(event) = node.next_event().await {
@@ -144,7 +139,7 @@ async fn run_node(
 
 	// Spin up a task to listen for replication events
 	let new_node = node.clone();
-	tokio::task::spawn(async move {
+	async_std::task::spawn(async move {
 		let mut node = new_node.clone();
 		loop {
 			// Check for incoming data events
@@ -156,25 +151,24 @@ async fn run_node(
 			}
 
 			// Sleep
-			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+			async_std::task::sleep(Duration::from_secs(WAIT_TIME)).await;
 		}
 	});
 
 	// Wait for some time for replication protocol intitialization across the network
-	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
+	async_std::task::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
 	println!("\n===================");
 	println!("Replication Test Menu");
 	println!("Usage:");
-	println!("repl <data>       - Replicate to peers");
-	println!("read              - Read content from buffer");
-	println!("clone <peer_id>   - Clone a node and replicate it's buffer");
-	println!("exit              - Exit the application");
+	println!("repl <data> - Replicate to peers");
+	println!("read        - Read content from buffer");
+	println!("exit        - Exit the application");
 	loop {
 		// Read user input
 		let mut input = String::new();
 		print!("> ");
-
+		
 		io::stdout().flush().unwrap(); // Flush stdout to display prompt
 		io::stdin().read_line(&mut input).unwrap();
 
@@ -189,7 +183,10 @@ async fn run_node(
 				if !data.is_empty() {
 					println!("Replicating data: {}", data);
 					// Replicate input
-					match node.replicate(vec![data.into()], REPL_NETWORK_ID).await {
+					match node
+						.replicate(vec![data.into()], REPL_NETWORK_ID)
+						.await
+					{
 						Ok(_) => println!("Replication successful"),
 						Err(e) => println!("Replication failed: {}", e.to_string()),
 					}
@@ -197,36 +194,11 @@ async fn run_node(
 					println!("Error: No data provided to replicate.");
 				}
 			},
-			Some("clone") => {
-				if !data.is_empty() {
-					if let Some(peer_str) = data.split(" ").next() {
-						match peer_str.parse::<PeerId>() {
-							Ok(peer_id) => {
-								// Clone
-								println!("Attempting to clone replica peer: {}", peer_id);
-								match node.replicate_buffer(REPL_NETWORK_ID.into(), peer_id).await {
-									Ok(_) => println!("Replication successful: {}", peer_id),
-									Err(e) => {
-										println!("Error: Failed to clone peer {}: {:?}", peer_id, e)
-									},
-								}
-							},
-							Err(_) => {
-								println!("Error: Invalid PeerId provided. Please ensure the ID is in the correct format.");
-							},
-						}
-					} else {
-						println!("Error: Could not parse peer ID. Please provide a valid ID.");
-					}
-				} else {
-					println!("Error: No data provided to replicate. Usage: clone <peer_id>");
-				}
-			},
 			Some("read") => {
 				println!("Reading contents from buffer...");
 				while let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
 					println!("Buffer Data: {}", repl_data.data[0],);
-				}
+				} 
 			},
 			Some("exit") => {
 				println!("Exiting the application. Goodbye!");
@@ -238,7 +210,7 @@ async fn run_node(
 	}
 }
 
-#[tokio::main]
+#[async_std::main]
 async fn main() {
 	// Node 1 keypair
 	let node_1_keypair: [u8; 68] = [
