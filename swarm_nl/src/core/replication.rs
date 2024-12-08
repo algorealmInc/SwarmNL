@@ -170,6 +170,18 @@ impl ReplicaBufferQueue {
 		}
 	}
 
+	/// Initialize a replica networks data buffer. This occurs immediately after joining a new
+	/// network.
+	pub async fn init(&self, repl_network: String) {
+		// Initialize primary public buffer
+		let mut queue = self.queue.lock().await;
+		queue.insert(repl_network.clone(), Default::default());
+
+		// Initialize transient buffer, in case of a string consistency model
+		let mut queue = self.temporary_queue.lock().await;
+		queue.insert(repl_network.clone(), Default::default());
+	}
+
 	/// Push a new [ReplBufferData] item into the buffer.
 	pub async fn push(&self, mut core: Core, replica_network: String, data: ReplBufferData) {
 		// Different behaviours based on configurations
@@ -508,7 +520,13 @@ impl ReplicaBufferQueue {
 				// Extract message IDs for synchronization
 				let mut message_ids = local_data
 					.iter()
-					.map(|data| data.message_id.clone().into())
+					.map(|data| {
+						// Make the ID a concatenation of the message Id and it's original pubishing
+						// peer
+						let id = data.message_id.clone()
+							+ Core::ENTRY_DELIMITER + &data.sender.to_string();
+						id.into()
+					})
 					.collect::<ByteVector>();
 
 				// Prepare gossip message
@@ -516,7 +534,7 @@ impl ReplicaBufferQueue {
 					// Strong Consistency Sync Gossip Flag
 					Core::EVENTUAL_CONSISTENCY_FLAG.as_bytes().to_vec(),
 					// Node's Peer ID
-					core.peer_id().to_base58().into(),
+					core.peer_id().to_string().into(),
 					repl_network.clone().into(),
 					min_clock.to_string().into(),
 					max_clock.to_string().into(),
@@ -556,6 +574,7 @@ impl ReplicaBufferQueue {
 		// clock sync bound, will the synchronizatio occur
 		let state = core.network_info.replication.state.lock().await;
 		if let Some(state) = state.get(&repl_network) {
+			println!("{} <<----->> {}", state.last_clock, lamports_clock_bound.1);
 			if state.last_clock >= lamports_clock_bound.1 {
 				return;
 			}
@@ -568,16 +587,15 @@ impl ReplicaBufferQueue {
 		// Filter replica buffer too so it doesn't contain the data that we published.
 		// This is done using the messageId since by gossipsub, messageId = (Publishing
 		// peerId + Nonce)
-
-		println!(">>>>? {:#?}", replica_data_state);
-		println!(">>>>? {:?}", &core.peer_id().to_bytes());
-
 		let replica_buffer_state = replica_data_state
 			.into_iter()
-			.filter(|id| !id.contains(&core.peer_id().to_base58()))
+			.filter(|id| !id.contains(&core.peer_id().to_string()))
+			.map(|id| {
+				// Extract message Id
+				let msg_id = id.split(Core::ENTRY_DELIMITER).collect::<Vec<_>>()[0];
+				msg_id.into()
+			})
 			.collect::<BTreeSet<_>>();
-
-		println!("{:#?}", replica_buffer_state);
 
 		// Extract local buffer state and filter it while keeping the mutex lock duration
 		// minimal
@@ -604,8 +622,6 @@ impl ReplicaBufferQueue {
 			}
 		};
 
-		println!("missing messages: {:#?}", missing_msgs);
-
 		if !missing_msgs.is_empty() {
 			// Prepare an RPC fetch request for missing messages
 			if let Ok(repl_peer_id) = repl_peer_id.parse::<PeerId>() {
@@ -622,8 +638,6 @@ impl ReplicaBufferQueue {
 					keys: rpc_data,
 					peer: repl_peer_id,
 				};
-
-				println!("I need to pull data");
 
 				// Send the fetch request
 				if let Ok(response) = core.query_network(fetch_request).await {
@@ -696,7 +710,7 @@ impl ReplicaBufferQueue {
 			return vec![result];
 		}
 
-		// Default empty result if no local state is found
+		// Default empty result if no local state is found.
 		Default::default()
 	}
 
@@ -710,7 +724,7 @@ impl ReplicaBufferQueue {
 		// Send an RPC to the node to retreive it's buffer image
 		let rpc_data: ByteVector = vec![
 			// RPC buffer copy flag. It is the samething as the sync pull flag with an empty
-			// message id vector
+			// message id vector.
 			Core::RPC_SYNC_PULL_FLAG.into(),
 			repl_network.clone().into(), // Replica network
 			vec![],                      // Empty vector indicating a total PULL

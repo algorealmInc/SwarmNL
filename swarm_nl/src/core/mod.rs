@@ -1120,6 +1120,9 @@ impl Core {
 			nodes: Default::default(),
 		});
 
+		// Initialize replica buffers
+		self.replica_buffer.init(repl_network.clone()).await;
+
 		// Free `Core`
 		drop(cfg);
 
