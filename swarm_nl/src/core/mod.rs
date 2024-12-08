@@ -1106,10 +1106,10 @@ impl Core {
 			.await
 	}
 
-	/// Join a replica network and get up to speed with the current nextwork data state.
-	/// If the consistency model is eventual, in no time the node's buffer will be up to date. But
-	/// if it's the case of a strong consistency model, we might have to call
-	/// [`Core::replicate_buffer`] to get up to date.
+	/// Join a replica network and get up to speed with the current network data state.
+	/// 
+	/// If the consistency model is eventual, the node's buffer will almost immediately be up to date. But
+	/// if the consistency model is strong, [`Core::replicate_buffer`] must be called to update the buffer.
 	pub async fn join_repl_network(&mut self, repl_network: String) -> NetworkResult<()> {
 		// Set up replica network config
 		let mut cfg = self.network_info.replication.state.lock().await;
