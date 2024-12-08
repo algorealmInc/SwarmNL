@@ -53,28 +53,21 @@ pub enum ConsensusModel {
 #[derive(Clone, Debug)]
 pub enum ReplNetworkConfig {
 	/// A custom configuration.
-	///
-	/// # Fields
-	///
-	/// - `queue_length`: Max capacity for transient storage.
-	/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full. If a `NoExpiry`
-	///   behaviour is preferred, `expiry_time` should be set to `None`.
-	/// - `sync_wait_time`: Epoch to wait before attempting the next network synchronization of
-	///   data in the buffer.
-	/// - `consistency_model`: The data consistency model to be supported by the node. This must be
-	///   uniform across all nodes to prevent undefined behaviour.
-	/// - `data_aging_period`: When data has arrived and is saved into the buffer, the time to wait
-	///   for it to get to other peers after which it can be picked for synchronization.
 	Custom {
+        /// Max capacity for transient storage.
 		queue_length: u64,
+        /// Expiry time of data in the buffer if the buffer is full. If a `NoExpiry`.
 		expiry_time: Option<Seconds>,
+        /// Epoch to wait before attempting the next network synchronization of data in the buffer.
 		sync_wait_time: Seconds,
+        /// The data consistency model to be supported by the node. This must be uniform across all nodes to prevent undefined behaviour.
 		consistency_model: ConsistencyModel,
+        /// When data has arrived and is saved into the buffer, the time to wait for it to get to other peers after which it can be picked for synchronization.
 		data_aging_period: Seconds,
 	},
 	/// A default configuration: `queue_length` = 100, `expiry_time` = 60 seconds,
 	/// `sync_wait_time` = 5 seconds, `consistency_model`: `Eventual`, `data_wait_period` = 5
-	/// seconds
+	/// seconds.
 	Default,
 }
 
@@ -886,7 +879,7 @@ mod tests {
 			}
 
 			// Check that the first data lamport is 1
-			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 1);
+			assert_eq!(buffer.pop_front(network.clone(), "network1").await.unwrap().lamport_clock, 1);
 
 			tokio::time::sleep(std::time::Duration::from_secs(expiry_period)).await; // Wait for expiry
 
@@ -931,9 +924,9 @@ mod tests {
 				.await;
 
 			// We expect that 6 is the first element and 42 is the second as they have not aged out
-			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 6);
+			assert_eq!(buffer.pop_front(network.clone(), "network1").await.unwrap().lamport_clock, 6);
 			assert_eq!(
-				buffer.pop_front("network1").await.unwrap().lamport_clock,
+				buffer.pop_front(network.clone(), "network1").await.unwrap().lamport_clock,
 				42
 			);
 		});
@@ -970,7 +963,7 @@ mod tests {
 			}
 
 			// Check that the first data lamport is 1
-			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 1);
+			assert_eq!(buffer.pop_front(network.clone(), "network1").await.unwrap().lamport_clock, 1);
 
 			buffer
 				.push(
@@ -989,8 +982,8 @@ mod tests {
 				.await;
 
 			// Check that the data lamports are 2 and 3 as expected
-			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 2);
-			assert_eq!(buffer.pop_front("network1").await.unwrap().lamport_clock, 3);
+			assert_eq!(buffer.pop_front(network.clone(), "network1").await.unwrap().lamport_clock, 2);
+			assert_eq!(buffer.pop_front(network.clone(), "network1").await.unwrap().lamport_clock, 3);
 		});
 	}
 
@@ -1000,8 +993,10 @@ mod tests {
 			let config = ReplNetworkConfig::Default;
 			let buffer = ReplicaBufferQueue::new(config);
 
-			let result = buffer.pop_front("network1").await;
-			assert!(result.is_none(), "Buffer should be empty");
+            let network = setup_node((15551, 6661)).await;
+
+			let result = buffer.pop_front(network.clone(),"network1").await;
+			assert_eq!(result.is_none(), true);
 		});
 	}
 }
