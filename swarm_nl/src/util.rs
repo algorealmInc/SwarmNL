@@ -4,10 +4,7 @@
 //! Utility helper functions for reading from and writing to `.ini` config files.
 
 use crate::{
-	core::{
-		replication::{ReplBufferData, ReplConfigData},
-		ByteVector, Core, StringVector,
-	},
+	core::{replication::ReplBufferData, ByteVector, Core, StringVector},
 	prelude::*,
 	setup::BootstrapConfig,
 };
@@ -130,43 +127,6 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 			}
 			acc
 		})
-}
-
-/// Parse replica nodes specified in the `bootstrap_config.ini` config file
-fn parse_replication_data(input: &str) -> Vec<(String, ReplConfigData)> {
-	let mut result = Vec::new();
-
-	// Remove brackets and split by '@'
-	let data = input.trim_matches(|c| c == '[' || c == ']').split('@');
-
-	for section in data {
-		if section.is_empty() {
-			continue;
-		}
-
-		// Split outer identifier and the rest
-		if let Some((outer_id, inner_data)) = section.split_once(':') {
-			let mut inner_map = HashMap::new();
-
-			// Split each key-value pair
-			for entry in inner_data.trim_matches(|c| c == '[' || c == ']').split(',') {
-				if let Some((key, value)) = entry.trim().split_once(':') {
-					inner_map.insert(key.to_string(), value.to_string());
-				}
-			}
-
-			// Set up replica network config data
-			let cfg = ReplConfigData {
-				lamport_clock: 0, // Set clock to 0
-				last_clock: 0,
-				nodes: inner_map, // Replica nodes
-			};
-
-			result.push((outer_id.trim().to_string(), cfg));
-		}
-	}
-
-	result
 }
 
 /// Convert a peer ID string to [`PeerId`].

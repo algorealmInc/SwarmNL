@@ -13,7 +13,6 @@ use std::{
 	net::IpAddr,
 	num::NonZeroU32,
 	path::Path,
-	rc::Rc,
 	sync::Arc,
 	time::Duration,
 };
