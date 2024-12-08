@@ -24,11 +24,12 @@ optional = true
 [dependencies.tokio]
 version = "1.37.0"
 optional = true
+features = ["full"]
 
 [features]
 tokio-runtime = ["tokio"]
 async-std-runtime = ["async-std"]
-default = ["async-std-runtime"]
+default = ["tokio-runtime"]
 
 test-listening-node = []
 test-dialing-node = []
