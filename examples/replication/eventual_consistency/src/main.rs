@@ -110,7 +110,7 @@ async fn run_node(
 	}
 
 	// Wait a little for setup and connections
-	tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+	async_std::task::sleep(Duration::from_secs(WAIT_TIME)).await;
 
 	// Read events generated at setup
 	while let Some(event) = node.next_event().await {
@@ -139,7 +139,7 @@ async fn run_node(
 
 	// Spin up a task to listen for replication events
 	let new_node = node.clone();
-	tokio::task::spawn(async move {
+	async_std::task::spawn(async move {
 		let mut node = new_node.clone();
 		loop {
 			// Check for incoming data events
@@ -151,12 +151,12 @@ async fn run_node(
 			}
 
 			// Sleep
-			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+			async_std::task::sleep(Duration::from_secs(WAIT_TIME)).await;
 		}
 	});
 
 	// Wait for some time for replication protocol intitialization across the network
-	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
+	async_std::task::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
 	println!("\n===================");
 	println!("Replication Test Menu");
@@ -210,7 +210,7 @@ async fn run_node(
 	}
 }
 
-#[tokio::main]
+#[async_std::main]
 async fn main() {
 	// Node 1 keypair
 	let node_1_keypair: [u8; 68] = [
