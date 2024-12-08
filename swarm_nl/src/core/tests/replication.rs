@@ -70,7 +70,7 @@ async fn setup_node(
 // - joining and exit
 
 #[test]
-fn join_and_exit_works() {
+fn repl_itest_join_and_exit_works() {
 	// Node 1 keypair
 	let node_1_keypair: [u8; 68] = [
 		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
