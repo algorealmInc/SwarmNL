@@ -261,30 +261,6 @@ async fn repl_itest_fully_replicate_node() {
 			);
 			let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
 
-			while let Some(event) = node.next_event().await {
-				match event {
-					NetworkEvent::NewListenAddr {
-						local_peer_id,
-						listener_id: _,
-						address,
-					} => {
-						// Announce interfaces we're listening on
-						println!("Peer id: {}", local_peer_id);
-						println!("We're listening on {}", address);
-					},
-					NetworkEvent::ConnectionEstablished {
-						peer_id,
-						connection_id: _,
-						endpoint: _,
-						num_established: _,
-						established_in: _,
-					} => {
-						println!("Connection established with peer: {:?}", peer_id);
-					},
-					_ => {},
-				}
-			}
-
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
@@ -295,15 +271,6 @@ async fn repl_itest_fully_replicate_node() {
 			node.replicate(vec!["Papayas".into()], &REPL_NETWORK_ID)
 				.await
 				.unwrap();
-
-			while let Some(event) = node.next_event().await {
-				match event {
-					NetworkEvent::ReplicaDataIncoming { source, .. } => {
-						println!("Recieved incoming replica data from {}", source.to_base58());
-					},
-					_ => {},
-				}
-			}
 
 			// Keep node running
 			tokio::time::sleep(Duration::from_secs(10)).await;
@@ -323,30 +290,6 @@ async fn repl_itest_fully_replicate_node() {
 			);
 			let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
 
-			while let Some(event) = node.next_event().await {
-				match event {
-					NetworkEvent::NewListenAddr {
-						local_peer_id,
-						listener_id: _,
-						address,
-					} => {
-						// Announce interfaces we're listening on
-						println!("Peer id: {}", local_peer_id);
-						println!("We're listening on {}", address);
-					},
-					NetworkEvent::ConnectionEstablished {
-						peer_id,
-						connection_id: _,
-						endpoint: _,
-						num_established: _,
-						established_in: _,
-					} => {
-						println!("Connection established with peer: {:?}", peer_id);
-					},
-					_ => {},
-				}
-			}
-
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
@@ -357,15 +300,6 @@ async fn repl_itest_fully_replicate_node() {
 			node.replicate(vec!["Kiwis".into()], &REPL_NETWORK_ID)
 				.await
 				.unwrap();
-
-			while let Some(event) = node.next_event().await {
-				match event {
-					NetworkEvent::ReplicaDataIncoming { source, .. } => {
-						println!("Recieved incoming replica data from {}", source.to_base58());
-					},
-					_ => {},
-				}
-			}
 
 			// Keep node running
 			tokio::time::sleep(Duration::from_secs(10)).await;
