@@ -47,9 +47,6 @@ pub type StringVector = Vec<String>;
 /// Type that represents a nonce.
 pub type Nonce = u64;
 
-/// The delimeter that separates the messages to gossip.
-pub(super) const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
-
 /// Time to wait (in seconds) for the node (network layer) to boot.
 pub(super) const BOOT_WAIT_TIME: Seconds = 1;
 
@@ -526,8 +523,8 @@ pub enum NetworkEvent {
 	IncomingForwardedData {
 		/// Data
 		data: StringVector,
-		// Sender PeerId
-		// source: PeerId,
+		/// Sender's PeerId
+		source: PeerId,
 	},
 	/// Event that announces the arrival of a gossip message.
 	///

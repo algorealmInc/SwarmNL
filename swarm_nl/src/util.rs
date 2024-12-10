@@ -241,6 +241,26 @@ pub fn shard_image_to_bytes(input: HashMap<String, Vec<PeerId>>) -> Vec<u8> {
 	result
 }
 
+/// Merge the incoming shard state with the local shard state of the network.
+pub fn merge_shard_states(
+	local_state: &mut HashMap<String, Vec<PeerId>>,
+	incoming_state: HashMap<String, Vec<PeerId>>,
+) {
+	for (shard_id, incoming_peers) in incoming_state.iter() {
+		local_state
+			.entry(shard_id.to_owned())
+			.and_modify(|local_peers| {
+				// Add only unique peers from incoming_peers to local_peers
+				for peer in incoming_peers {
+					if !local_peers.contains(peer) {
+						local_peers.push(peer.clone());
+					}
+				}
+			})
+			.or_insert(incoming_peers.to_owned()); // If the shard_id doesn't exist, insert it directly
+	}
+}
+
 /// Unmarshall the byte=re into the shard network image.
 pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, Vec<PeerId>> {
 	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";

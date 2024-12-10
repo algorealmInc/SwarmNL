@@ -164,7 +164,7 @@ async fn run_node(
 	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
 	println!("\n===================");
-	println!("Replication Test Menu");
+	println!("Replication Example Menu");
 	println!("Usage:");
 	println!("repl <data>       - Replicate to peers");
 	println!("read              - Read content from buffer");

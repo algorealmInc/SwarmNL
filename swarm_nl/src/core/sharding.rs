@@ -40,90 +40,49 @@ where
 	/// Map a key to a shard.
 	fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId>;
 
-	/// Add a node to a shard.
-	async fn add_node(
-		&self,
-		mut core: Core,
-		shard_id: &Self::ShardId,
-		peer: PeerId,
-	) -> NetworkResult<()> {
-		// Ensure the sharding network ID is set.
-		let shard_network_id: Vec<u8> = match &core.network_info.sharding.id {
+	/// Join a shard network.
+	async fn join_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> {
+		// Ensure the network sharding ID is set.
+		let network_shard_id: Vec<u8> = match &core.network_info.sharding.id {
 			id if !id.is_empty() => id.clone().into(),
 			_ => return Err(NetworkError::MissingShardingNetworkIdError),
 		};
+		let network_sharding_id = String::from_utf8_lossy(&network_shard_id).to_string();
 
-		if peer != core.peer_id() {
-			// Prepare the message to invite the peer to the shard gossip network.
-			let mut message = vec![
-				Core::SHARD_RPC_INVITATION_FLAG.as_bytes().to_vec(), /* Flag to join shard
-				                                                      * network. */
-				shard_network_id.clone(),          // Shard (gossip) network ID.
-				shard_id.to_string().into_bytes(), // Shard ID.
-			];
+		// Join the generic shard (gossip) network
+		let gossip_request = AppData::GossipsubJoinNetwork(network_sharding_id.clone());
+		let _ = core.query_network(gossip_request).await?;
 
-			// We must send the current state of the network to the joining node, so it can have
-			// a current view of the network.
-			let shard_state = core.network_info.sharding.state.lock().await.clone();
-			let bytes = shard_image_to_bytes(shard_state);
+		// Update the local shard state
+		let mut shard_state = core.network_info.sharding.state.lock().await;
+		shard_state
+			.entry(shard_id.to_string())
+			.or_insert_with(Default::default)
+			.push(core.peer_id());
 
-			// Append to RPC
-			message.push(bytes);
+		// Free `Core`
+		drop(shard_state);
 
-			// Send the RPC request to invite the peer.
-			let rpc_request = AppData::FetchData {
-				keys: message,
-				peer,
-			};
+		// Join the shard network
+		let gossip_request = AppData::GossipsubJoinNetwork(shard_id.to_string());
+		let _ = core.query_network(gossip_request).await?;
 
-			core.query_network(rpc_request).await?;
-
-			// Add the peer to the shard state.
-			{
-				let mut shard_state = core.network_info.sharding.state.lock().await;
-				shard_state
-					.entry(shard_id.to_string())
-					.or_insert_with(Default::default)
-					.push(peer);
-			}
-		} else {
-			// Add the node to the shard state directly.
-			{
-				let mut shard_state = core.network_info.sharding.state.lock().await;
-				shard_state
-					.entry(shard_id.to_string())
-					.or_insert_with(Default::default)
-					.push(peer);
-			}
-
-			// Join the shard gossip network.
-			let gossip_request = AppData::GossipsubJoinNetwork(shard_id.to_string());
-			core.query_network(gossip_request).await?;
-		}
-
-		// Broadcast the new node to other nodes in the network.
+		// Inform the entire network about out decision
 		let message = vec![
 			Core::SHARD_GOSSIP_JOIN_FLAG.as_bytes().to_vec(), // Flag for join event.
-			peer.to_base58().into_bytes(),                    // New peer ID.
-			shard_id.to_string().into_bytes(),                // Shard ID.
+			core.peer_id().to_string().into_bytes(),          // Our peer ID.
+			shard_id.to_string().into_bytes(),                // Shard we're joining
 		];
 
 		let gossip_request = AppData::GossipsubBroadcastMessage {
-			topic: String::from_utf8_lossy(&shard_network_id).to_string(),
+			topic: network_sharding_id,
 			message,
 		};
 
-		// Gossip the join event to replica nodes.
+		// Gossip the join event to all nodes.
 		core.query_network(gossip_request).await?;
 
 		Ok(())
-	}
-
-	/// Join a shard network.
-	async fn join_network(&self, core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> {
-		// We add ourself
-		let peer_id = core.peer_id();
-		self.add_node(core, shard_id, peer_id).await
 	}
 
 	/// Exit a shard network.
@@ -152,7 +111,6 @@ where
 			message,
 		};
 
-		// Gossip data to replica nodes
 		let _ = core.query_network(gossip_request).await?;
 
 		// Check if we're in any shard
@@ -165,15 +123,15 @@ where
 			drop(shard_state);
 
 			// Leave the underlying sharding (gossip) network
-			let gossip_request = AppData::GossipsubJoinNetwork(shard_id.to_string());
+			let gossip_request = AppData::GossipsubJoinNetwork(core.network_info.sharding.id.clone());
 			core.query_network(gossip_request).await?;
 		}
 
 		Ok(())
 	}
 
-	/// Send data to peers in the appropriate logical shard. It return the data if the node is a
-	/// member of the shard
+	/// Send data to peers in the appropriate logical shard. It returns the data if the node is a
+	/// member of the shard after replicating it to fellow nodes in the same shard.
 	async fn shard(
 		&self,
 		mut core: Core,
