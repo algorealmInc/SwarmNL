@@ -427,31 +427,6 @@ async fn two_nodes_confirmations_with_all_consistency_model() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
-
-		// Read events generated at setup for debugging
-		while let Some(event) = node.next_event().await {
-			match event {
-				NetworkEvent::NewListenAddr {
-					local_peer_id,
-					listener_id: _,
-					address,
-				} => {
-					// Announce interfaces we're listening on
-					println!("Peer id: {}", local_peer_id);
-					println!("We're listening on {}", address);
-				},
-				NetworkEvent::ConnectionEstablished {
-					peer_id,
-					connection_id: _,
-					endpoint: _,
-					num_established: _,
-					established_in: _,
-				} => {
-					println!("Connection established with peer: {:?}", peer_id);
-				},
-				_ => {},
-			}
-		}
 		
 		// Join replica network works
 		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -478,31 +453,6 @@ async fn two_nodes_confirmations_with_all_consistency_model() {
 		);
 
 		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
-		
-		// Read events generated at setup for debugging
-		while let Some(event) = node.next_event().await {
-			match event {
-				NetworkEvent::NewListenAddr {
-					local_peer_id,
-					listener_id: _,
-					address,
-				} => {
-					// Announce interfaces we're listening on
-					println!("Peer id: {}", local_peer_id);
-					println!("We're listening on {}", address);
-				},
-				NetworkEvent::ConnectionEstablished {
-					peer_id,
-					connection_id: _,
-					endpoint: _,
-					num_established: _,
-					established_in: _,
-				} => {
-					println!("Connection established with peer: {:?}", peer_id);
-				},
-				_ => {},
-			}
-		}
 
 		// Join replica network works
 		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -512,9 +462,6 @@ async fn two_nodes_confirmations_with_all_consistency_model() {
 		
 		let first_repl_data = node.consume_repl_data(REPL_NETWORK_ID.into()).await.unwrap();
 		let second_repl_data = node.consume_repl_data(REPL_NETWORK_ID.into()).await.unwrap();
-
-		println!("First repl data {:#?}", first_repl_data );
-		println!("Second repl data {:#?}", second_repl_data );
 
 		assert_eq!(first_repl_data.confirmations, Some(1));
 		assert_eq!(first_repl_data.data, vec!["Apples".to_string()]);
