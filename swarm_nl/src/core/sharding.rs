@@ -7,8 +7,9 @@ use super::*;
 use async_trait::async_trait;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
-/// Trait that interfaces with the storage layer of a node in a shard. It is important for handling forwarded
-/// data requests. This is a mechanism to trap into the application storage layer to read sharded data.
+/// Trait that interfaces with the storage layer of a node in a shard. It is important for handling
+/// forwarded data requests. This is a mechanism to trap into the application storage layer to read
+/// sharded data.
 pub trait ShardStorage: Send + Sync + Clone {
 	fn fetch_data(&self, key: ByteVector) -> Option<ByteVector>;
 }

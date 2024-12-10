@@ -6,7 +6,11 @@
 
 use std::collections::HashMap;
 
-use crate::{core::{AppData, AppResponse, Core, CoreBuilder, DataQueue, NetworkError, NetworkEvent}, setup::BootstrapConfig, Port, DEFAULT_NETWORK_ID};
+use crate::{
+	core::{AppData, AppResponse, Core, CoreBuilder, DataQueue, NetworkError, NetworkEvent},
+	setup::BootstrapConfig,
+	Port, DEFAULT_NETWORK_ID,
+};
 
 use super::*;
 use libp2p::{
@@ -646,8 +650,8 @@ fn kademlia_record_store_itest_works() {
 
 // Note: KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
 // The right function to use is sent_to_network() which will not return a Some(StreamId) but will
-// always return None. This is because it always succeeds and doesn't need to be tracked internally. 
-// Do not use query_network() to send the command, if you do, it will succeed but you will get a 
+// always return None. This is because it always succeeds and doesn't need to be tracked internally.
+// Do not use query_network() to send the command, if you do, it will succeed but you will get a
 // wrong error. The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).
 
 // -- Tests for providers --

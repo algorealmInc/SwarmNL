@@ -212,7 +212,8 @@ async fn repl_itest_join_and_exit_works() {
 		// assert that 2 nodes have joined
 		assert_eq!(node.replica_peers(REPL_NETWORK_ID.into()).await.len(), 2);
 
-		// after sleeping for 5 secons we expect there to be no more nodes in the replication network
+		// after sleeping for 5 secons we expect there to be no more nodes in the replication
+		// network
 		tokio::time::sleep(Duration::from_secs(5)).await;
 
 		// assert that 2 nodes have left
@@ -414,8 +415,9 @@ async fn repl_itest_fully_replicate_node() {
 }
 
 // Nodes need to come to consensus before its relicated to primary buffer
-// If there are two peers in the network there is no consensus to be reached, node just puts in the primary buffer
-// If there is three peers, they need to reach consensus. We need to test for Strong(All) and Strong(MinPeers) for this.
+// If there are two peers in the network there is no consensus to be reached, node just puts in the
+// primary buffer If there is three peers, they need to reach consensus. We need to test for
+// Strong(All) and Strong(MinPeers) for this.
 
 mod strong_consistency {
 
@@ -1031,15 +1033,15 @@ mod eventual_consistency {
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
-            // Sleep to allow network wide synchronization
+			// Sleep to allow network wide synchronization
 			tokio::time::sleep(Duration::from_secs(10)).await;
 
-            let mut number_of_messages = 0;
+			let mut number_of_messages = 0;
 
-            while let Some(_) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
-                number_of_messages += 1;
-            }
-            assert_eq!(number_of_messages, 4);
+			while let Some(_) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
+				number_of_messages += 1;
+			}
+			assert_eq!(number_of_messages, 4);
 		});
 
 		for task in vec![task_1, task_2, task_3] {

@@ -418,13 +418,11 @@ impl ReplicaBufferQueue {
 					}
 					// Check if confirmations meet required peers
 					flag = peers_count != 0 && data_entry.confirmations == Some(peers_count);
-
 				}
 			}
 
 			flag
 		};
-
 
 		// If fully confirmed, move data to the public queue
 		if is_fully_confirmed {
@@ -520,7 +518,8 @@ impl ReplicaBufferQueue {
 						// Make the ID a concatenation of the message Id and it's original pubishing
 						// peer
 						let id = data.message_id.clone()
-							+ Core::ENTRY_DELIMITER + &data.sender.to_string();
+							+ Core::ENTRY_DELIMITER
+							+ &data.sender.to_string();
 						id.into()
 					})
 					.collect::<ByteVector>();

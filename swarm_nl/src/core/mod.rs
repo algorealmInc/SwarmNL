@@ -1054,7 +1054,7 @@ impl Core {
 			peer,
 		};
 
-		self.query_network(rpc_request).await;
+		let _ = self.query_network(rpc_request).await;
 	}
 
 	/// Handle incoming replicated data.
@@ -1096,12 +1096,17 @@ impl Core {
 
 	/// Handle incoming shard data. We will not be doing any internal buffering as the data would be
 	/// exposed as an event.
-	async fn handle_incoming_shard_data(&mut self, shard_id: String, source: PeerId, incoming_data: ByteVector) {
+	async fn handle_incoming_shard_data(
+		&mut self,
+		shard_id: String,
+		source: PeerId,
+		incoming_data: ByteVector,
+	) {
 		// Push into event queue
 		self.event_queue
 			.push(NetworkEvent::IncomingForwardedData {
 				data: byte_vec_to_string_vec(incoming_data.clone()),
-				source
+				source,
 			})
 			.await;
 
