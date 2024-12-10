@@ -4,11 +4,16 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
 
+use std::collections::HashMap;
+
+use crate::{core::{AppData, AppResponse, Core, CoreBuilder, DataQueue, NetworkError, NetworkEvent}, setup::BootstrapConfig, Port, DEFAULT_NETWORK_ID};
+
 use super::*;
 use libp2p::{
-	core::{ConnectedPoint, Multiaddr},
+	core::{transport::ListenerId, ConnectedPoint, Multiaddr},
 	PeerId,
 };
+use libp2p_identity::Keypair;
 
 /// Time to wait for the other peer to act, during integration tests (in seconds).
 pub const ITEST_WAIT_TIME: u64 = 7;
@@ -407,12 +412,6 @@ fn gossipsub_info_works() {
 	});
 }
 
-// Tests to add
-// - on event buffer / queue: flood, ..
-// - pop event off the queue and match it to that specific network event enum
-// - test max_que is correctly handled
-// - Test handler fns work and consume next event which could be nothing
-
 // -- Event queue tests --
 
 const MAX_QUEUE_ELEMENTS: usize = 300;
@@ -647,8 +646,8 @@ fn kademlia_record_store_itest_works() {
 
 // Note: KademliaStopProviding and KademliaDeleteRecord will alwys succeed.
 // The right function to use is sent_to_network() which will not return a Some(StreamId) but will
-// always return None. This is because it always succeeds and doesn't need to be tracked internally.
-// Do not use query_network() to send the command, if you do, it will succeed but you will get a
+// always return None. This is because it always succeeds and doesn't need to be tracked internally. 
+// Do not use query_network() to send the command, if you do, it will succeed but you will get a 
 // wrong error. The wrong error will be NetworkError::StreamBufferOverflow, (which is not correct).
 
 // -- Tests for providers --
@@ -787,7 +786,7 @@ fn gossipsub_message_itest_works() {
 fn gossipsub_message_itest_works() {
 	tokio::runtime::Runtime::new().unwrap().block_on(async {
 		// Set up the second node that will dial
-		let (mut node_2, _) = setup_node_2((49885, 49889), (51887, 51887)).await;
+		let (mut node_2, _) = setup_node_2((49885, 49889), (51887, 51888)).await;
 
 		// Join a network (subscribe to a topic)
 		let gossip_request = AppData::GossipsubJoinNetwork(GOSSIP_NETWORK.to_string());
@@ -798,7 +797,7 @@ fn gossipsub_message_itest_works() {
 			// Prepare broadcast query
 			let gossip_request = AppData::GossipsubBroadcastMessage {
 				topic: GOSSIP_NETWORK.to_string(),
-				message: vec!["Apple".to_string(), "nike".to_string()],
+				message: vec!["Apple".to_string().into(), "nike".to_string().into()],
 			};
 
 			if let Ok(result) = node_2.query_network(gossip_request).await {

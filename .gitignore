@@ -14,4 +14,4 @@ Cargo.lock
 *.pdb
 
 # Ignore the client dir. It's for local experimental testing
-client/
+# client

@@ -1,30 +1,23 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! Sharding Example.
-//! This example demonstrates the sharding configurations and capabilities of
-//! SwarmNL. Here we will be implementing a range-based sharding policy. Also, it is important to
-//! note that replication must be configured for sharding to take place. It is a prerequisite.
-//! If no replication is configured, then the default behaviour will be assumed.
+//! This example demonstrates the replication of data accross nodes in a network using the
+//! eventual data consistency synchronization model. Here we are spinning up three replica nodes that accept data
+//! from standard input to read contents off the replica buffer or to immedately replicates the input data across its replica network.
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	io::{self, Write},
-	time::Duration,
-};
+use std::{collections::HashMap, io::{self, Write}, time::Duration};
 
 use swarm_nl::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
 		replication::{ConsensusModel, ConsistencyModel, ReplNetworkConfig},
-		sharding::Sharding,
-		ByteVector, Core, CoreBuilder, NetworkEvent, RpcConfig,
+		Core, CoreBuilder, NetworkEvent, RpcConfig,
 	},
 	setup::BootstrapConfig,
 	Keypair, MessageId, MultiaddrString, PeerId, PeerIdString, Port,
 };
 
-/// The constant that represents the id of the sharding network. Should be kept as a secret.
-pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
+/// The constant that represents the id of the replica network. Should be kept as a secret
+pub const REPL_NETWORK_ID: &'static str = "replica_xx";
 /// The time to wait for events, if necessary
 pub const WAIT_TIME: u64 = 2;
 
@@ -43,54 +36,6 @@ fn gossipsub_filter_fn(
 	data: Vec<String>,
 ) -> bool {
 	true
-}
-
-// Implement the `Sharding` trait
-/// Range-based sharding implementation
-pub struct RangeSharding<T>
-where
-	T: ToString + Send + Sync,
-{
-	/// A map where the key represents the upper bound of a range, and the value is the
-	/// corresponding shard ID
-	ranges: BTreeMap<u64, T>,
-}
-
-impl<T> RangeSharding<T>
-where
-	T: ToString + Send + Sync,
-{
-	/// Creates a new RangeSharding instance
-	pub fn new(ranges: BTreeMap<u64, T>) -> Self {
-		Self { ranges }
-	}
-}
-
-impl<T> Sharding for RangeSharding<T>
-where
-	T: ToString + Send + Sync + Clone,
-{
-	type Key = u64;
-	type ShardId = T;
-
-	/// Locate the shard corresponding to the given key
-	fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId> {
-		// Find the first range whose upper bound is greater than or equal to the key
-		self.ranges
-			.iter()
-			.find(|(&upper_bound, _)| key <= &upper_bound)
-			.map(|(_, shard_id)| shard_id.clone())
-	}
-}
-
-/// Function to respond to a request to read data off a node explicitly (data forwarding fetch
-/// request)
-fn callback(req: ByteVector) -> ByteVector {
-	// Return the request + some additional data
-	let mut response = req[0].clone();
-	response.push(b'@');
-
-	vec![response]
 }
 
 // Create a determininstic node
@@ -120,21 +65,16 @@ async fn setup_node(
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
 
-	// Configure node for replication, we will be using a strong consistency model here
+	// Configure node for replication, we will be using an eventual consistency model here
 	let repl_config = ReplNetworkConfig::Custom {
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		consistency_model: ConsistencyModel::Eventual,
 		data_aging_period: 2,
 	};
 
-	builder
-		.with_replication(repl_config)
-		.with_sharding(NETWORK_SHARDING_ID.into(), callback)
-		.build()
-		.await
-		.unwrap()
+	builder.with_replication(repl_config).build().await.unwrap()
 }
 
 // #[cfg(feature = "first-node")]
@@ -161,8 +101,16 @@ async fn run_node(
 	// Setup node
 	let mut node = setup_node(ports_1, &keypair[..], bootnodes).await;
 
+	// Join replica network
+	println!("Joining replication network");
+	if let Ok(_) = node.join_repl_network(REPL_NETWORK_ID.into()).await {
+		println!("Replica network successfully joined");
+	} else {
+		panic!("Failed to join replica network");
+	}
+
 	// Wait a little for setup and connections
-	tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+	async_std::task::sleep(Duration::from_secs(WAIT_TIME)).await;
 
 	// Read events generated at setup
 	while let Some(event) = node.next_event().await {
@@ -191,135 +139,66 @@ async fn run_node(
 
 	// Spin up a task to listen for replication events
 	let new_node = node.clone();
-	tokio::task::spawn(async move {
+	async_std::task::spawn(async move {
 		let mut node = new_node.clone();
 		loop {
 			// Check for incoming data events
 			if let Some(event) = node.next_event().await {
 				// Check for only incoming repl data
-				if let NetworkEvent::IncomingForwardedData { data, source } = event {
-					println!(
-						"Recieved forwarded data: {} from peer: {}",
-						data[0],
-						source.to_base58()
-					);
+				if let NetworkEvent::ReplicaDataIncoming { source, .. } = event {
+					println!("Recieved incoming replica data from {}", source.to_base58());
 				}
 			}
 
 			// Sleep
-			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+			async_std::task::sleep(Duration::from_secs(WAIT_TIME)).await;
 		}
 	});
 
-	// Shard Id's
-	let shard_id_1 = 1;
-	let shard_id_2 = 2;
-	let shard_id_3 = 3;
-
-	// Define shard ranges
-	let mut ranges = BTreeMap::new();
-
-	// Key ranges => Shard id
-	ranges.insert(100, shard_id_1);
-	ranges.insert(200, shard_id_2);
-	ranges.insert(300, shard_id_3);
-
-	// Initialize the range-based sharding policy
-	let shard_manager = RangeSharding::new(ranges);
-
-	// Join appropriate shards each
-	match name {
-		"Node1" => {
-			shard_manager.join_network(node.clone(), &shard_id_1).await;
-		},
-		"Node2" => {
-			shard_manager.join_network(node.clone(), &shard_id_2).await;
-		},
-		"Node3" => {
-			shard_manager.join_network(node.clone(), &shard_id_3).await;
-		},
-		_ => {},
-	}
+	// Wait for some time for replication protocol intitialization across the network
+	async_std::task::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
 	println!("\n===================");
-	println!("Sharding Example Menu");
+	println!("Replication Test Menu");
 	println!("Usage:");
-	println!("shard <key> <data>          - Place data in appropriate shards");
-	println!("Fetch <key> <request>       - Request data from the network");
-	println!("exit                        - Exit the application");
-
+	println!("repl <data> - Replicate to peers");
+	println!("read        - Read content from buffer");
+	println!("exit        - Exit the application");
 	loop {
 		// Read user input
 		let mut input = String::new();
 		print!("> ");
-
+		
 		io::stdout().flush().unwrap(); // Flush stdout to display prompt
 		io::stdin().read_line(&mut input).unwrap();
 
 		// Trim input and split into parts
 		let mut parts = input.trim().split_whitespace();
 		let command = parts.next(); // Get the first word
-		let data = parts.collect::<Vec<_>>();
+		let data = parts.collect::<Vec<_>>().join(" "); // Collect the rest as data
 
 		// Match the first word and take action
 		match command {
-			Some("shard") => {
-				if data.len() >= 2 {
-					if let Ok(key) = data[0].parse::<u64>() {
-						let shard_data = &data[2..].join(" "); // Join the remaining parts as data
-						println!("Sharding data with key '{}': {}", key, shard_data);
-						// Call your sharding logic here
-						match shard_manager
-							.shard(node.clone(), &key, vec![(*shard_data).clone().into()])
-							.await
-						{
-							Ok(response) => match response {
-								Some(data) => {
-									println!(
-										"The data to shard is '{}'",
-										String::from_utf8_lossy(&data[0])
-									);
-									println!("It falls into the range of the current node and will be stored locally.");
-								},
-								None => println!("Successfully placed data in the right shard."),
-							},
-							Err(e) => println!("Sharding failed: {}", e.to_string()),
-						}
-					} else {
-						println!("Error: 'key' must be a u64");
+			Some("repl") => {
+				if !data.is_empty() {
+					println!("Replicating data: {}", data);
+					// Replicate input
+					match node
+						.replicate(vec![data.into()], REPL_NETWORK_ID)
+						.await
+					{
+						Ok(_) => println!("Replication successful"),
+						Err(e) => println!("Replication failed: {}", e.to_string()),
 					}
 				} else {
-					println!("Error: 'shard' command requires at least a key and data.");
+					println!("Error: No data provided to replicate.");
 				}
 			},
-			Some("fetch") => {
-				if data.len() >= 2 {
-					if let Ok(key) = data[0].parse::<u64>() {
-						let request = &data[2..].join(" "); // Join the remaining parts as data
-						println!("Requesting data with key '{}': {}", key, request);
-						// Call your sharding logic here
-						match shard_manager
-							.fetch(node.clone(), &key, vec![(*request).clone().into()])
-							.await
-						{
-							Ok(response) => match response {
-								Some(data) => {
-									println!(
-										"The response data is '{}'",
-										String::from_utf8_lossy(&data[0])
-									);
-									println!("Successfully pulled data from the network.");
-								},
-								None => println!("Data exists locally on node."),
-							},
-							Err(e) => println!("Fetching failed: {}", e.to_string()),
-						}
-					} else {
-						println!("Error: 'key' must be a u64");
-					}
-				} else {
-					println!("Error: 'fetch' command requires at least a key and request data.");
-				}
+			Some("read") => {
+				println!("Reading contents from buffer...");
+				while let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
+					println!("Buffer Data: {}", repl_data.data[0],);
+				} 
 			},
 			Some("exit") => {
 				println!("Exiting the application. Goodbye!");
@@ -331,7 +210,7 @@ async fn run_node(
 	}
 }
 
-#[tokio::main]
+#[async_std::main]
 async fn main() {
 	// Node 1 keypair
 	let node_1_keypair: [u8; 68] = [
