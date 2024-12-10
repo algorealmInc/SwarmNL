@@ -284,7 +284,7 @@ impl ReplicaBufferQueue {
 					// Here data is written into the temporary buffer first, for finalization to
 					// occur. It is then moved into the final queue after favourable consensus
 					// has been reached.
-					ConsistencyModel::Strong(_) => {
+					ConsistencyModel::Strong(consensus_model) => {
 						// Lock the queue to modify it
 						let mut temp_queue = self.temporary_queue.lock().await;
 
@@ -303,8 +303,9 @@ impl ReplicaBufferQueue {
 						// Send a request to swarm
 						let replica_peers = core.replica_peers(&replica_network).await.len();
 
-						// Put into the primary public buffer directly if we are
-						if replica_peers == 1 {
+						// Put into the primary public buffer directly if we are only two in the
+						// network or the consensus model required only one node confirmations
+						if replica_peers == 1 || consensus_model == ConsensusModel::MinPeers(1) {
 							let mut queue = self.queue.lock().await;
 							let entry = queue.entry(replica_network.clone()).or_default();
 
