@@ -41,6 +41,7 @@ async fn setup_node(
 	ports: (Port, Port),
 	deterministic_protobuf: &[u8],
 	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
+    consistency_model: ConsistencyModel,
 ) -> Core {
 	// Configure the node deterministically so we can connect to it
 	let mut protobuf = &mut deterministic_protobuf.to_owned()[..];
@@ -62,39 +63,7 @@ async fn setup_node(
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
-		data_aging_period: 2,
-	};
-
-	builder.with_replication(repl_config).build().await.unwrap()
-}
-
-async fn setup_node_min_peers_consistency_model(
-	ports: (Port, Port),
-	deterministic_protobuf: &[u8],
-	boot_nodes: HashMap<PeerIdString, MultiaddrString>,
-) -> Core {
-	// Configure the node deterministically so we can connect to it
-	let mut protobuf = &mut deterministic_protobuf.to_owned()[..];
-
-	let config = BootstrapConfig::default()
-		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
-		.with_tcp(ports.0)
-		.with_udp(ports.1)
-		// configure bootnodes, so we can connect to our sister nodes
-		.with_bootnodes(boot_nodes);
-
-	// Set up network
-	let mut builder = CoreBuilder::with_config(config)
-		.with_rpc(RpcConfig::Default, rpc_incoming_message_handler)
-		.with_gossipsub(GossipsubConfig::Default, gossipsub_filter_fn);
-
-	// Configure node for replication, we will be using a strong consistency model here with min peers set to 2
-	let repl_config = ReplNetworkConfig::Custom {
-		queue_length: 150,
-		expiry_time: Some(10),
-		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::MinPeers(2)),
+		consistency_model,
 		data_aging_period: 2,
 	};
 
@@ -165,7 +134,7 @@ async fn repl_itest_join_and_exit_works() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
+		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 		// join replica network works
 		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -192,7 +161,7 @@ async fn repl_itest_join_and_exit_works() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
+		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 		// join replica network works
 		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -219,7 +188,7 @@ async fn repl_itest_join_and_exit_works() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 
-		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes).await;
+		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 		// join replica network works
 		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -291,7 +260,7 @@ async fn repl_itest_fully_replicate_node() {
 			peer_id_3.to_base58(),
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
-		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
+		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 		// Join replica network works
 		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -320,7 +289,7 @@ async fn repl_itest_fully_replicate_node() {
 			peer_id_3.to_base58(),
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
-		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
+		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 		// Join replica network works
 		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -349,7 +318,7 @@ async fn repl_itest_fully_replicate_node() {
 			peer_id_2.to_base58(),
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
-		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes).await;
+		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 		// Sleep to wait for nodes 1 and 2 to replicate data
 		tokio::time::sleep(Duration::from_secs(20)).await;
@@ -415,7 +384,6 @@ async fn repl_itest_fully_replicate_node() {
 mod strong_consistency {
 
 	use crate::core::replication::ReplBufferData;
-
 	use super::*;
 
 	#[tokio::test]
@@ -457,7 +425,7 @@ mod strong_consistency {
 				peer_id_2.to_base58(),
 				format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 			);
-			let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -483,7 +451,7 @@ mod strong_consistency {
 				format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
 			);
 
-			let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -566,7 +534,7 @@ mod strong_consistency {
 				peer_id_3.to_base58(),
 				format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 			);
-			let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -595,7 +563,7 @@ mod strong_consistency {
 				peer_id_3.to_base58(),
 				format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 			);
-			let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -616,7 +584,7 @@ mod strong_consistency {
 				peer_id_2.to_base58(),
 				format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 			);
-			let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::All)).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -720,7 +688,7 @@ mod strong_consistency {
 			);
 
             // Use min peers consistency model
-			let mut node = setup_node_min_peers_consistency_model(ports_1, &node_1_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::MinPeers(2))).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -751,7 +719,7 @@ mod strong_consistency {
 				format!("/ip4/127.0.0.1/tcp/{}", ports_4.0),
 			);
             // Use min peers consistency model
-			let mut node = setup_node_min_peers_consistency_model(ports_2, &node_2_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::MinPeers(2))).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -778,7 +746,7 @@ mod strong_consistency {
 			);
 
             // Use min peers consistency model
-			let mut node = setup_node_min_peers_consistency_model(ports_3, &node_3_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::MinPeers(2))).await;
 
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -804,7 +772,7 @@ mod strong_consistency {
 			);
 
             // Use min peers consistency model
-			let mut node = setup_node_min_peers_consistency_model(ports_4, &node_4_keypair[..], bootnodes).await;
+			let mut node = setup_node(ports_4, &node_4_keypair[..], bootnodes, ConsistencyModel::Strong(ConsensusModel::MinPeers(2))).await;
 
 			// Join replica network
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
@@ -824,5 +792,12 @@ mod strong_consistency {
 			task.await.unwrap();
 		}
 	}
+}
 
+mod eventual_consistency {
+
+    #[tokio::test]
+    async new_node_join_and_sync_works () {
+
+    }
 }
