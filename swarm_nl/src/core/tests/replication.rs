@@ -381,155 +381,154 @@ async fn repl_itest_fully_replicate_node() {
 // If there are two peers in the network there is no consensus to be reached, node just puts in the primary buffer
 // If there is three peers, they need to reach consensus. We need to test for Strong(All) and Strong(MinPeers) for this.
 
-mod strong_consistency {
+// mod strong_consistency {
 
-    use crate::core::replication::ReplBufferData;
+//     use crate::core::replication::ReplBufferData;
 
-    use super::*;
+//     use super::*;
 
-    #[tokio::test]
-    async fn two_nodes_confirmations_with_all_consistency_model() {
+#[tokio::test]
+async fn two_nodes_confirmations_with_all_consistency_model() {
+	// Node 1 keypair
+	let node_1_keypair: [u8; 68] = [
+		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
+		27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
+		147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
+		152, 42, 164, 148, 159, 36, 170, 109, 178,
+	];
+	// Node 2 Keypair
+	let node_2_keypair: [u8; 68] = [
+		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128,
+		114, 144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54,
+		240, 36, 110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21,
+		101, 109, 235, 10, 127, 128, 52, 52, 68, 31,
+	];
 
-        // Node 1 keypair
-		let node_1_keypair: [u8; 68] = [
-			8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3,
-			27, 202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50,
-			147, 85, 72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39,
-			152, 42, 164, 148, 159, 36, 170, 109, 178,
-		];
-		// Node 2 Keypair
-		let node_2_keypair: [u8; 68] = [
-			8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128,
-			114, 144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54,
-			240, 36, 110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21,
-			101, 109, 235, 10, 127, 128, 52, 52, 68, 31,
-		];
+	// Get Peer Id's
+	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
 	
-		// Get Peer Id's
-		let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
-			.unwrap()
-			.public()
-			.to_peer_id();
-		let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
-			.unwrap()
-			.public()
-			.to_peer_id();
+	// Ports
+	let ports_1: (Port, Port) = (49555, 55003);
+	let ports_2: (Port, Port) = (49153, 55001);
+	
+	// Setup node 1
+	let task_1 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+		bootnodes.insert(
+			peer_id_2.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
+		);
+		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
+
+		// Read events generated at setup for debugging
+		while let Some(event) = node.next_event().await {
+			match event {
+				NetworkEvent::NewListenAddr {
+					local_peer_id,
+					listener_id: _,
+					address,
+				} => {
+					// Announce interfaces we're listening on
+					println!("Peer id: {}", local_peer_id);
+					println!("We're listening on {}", address);
+				},
+				NetworkEvent::ConnectionEstablished {
+					peer_id,
+					connection_id: _,
+					endpoint: _,
+					num_established: _,
+					established_in: _,
+				} => {
+					println!("Connection established with peer: {:?}", peer_id);
+				},
+				_ => {},
+			}
+		}
 		
-		// Ports
-		let ports_1: (Port, Port) = (49555, 55003);
-		let ports_2: (Port, Port) = (49153, 55001);
+		// Join replica network works
+		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
+
+		// Send to replica node 2
+		node.replicate(vec!["Apples".into()], &REPL_NETWORK_ID)
+			.await
+			.unwrap();
+		node.replicate(vec!["Papayas".into()], &REPL_NETWORK_ID)
+			.await
+			.unwrap();
+
+		// Keep node running
+		tokio::time::sleep(Duration::from_secs(10)).await;
+	});
+
+	// Setup node 2
+	let task_2 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+		bootnodes.insert(
+			peer_id_1.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
+		);
+
+		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
 		
-        // Setup node 1
-		let task_1 = tokio::task::spawn(async move {
-			// Bootnodes
-			let mut bootnodes = HashMap::new();
-			bootnodes.insert(
-				peer_id_2.to_base58(),
-				format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
-			);
-			let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes).await;
-
-            // Read events generated at setup for debugging
-            while let Some(event) = node.next_event().await {
-                match event {
-                    NetworkEvent::NewListenAddr {
-                        local_peer_id,
-                        listener_id: _,
-                        address,
-                    } => {
-                        // Announce interfaces we're listening on
-                        println!("Peer id: {}", local_peer_id);
-                        println!("We're listening on {}", address);
-                    },
-                    NetworkEvent::ConnectionEstablished {
-                        peer_id,
-                        connection_id: _,
-                        endpoint: _,
-                        num_established: _,
-                        established_in: _,
-                    } => {
-                        println!("Connection established with peer: {:?}", peer_id);
-                    },
-                    _ => {},
-                }
-            }
-            
-			// Join replica network works
-			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
-
-			// Send to replica node 2
-			node.replicate(vec!["Apples".into()], &REPL_NETWORK_ID)
-				.await
-				.unwrap();
-			node.replicate(vec!["Papayas".into()], &REPL_NETWORK_ID)
-				.await
-				.unwrap();
-
-			// Keep node running
-			tokio::time::sleep(Duration::from_secs(10)).await;
-		});
-
-		// Setup node 2
-		let task_2 = tokio::task::spawn(async move {
-			// Bootnodes
-			let mut bootnodes = HashMap::new();
-			bootnodes.insert(
-				peer_id_1.to_base58(),
-				format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
-			);
-
-			let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes).await;
-            
-            // Read events generated at setup for debugging
-            while let Some(event) = node.next_event().await {
-                match event {
-                    NetworkEvent::NewListenAddr {
-                        local_peer_id,
-                        listener_id: _,
-                        address,
-                    } => {
-                        // Announce interfaces we're listening on
-                        println!("Peer id: {}", local_peer_id);
-                        println!("We're listening on {}", address);
-                    },
-                    NetworkEvent::ConnectionEstablished {
-                        peer_id,
-                        connection_id: _,
-                        endpoint: _,
-                        num_established: _,
-                        established_in: _,
-                    } => {
-                        println!("Connection established with peer: {:?}", peer_id);
-                    },
-                    _ => {},
-                }
-            }
-
-			// Join replica network works
-			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
-
-            // Sleep for 4 seconds
-            tokio::time::sleep(Duration::from_secs(4)).await;
-            
-            let first_repl_data = node.consume_repl_data(REPL_NETWORK_ID.into()).await.unwrap();
-            let second_repl_data = node.consume_repl_data(REPL_NETWORK_ID.into()).await.unwrap();
-
-            println!("First repl data {:#?}", first_repl_data );
-            println!("Second repl data {:#?}", second_repl_data );
-
-            assert_eq!(first_repl_data.confirmations, Some(1));
-            assert_eq!(first_repl_data.data, vec!["Apples".to_string()]);
-
-            assert_eq!(second_repl_data.confirmations, Some(1));
-            assert_eq!(second_repl_data.data, vec!["Papayas".to_string()]);
-        });
-
-		for task in vec![task_1, task_2] {
-			task.await.unwrap();
+		// Read events generated at setup for debugging
+		while let Some(event) = node.next_event().await {
+			match event {
+				NetworkEvent::NewListenAddr {
+					local_peer_id,
+					listener_id: _,
+					address,
+				} => {
+					// Announce interfaces we're listening on
+					println!("Peer id: {}", local_peer_id);
+					println!("We're listening on {}", address);
+				},
+				NetworkEvent::ConnectionEstablished {
+					peer_id,
+					connection_id: _,
+					endpoint: _,
+					num_established: _,
+					established_in: _,
+				} => {
+					println!("Connection established with peer: {:?}", peer_id);
+				},
+				_ => {},
+			}
 		}
 
-    }
+		// Join replica network works
+		let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
+
+		// Sleep for 4 seconds
+		tokio::time::sleep(Duration::from_secs(4)).await;
+		
+		let first_repl_data = node.consume_repl_data(REPL_NETWORK_ID.into()).await.unwrap();
+		let second_repl_data = node.consume_repl_data(REPL_NETWORK_ID.into()).await.unwrap();
+
+		println!("First repl data {:#?}", first_repl_data );
+		println!("Second repl data {:#?}", second_repl_data );
+
+		assert_eq!(first_repl_data.confirmations, Some(1));
+		assert_eq!(first_repl_data.data, vec!["Apples".to_string()]);
+
+		assert_eq!(second_repl_data.confirmations, Some(1));
+		assert_eq!(second_repl_data.data, vec!["Papayas".to_string()]);
+	});
+
+	for task in vec![task_1, task_2] {
+		task.await.unwrap();
+	}
+
 }
+// }
 
 
 // - confirmations (2 nodes)
