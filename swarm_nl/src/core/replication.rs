@@ -412,15 +412,19 @@ impl ReplicaBufferQueue {
 			let mut temporary_queue = self.temporary_queue.lock().await;
 			if let Some(temp_queue) = temporary_queue.get_mut(&replica_network) {
 				if let Some(data_entry) = temp_queue.get_mut(&message_id) {
-					// Increment confirmation count
-					data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
+					if data_entry.confirmations.unwrap() < peers_count {
+						// Increment confirmation count
+						data_entry.confirmations = Some(data_entry.confirmations.unwrap_or(1) + 1);
+					}
 					// Check if confirmations meet required peers
 					flag = peers_count != 0 && data_entry.confirmations == Some(peers_count);
+
 				}
 			}
 
 			flag
 		};
+
 
 		// If fully confirmed, move data to the public queue
 		if is_fully_confirmed {
