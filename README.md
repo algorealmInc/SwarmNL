@@ -211,7 +211,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
       // Prepare a RPC fetch request
       let fetch_key = vec!["SomeFetchKey".as_bytes().to_vec()];
 
-      let fetch_request = AppData::FetchData {
+      let fetch_request = AppData::SendRpc {
           keys: fetch_key.clone(),
           peer: node4_peer_id,
       };
@@ -222,7 +222,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
       // Poll for the result
       if let Ok(result) = node.recv_from_network(stream_id).await {
           // Here, the request data was simply echoed by the remote peer
-          assert_eq!(AppResponse::FetchData(fetch_key), result);
+          assert_eq!(AppResponse::SendRpc(fetch_key), result);
       }
 
       // c. Gossiping e.g

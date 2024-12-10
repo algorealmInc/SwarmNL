@@ -165,3 +165,12 @@
 //! ```bash
 //! cargo test gossipsub_message_itest_works --features=test-broadcast-node --features=tokio-runtime -- --nocapture
 //! ```
+//!
+//! ## Replication tests
+//!
+//! For replication tests, we setup the nodes as separate threads to form replication networks. For
+//! testing joining and exiting functions, run:
+//!
+//! ```bash
+//! cargo test repl_itest_join_and_exit_works
+//! ```

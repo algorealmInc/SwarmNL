@@ -1,6 +1,8 @@
 // Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
+//! The module that contains important data structures and logic for the functioning of swarmNl.
+
 use self::ping_config::PingInfo;
 use libp2p::gossipsub::MessageId;
 use libp2p_identity::PublicKey;
@@ -30,17 +32,20 @@ pub type AppResponseResult = Result<AppResponse, NetworkError>;
 /// Type that represents the data exchanged during RPC operations.
 pub type RpcData = ByteVector;
 
-/// Type that represents a vector of vector of bytes
+/// Type that represents a vector of vector of bytes.
 pub type ByteVector = Vec<Vec<u8>>;
+
+/// Type that represents the id of a shard
+pub type ShardId = String;
+
+/// Type that represents the result for network operations
+pub type NetworkResult<T> = Result<T, NetworkError>;
 
 /// Type that represents a vector of string
 pub type StringVector = Vec<String>;
 
-/// Type that represents a nonce
+/// Type that represents a nonce.
 pub type Nonce = u64;
-
-/// The delimeter that separates the messages to gossip
-pub(super) const GOSSIP_MESSAGE_SEPARATOR: &str = "~#~";
 
 /// Time to wait (in seconds) for the node (network layer) to boot.
 pub(super) const BOOT_WAIT_TIME: Seconds = 1;
@@ -48,7 +53,7 @@ pub(super) const BOOT_WAIT_TIME: Seconds = 1;
 /// The buffer capacity of an mpsc stream.
 pub(super) const STREAM_BUFFER_CAPACITY: usize = 100;
 
-/// Data exchanged over a stream between the application and network layer
+/// Data exchanged over a stream between the application and network layer.
 #[derive(Debug, Clone)]
 pub(super) enum StreamData {
 	/// Application data sent over the stream.
@@ -84,7 +89,7 @@ pub enum AppData {
 	/// Return important information about the local routing table.
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network.
-	FetchData { keys: RpcData, peer: PeerId },
+	SendRpc { keys: RpcData, peer: PeerId },
 	/// Get network information about the node.
 	GetNetworkInfo,
 	/// Send message to gossip peers in a mesh network.
@@ -126,7 +131,7 @@ pub enum AppResponse {
 	/// Routing table information.
 	KademliaGetRoutingTableInfo { protocol_id: String },
 	/// Result of RPC operation.
-	FetchData(RpcData),
+	SendRpc(RpcData),
 	/// A network error occured while executing the request.
 	Error(NetworkError),
 	/// Important information about the node.
@@ -175,6 +180,24 @@ pub enum NetworkError {
 	GossipsubBroadcastMessageError,
 	#[error("failed to join a mesh network")]
 	GossipsubJoinNetworkError,
+	#[error("failed to exit a mesh network")]
+	GossipsubExitNetworkError,
+	#[error("internal stream failed to transport data")]
+	InternalStreamError,
+	#[error("replica network not found")]
+	MissingReplNetwork,
+	#[error("network id for sharding has not been configured. See `CoreBuilder::with_shard()`")]
+	MissingShardingNetworkIdError,
+	#[error("threshold for data forwarding not met")]
+	DataForwardingError,
+	#[error("failed to shard data")]
+	ShardingFailureError,
+	#[error("failed to fetch sharded data")]
+	ShardingFetchError,
+	#[error("shard not found for input key")]
+	ShardNotFound,
+	#[error("no nodes found in logical shard")]
+	MissingShardNodesError,
 }
 
 /// A simple struct used to track requests sent from the application layer to the network layer.
@@ -193,9 +216,6 @@ impl StreamId {
 		StreamId(current_id.0.wrapping_add(1))
 	}
 }
-
-/// Type that contains the result of querying the network layer.
-pub type NetworkResult = Result<AppResponse, NetworkError>;
 
 /// Type that keeps track of the requests from the application layer.
 /// This type has a maximum buffer size and will drop subsequent requests when full.
@@ -482,8 +502,11 @@ pub enum NetworkEvent {
 	///
 	/// # Fields
 	///
-	/// - `source`: The `PeerId` of the source peer.
 	/// - `data`: The data contained in the gossip message.
+	/// - `outgoing_timestamp`: The time the message left the source
+	/// - `outgoing_timestamp`: The time the message was recieved
+	/// - `message_id`: The unique id of the message
+	/// - `source`: The `PeerId` of the source peer.
 	ReplicaDataIncoming {
 		/// Data
 		data: StringVector,
@@ -491,10 +514,21 @@ pub enum NetworkEvent {
 		outgoing_timestamp: Seconds,
 		/// Timestamp at which the message arrived
 		incoming_timestamp: Seconds,
-		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
+		/// Message ID to prevent deduplication. It is usually a hash of the incoming message
 		message_id: String,
 		/// Sender PeerId
-		sender: PeerId,
+		source: PeerId,
+	},
+	/// Event that announces the arrival of a forwarded sharded data
+	///
+	/// # Fields
+	///
+	/// - `data`: The data contained in the gossip message.
+	IncomingForwardedData {
+		/// Data
+		data: StringVector,
+		/// Sender's PeerId
+		source: PeerId,
 	},
 	/// Event that announces the arrival of a gossip message.
 	///
@@ -525,13 +559,13 @@ pub enum NetworkEvent {
 /// The struct that contains incoming information about a peer returned by the `Identify` protocol.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct IdentifyInfo {
-	/// The public key of the remote peer
+	/// The public key of the remote peer.
 	pub public_key: PublicKey,
-	/// The address the remote peer is listening on
+	/// The address the remote peer is listening on.
 	pub listen_addrs: Vec<Multiaddr>,
-	/// The protocols supported by the remote peer
+	/// The protocols supported by the remote peer.
 	pub protocols: Vec<StreamProtocol>,
-	/// The address we are listened on, observed by the remote peer
+	/// The address we are listened on, observed by the remote peer.
 	pub observed_addr: Multiaddr,
 }
 
@@ -545,12 +579,14 @@ pub(super) struct NetworkInfo {
 	pub ping: PingInfo,
 	/// Important information to manage `Gossipsub` operations.
 	pub gossipsub: gossipsub_cfg::GossipsubInfo,
-	/// The function that handles incoming RPC data request and produces a response
+	/// The function that handles incoming RPC data request and produces a response.
 	pub rpc_handler_fn: fn(RpcData) -> RpcData,
-	/// The function to filter incoming gossip messages
+	/// The function to filter incoming gossip messages.
 	pub gossip_filter_fn: fn(PeerId, MessageId, Option<PeerId>, String, StringVector) -> bool,
 	/// Important information to manage `Replication` operations.
-	pub replication: replica_cfg::ReplInfo,
+	pub replication: replication::ReplInfo,
+	/// Important information to manage `sharding` operations.
+	pub sharding: sharding::ShardingInfo,
 }
 
 /// Module that contains important data structures to manage `Ping` operations on the network.
@@ -597,218 +633,6 @@ pub mod ping_config {
 	pub struct PingInfo {
 		pub policy: PingErrorPolicy,
 		pub manager: PingManager,
-	}
-}
-
-/// Module that contains important data structures to manage `Replication` operations on the network
-pub mod replica_cfg {
-	use super::*;
-	use crate::ReplConfigData;
-	use std::{cmp::Ordering, sync::Arc, time::SystemTime};
-
-	/// Struct containing important information for replication
-	#[derive(Clone)]
-	pub struct ReplInfo {
-		/// Internal state for replication
-		pub state: Arc<Vec<ReplConfigData>>,
-	}
-
-	/// Struct containing configurations for replication
-	#[derive(Clone)]
-	pub enum ReplNetworkConfig {
-		/// No expiry, queue operates in a FIFO manner and message are dropped
-		/// when the buffer is full
-		NoExpiry,
-		/// A custom configuration.
-		///
-		/// # Fields
-		///
-		/// - `queue_length`: Max capacity for transient storage
-		/// - `expiry_time`: Expiry time of data in the buffer if the buffer is full
-		/// - `sync_epoch`: Epoch to attempt network synchronization of data in the buffer
-		Custom {
-			queue_length: u64,
-			expiry_time: Seconds,
-			sync_epoch: Seconds,
-		},
-		/// A default Configuration (queue_length = 100, expiry_time = 60 seconds,
-		/// sychronization_epoch = 5 seconds)
-		Default,
-	}
-
-	/// Important data to marshall from incoming relication payload and store in the transient
-	/// buffer
-	#[derive(Clone, Debug)]
-	pub struct ReplBufferData {
-		/// Raw incoming data
-		pub data: StringVector,
-		/// Timestamp at which the message left the sending node
-		pub outgoing_timestamp: Seconds,
-		/// Timestamp at which the message arrived
-		pub incoming_timestamp: Seconds,
-		/// Message Id to prevent deduplication. It is usually a hash of the incoming message
-		pub message_id: String,
-		/// Sender PeerId
-		pub sender: PeerId,
-	}
-
-	/// Implement Ord
-	impl Ord for ReplBufferData {
-		fn cmp(&self, other: &Self) -> Ordering {
-			self.outgoing_timestamp
-				.cmp(&other.outgoing_timestamp) // Compare by outgoing_timestamp first
-				.then_with(|| self.message_id.cmp(&other.message_id)) // Then compare by message_id
-		}
-	}
-
-	/// Implement PartialOrd
-	impl PartialOrd for ReplBufferData {
-		fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-			Some(self.cmp(other))
-		}
-	}
-
-	/// Implement Eq
-	impl Eq for ReplBufferData {}
-
-	/// Implement PartialEq
-	impl PartialEq for ReplBufferData {
-		fn eq(&self, other: &Self) -> bool {
-			self.outgoing_timestamp == other.outgoing_timestamp
-				&& self.message_id == other.message_id
-		}
-	}
-
-	/// Transient buffer queue where incoming replicated data are stored
-	pub struct ReplicaBufferQueue {
-		/// Configuration
-		config: ReplNetworkConfig,
-		/// Internal queue implementation
-		queue: Mutex<BTreeSet<ReplBufferData>>,
-	}
-
-	impl ReplicaBufferQueue {
-		/// The max capacity of the buffer
-		const MAX_CAPACITY: u64 = 150;
-
-		/// Expiry time of data in the buffer if the buffer is full
-		const EXPIRY_TIME: Seconds = 60;
-
-		/// Epoch to attempt network synchronization of data in the buffer
-		const SYNC_EPOCH: Seconds = 5;
-
-		/// Create a new instance of [ReplicaBufferQueue]
-		pub fn new(config: ReplNetworkConfig) -> Self {
-			Self {
-				queue: Mutex::new(BTreeSet::new()),
-				config,
-			}
-		}
-  
-		/// Push a new [ReplBufferData] item into the buffer
-		pub async fn push(&self, data: ReplBufferData) {
-			let mut queue = self.queue.lock().await; // Lock the queue to modify it
-
-			// The behaviour of the push operation and its corresponding actions e.g removing an
-			// item from the queue is based on configuration
-
-			match self.config {
-				// Default implementation supports expiry of buffer items and values are based on
-				// structs contants
-				ReplNetworkConfig::Default => {
-					// If the queue is full, remove expired data first
-					while queue.len() as u64 >= Self::MAX_CAPACITY {
-						// Check and remove expired data
-						let current_time = SystemTime::now()
-							.duration_since(SystemTime::UNIX_EPOCH)
-							.unwrap()
-							.as_secs();
-						let mut expired_items = Vec::new();
-
-						// Identify expired items and collect them for removal
-						for entry in queue.iter() {
-							if current_time - entry.outgoing_timestamp >= Self::EXPIRY_TIME {
-								expired_items.push(entry.clone());
-							}
-						}
-
-						// Remove expired items
-						for expired in expired_items {
-							queue.remove(&expired);
-						}
-
-						// If no expired items were removed, pop the front (oldest) item
-						if queue.len() as u64 >= Self::MAX_CAPACITY {
-							if let Some(first) = queue.iter().next().cloned() {
-								queue.remove(&first);
-							}
-						}
-					}
-				},
-				// There is no expiry time for buffer items and removal is only done when buffer us full
-				ReplNetworkConfig::NoExpiry => {
-					while queue.len() as u64 >= Self::MAX_CAPACITY {
-						// Pop the front (oldest) item
-						if queue.len() as u64 >= Self::MAX_CAPACITY {
-							if let Some(first) = queue.iter().next().cloned() {
-								queue.remove(&first);
-							}
-						}
-					}
-				},
-				// Here decay applies in addition to removal of excess buffer content
-				ReplNetworkConfig::Custom {
-					queue_length,
-					expiry_time,
-					..
-				} => {
-					// If the queue is full, remove expired data first
-					while queue.len() as u64 >= queue_length {
-						// Check and remove expired data
-						let current_time = SystemTime::now()
-							.duration_since(SystemTime::UNIX_EPOCH)
-							.unwrap()
-							.as_secs();
-						let mut expired_items = Vec::new();
-
-						// Identify expired items and collect them for removal
-						for entry in queue.iter() {
-							if current_time - entry.outgoing_timestamp >= expiry_time {
-								expired_items.push(entry.clone());
-							}
-						}
-
-						// Remove expired items
-						for expired in expired_items {
-							queue.remove(&expired);
-						}
-
-						// If no expired items were removed, pop the front (oldest) item
-						if queue.len() as u64 >= Self::MAX_CAPACITY {
-							if let Some(first) = queue.iter().next().cloned() {
-								queue.remove(&first);
-							}
-						}
-					}
-				},
-			}
-
-			// Finally, insert the new data into the queue
-			queue.insert(data);
-		}
-
-		// Pop the front (smallest element) from the queue
-		pub async fn pop_front(&self) -> Option<ReplBufferData> {
-			let mut queue = self.queue.lock().await;
-			if let Some(first) = queue.iter().next().cloned() {
-				// Remove the front element (smallest)
-				queue.remove(&first);
-				Some(first)
-			} else {
-				// Empty queue
-				None
-			}
-		}
 	}
 }
 
@@ -883,7 +707,7 @@ where
 	/// Append an item to the queue.
 	pub async fn push(&self, item: T) {
 		let mut buffer = self.buffer.lock().await;
-		if buffer.len() > MAX_QUEUE_ELEMENTS - 1 {
+		if buffer.len() >= MAX_QUEUE_ELEMENTS {
 			buffer.pop_front();
 		}
 		buffer.push_back(item);

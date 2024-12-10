@@ -1,11 +1,9 @@
-// Copyright 2024 Algorealm, Inc.
-// Apache 2.0 License
+//! Copyright 2024 Algorealm, Inc.
+//! Apache 2.0 License
 
 //! Data structures and functions to setup a node and configure it for networking.
 
 #![doc = include_str!("../doc/setup/NodeSetup.md")]
-use std::{collections::HashMap, rc::Rc};
-
 use crate::core::gossipsub_cfg::Blacklist;
 pub use crate::prelude::*;
 pub use libp2p_identity::{rsa::Keypair as RsaKeypair, KeyType, Keypair, PeerId};
@@ -26,8 +24,6 @@ pub struct BootstrapConfig {
 	boot_nodes: Nodes,
 	/// Blacklisted peers
 	blacklist: Blacklist,
-	/// Configuration data for replication
-	replication_cfg: Rc<Vec<ReplConfigData>>,
 }
 
 impl BootstrapConfig {
@@ -55,8 +51,6 @@ impl BootstrapConfig {
 			boot_nodes: Default::default(),
 			// List of blacklisted peers
 			blacklist: Default::default(),
-			// List containing replication nodes
-			replication_cfg: Default::default(),
 		}
 	}
 
@@ -93,22 +87,6 @@ impl BootstrapConfig {
 			BootstrapConfig { udp_port, ..self }
 		} else {
 			self
-		}
-	}
-
-	/// Configure nodes for replication and add them to bootnodes for early connection
-	pub fn with_replication(self, cfg_data: Vec<ReplConfigData>) -> Self {
-		// A connection request must be sent to the replica nodes on startup, so we will add it to
-		// our list of bootnodes
-		let bootnodes: HashMap<String, String> = cfg_data
-			.iter()
-			.flat_map(|cfg| cfg.nodes.iter().map(|(k, v)| (k.clone(), v.clone())))
-			.collect();
-		let node = self.with_bootnodes(bootnodes);
-
-		Self {
-			replication_cfg: Rc::new(cfg_data),
-			..node
 		}
 	}
 
@@ -201,11 +179,6 @@ impl BootstrapConfig {
 	/// Return the 	`PeerId`'s of nodes that are to be blacklisted.
 	pub fn blacklist(&self) -> Blacklist {
 		self.blacklist.clone()
-	}
-
-	/// Return the configuration data for replication
-	pub fn repl_cfg(&self) -> Rc<Vec<ReplConfigData>> {
-		self.replication_cfg.clone()
 	}
 }
 

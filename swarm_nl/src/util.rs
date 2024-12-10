@@ -1,14 +1,23 @@
-// Copyright 2024 Algorealm, Inc.
-// Apache 2.0 License
+//! Copyright 2024 Algorealm, Inc.
+//! Apache 2.0 License
 
 //! Utility helper functions for reading from and writing to `.ini` config files.
 
-use crate::{prelude::*, setup::BootstrapConfig};
+use crate::{
+	core::{replication::ReplBufferData, ByteVector, Core, StringVector},
+	prelude::*,
+	setup::BootstrapConfig,
+};
 use base58::FromBase58;
 use ini::Ini;
 use libp2p_identity::PeerId;
 use rand::{distributions::Alphanumeric, Rng};
-use std::{collections::HashMap, path::Path, str::FromStr, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+	collections::HashMap,
+	path::Path,
+	str::FromStr,
+	time::{SystemTime, UNIX_EPOCH},
+};
 
 /// Read an INI file containing bootstrap config information.
 pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
@@ -62,18 +71,9 @@ pub fn read_ini_file(file_path: &str) -> SwarmNlResult<BootstrapConfig> {
 			Default::default()
 		};
 
-		// Now, read static replication config data if any
-		let replica_nodes = if let Some(section) = config.section(Some("repl")) {
-			// Get the configured replica nodes
-			parse_replication_data(section.get("replica_nodes").unwrap_or_default())
-		} else {
-			Default::default()
-		};
-
 		Ok(BootstrapConfig::new()
 			.generate_keypair_from_protobuf(key_type, &mut serialized_keypair)
 			.with_bootnodes(boot_nodes)
-			.with_replication(replica_nodes)
 			.with_blacklist(blacklist)
 			.with_tcp(tcp_port)
 			.with_udp(udp_port))
@@ -129,41 +129,6 @@ fn string_to_hashmap(input: &str) -> HashMap<String, String> {
 		})
 }
 
-/// Parse replica nodes specified in the `bootstrap_config.ini` config file
-fn parse_replication_data(input: &str) -> Vec<ReplConfigData> {
-	let mut result = Vec::new();
-
-	// Remove brackets and split by '@'
-	let data = input.trim_matches(|c| c == '[' || c == ']').split('@');
-
-	for section in data {
-		if section.is_empty() {
-			continue;
-		}
-
-		// Split outer identifier and the rest
-		if let Some((outer_id, inner_data)) = section.split_once(':') {
-			let mut inner_map = HashMap::new();
-
-			// Split each key-value pair
-			for entry in inner_data.trim_matches(|c| c == '[' || c == ']').split(',') {
-				if let Some((key, value)) = entry.trim().split_once(':') {
-					inner_map.insert(key.to_string(), value.to_string());
-				}
-			}
-
-			// Create outer map
-			let cfg = ReplConfigData {
-				network_key: outer_id.trim().to_string(),
-				nodes: inner_map,
-			};
-			result.push(cfg);
-		}
-	}
-
-	result
-}
-
 /// Convert a peer ID string to [`PeerId`].
 pub fn string_to_peer_id(peer_id_string: &str) -> Option<PeerId> {
 	PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).ok()
@@ -177,14 +142,164 @@ pub fn generate_random_string(length: usize) -> String {
 		.collect()
 }
 
-// Get unix timestamp as string
+/// Unmarshall data recieved as RPC during the execution of the eventual consistency algorithm to
+/// fill in missing messages in the node's buffer
+pub fn unmarshal_messages(data: Vec<Vec<u8>>) -> Vec<ReplBufferData> {
+	let mut result = Vec::new();
+
+	for entry in data {
+		let serialized = String::from_utf8_lossy(&entry).to_string();
+		let entries: Vec<&str> = serialized.split(Core::ENTRY_DELIMITER).collect();
+
+		for entry in entries {
+			let fields: Vec<&str> = entry.split(Core::FIELD_DELIMITER).collect();
+			if fields.len() < 6 {
+				continue; // Skip malformed entries
+			}
+
+			let data_field: Vec<String> = fields[0]
+				.split(Core::DATA_DELIMITER)
+				.map(|s| s.to_string())
+				.collect();
+			let lamport_clock = fields[1].parse().unwrap_or(0);
+			let outgoing_timestamp = fields[2].parse().unwrap_or(0);
+			let incoming_timestamp = fields[3].parse().unwrap_or(0);
+			let message_id = fields[4].to_string();
+			let sender = fields[5];
+
+			// Parse peerId
+			if let Ok(peer_id) = sender.parse::<PeerId>() {
+				result.push(ReplBufferData {
+					data: data_field,
+					lamport_clock,
+					outgoing_timestamp,
+					incoming_timestamp,
+					message_id,
+					sender: peer_id,
+					confirmations: None, // Since eventual consistency
+				});
+			}
+		}
+	}
+
+	result
+}
+
+/// Get unix timestamp as string
 pub fn get_unix_timestamp() -> Seconds {
-    // Get the current system time
-    let now = SystemTime::now();
-    // Calculate the duration since the Unix epoch
-    let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-    // Return the Unix timestamp in seconds as a string
-    duration_since_epoch.as_secs()
+	// Get the current system time
+	let now = SystemTime::now();
+	// Calculate the duration since the Unix epoch
+	let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+	// Return the Unix timestamp in seconds as a string
+	duration_since_epoch.as_secs()
+}
+
+/// Convert a [ByteVector] to a [StringVector].
+pub fn byte_vec_to_string_vec(input: ByteVector) -> StringVector {
+	input
+		.into_iter()
+		.map(|vec| String::from_utf8(vec).unwrap_or_else(|_| String::from("Invalid UTF-8")))
+		.collect()
+}
+
+/// Convert a [StringVector] to a [ByteVector]
+pub fn string_vec_to_byte_vec(input: StringVector) -> ByteVector {
+	input.into_iter().map(|s| s.into_bytes()).collect()
+}
+
+/// Marshall the shard network image into a [ByteVector].
+pub fn shard_image_to_bytes(input: HashMap<String, Vec<PeerId>>) -> Vec<u8> {
+	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
+	const PEER_SEPARATOR: &[u8] = b"%%";
+	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
+
+	let mut result = Vec::new();
+
+	for (shard_id, peers) in input {
+		// Convert shard_id to bytes and append
+		result.extend_from_slice(shard_id.as_bytes());
+
+		// Add the separator for peers
+		result.extend_from_slice(SHARD_PEER_SEPARATOR);
+
+		// Convert each PeerId to bytes and append, separated by PEER_SEPARATOR
+		for peer in peers.iter() {
+			result.extend_from_slice(&peer.to_bytes());
+			result.extend_from_slice(PEER_SEPARATOR);
+		}
+
+		// Remove the last PEER_SEPARATOR if any
+		if !peers.is_empty() {
+			result.truncate(result.len() - PEER_SEPARATOR.len());
+		}
+
+		// Add the shard entry separator
+		result.extend_from_slice(SHARD_ENTRY_SEPARATOR);
+	}
+
+	result
+}
+
+/// Merge the incoming shard state with the local shard state of the network.
+pub fn merge_shard_states(
+	local_state: &mut HashMap<String, Vec<PeerId>>,
+	incoming_state: HashMap<String, Vec<PeerId>>,
+) {
+	for (shard_id, incoming_peers) in incoming_state.iter() {
+		local_state
+			.entry(shard_id.to_owned())
+			.and_modify(|local_peers| {
+				// Add only unique peers from incoming_peers to local_peers
+				for peer in incoming_peers {
+					if !local_peers.contains(peer) {
+						local_peers.push(peer.clone());
+					}
+				}
+			})
+			.or_insert(incoming_peers.to_owned()); // If the shard_id doesn't exist, insert it directly
+	}
+}
+
+/// Unmarshall the byte=re into the shard network image.
+pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, Vec<PeerId>> {
+	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
+	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
+	const PEER_SEPARATOR: &[u8] = b"%%";
+
+	let mut result = HashMap::new();
+
+	// Try to convert the input to a UTF-8 string, return empty HashMap if conversion fails
+	let input_str = match String::from_utf8(input) {
+		Ok(s) => s,
+		Err(_) => return result,
+	};
+
+	// Split the input by SHARD_ENTRY_SEPARATOR
+	for entry in input_str.split(std::str::from_utf8(SHARD_ENTRY_SEPARATOR).unwrap_or("@@@")) {
+		// Split the entry by SHARD_PEER_SEPARATOR
+		let parts: Vec<&str> = entry
+			.split(std::str::from_utf8(SHARD_PEER_SEPARATOR).unwrap_or("&&&"))
+			.collect();
+
+		// Ensure we have at least two parts (shard_id and peers)
+		if parts.len() >= 2 {
+			let shard_id = parts[0].to_string();
+
+			// Split peers and convert to PeerIds
+			let peers: Vec<PeerId> = parts[1]
+				.split(std::str::from_utf8(PEER_SEPARATOR).unwrap_or("%%"))
+				.filter_map(|peer_str| PeerId::from_bytes(peer_str.as_bytes()).ok())
+				.collect();
+
+			// Only insert if peers are not empty
+			if !peers.is_empty() {
+				result.insert(shard_id, peers);
+			}
+		}
+	}
+
+	result
 }
 
 #[cfg(test)]
@@ -199,7 +314,7 @@ mod tests {
 	const CUSTOM_TCP_PORT: Port = 49666;
 	const CUSTOM_UDP_PORT: Port = 49852;
 
-	// Helper to create an INI file without a static keypair and a valid range for ports.
+	// Helper to create an INI file without a keypair and a valid range for ports.
 	fn create_test_ini_file_without_keypair(file_path: &str) {
 		let mut config = Ini::new();
 		config
