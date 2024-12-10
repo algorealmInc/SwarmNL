@@ -809,16 +809,11 @@ mod strong_consistency {
 			// Join replica network
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
-
 			loop {
 				while let Some(data) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
-					
-                    println!("Data: {:#?}", data);
-
                     assert_eq!(data.confirmations, Some(2));
 					assert_eq!(data.data, vec!["Apples".to_string()]);
-
-					return;
+					return
 				}
 
 				tokio::time::sleep(Duration::from_secs(3)).await;
@@ -831,12 +826,3 @@ mod strong_consistency {
 	}
 
 }
-
-// - temporary buffer
-// - public buffer
-// - joining on the fly
-
-// - events on incoming messages
-// - consistency model (All and Some(n))
-// - Early detection of nodes that leave and join the network
-// - completely replicate a node  (done)
