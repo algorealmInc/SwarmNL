@@ -1049,7 +1049,7 @@ impl Core {
 		];
 
 		// Send the RPC request.
-		let rpc_request = AppData::FetchData {
+		let rpc_request = AppData::SendRpc {
 			keys: message,
 			peer,
 		};
@@ -1255,7 +1255,7 @@ impl Core {
 							res @ AppResponse::KademliaGetProviders{..} => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaNoProvidersFound => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::KademliaGetRoutingTableInfo { .. } => buffer_guard.insert(stream_id, Ok(res)),
-							res @ AppResponse::FetchData(..) => buffer_guard.insert(stream_id, Ok(res)),
+							res @ AppResponse::SendRpc(..) => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::GetNetworkInfo{..} => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::GossipsubBroadcastSuccess => buffer_guard.insert(stream_id, Ok(res)),
 							res @ AppResponse::GossipsubJoinSuccess => buffer_guard.insert(stream_id, Ok(res)),
@@ -1384,7 +1384,7 @@ impl Core {
 												let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::KademliaGetRoutingTableInfo{protocol_id: network_info.id.to_string()})).await;
 											},
 											// Fetch data quickly from a peer over the network
-											AppData::FetchData { keys, peer } => {
+											AppData::SendRpc { keys, peer } => {
 												// Construct the RPC object
 												let rpc = Rpc::ReqResponse { data: keys.clone() };
 
@@ -1800,7 +1800,7 @@ impl Core {
 																// It is a request to join a shard network
 																Core::SHARD_RPC_SYNC_FLAG => {
 																	// Parse the incoming shard state
-																	let incoming_state = bytes_to_shard_image(data[3].clone());
+																	let incoming_state = bytes_to_shard_image(data[1].clone());
 
 																	// Merge the incoming state with local
 																	let mut current_shard_state = network_core.network_info.sharding.state.lock().await;
@@ -1854,7 +1854,7 @@ impl Core {
 														match response {
 															Rpc::ReqResponse { data } => {
 																// Send the response back to the application layer
-																let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::FetchData(data))).await;
+																let _ = network_sender.send(StreamData::ToApplication(stream_id, AppResponse::SendRpc(data))).await;
 															},
 														}
 													}

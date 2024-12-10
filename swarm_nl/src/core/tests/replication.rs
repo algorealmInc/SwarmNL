@@ -115,9 +115,9 @@ async fn repl_itest_join_and_exit_works() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (49555, 55003);
-	let ports_2: (Port, Port) = (49153, 55001);
-	let ports_3: (Port, Port) = (49154, 55002);
+	let ports_1: (Port, Port) = (49155, 55103);
+	let ports_2: (Port, Port) = (49153, 55101);
+	let ports_3: (Port, Port) = (49154, 55102);
 
 	// Setup node 1
 	let task_1 = tokio::task::spawn(async move {
@@ -244,10 +244,12 @@ async fn repl_itest_fully_replicate_node() {
 		.unwrap()
 		.public()
 		.to_peer_id();
+
 	// Ports
-	let ports_1: (Port, Port) = (49555, 55003);
-	let ports_2: (Port, Port) = (49153, 55001);
-	let ports_3: (Port, Port) = (49154, 55002);
+	let ports_1: (Port, Port) = (49255, 55203);
+	let ports_2: (Port, Port) = (49253, 55201);
+	let ports_3: (Port, Port) = (49254, 55202);
+
 	// Setup node 1
 	let task_1 = tokio::task::spawn(async move {
 		// Bootnodes
@@ -414,8 +416,8 @@ mod strong_consistency {
 			.to_peer_id();
 
 		// Ports
-		let ports_1: (Port, Port) = (49555, 55003);
-		let ports_2: (Port, Port) = (49153, 55001);
+		let ports_1: (Port, Port) = (49355, 55303);
+		let ports_2: (Port, Port) = (49353, 55301);
 
 		// Setup node 1
 		let task_1 = tokio::task::spawn(async move {
@@ -518,9 +520,9 @@ mod strong_consistency {
 			.to_peer_id();
 
 		// Ports
-		let ports_1: (Port, Port) = (49555, 55003);
-		let ports_2: (Port, Port) = (49153, 55001);
-		let ports_3: (Port, Port) = (49154, 55002);
+		let ports_1: (Port, Port) = (49455, 55403);
+		let ports_2: (Port, Port) = (49453, 55401);
+		let ports_3: (Port, Port) = (49454, 55402);
 
 		// Setup node 1
 		let task_1 = tokio::task::spawn(async move {
@@ -665,10 +667,10 @@ mod strong_consistency {
 			.to_peer_id();
 
 		// Ports
-		let ports_1: (Port, Port) = (49555, 55003);
-		let ports_2: (Port, Port) = (49153, 55001);
-		let ports_3: (Port, Port) = (49154, 55002);
-		let ports_4: (Port, Port) = (49155, 55004);
+		let ports_1: (Port, Port) = (49555, 55503);
+		let ports_2: (Port, Port) = (49553, 55501);
+		let ports_3: (Port, Port) = (49554, 55502);
+		let ports_4: (Port, Port) = (49555, 55504);
 
 		// Setup node 1
 		let task_1 = tokio::task::spawn(async move {

@@ -629,14 +629,14 @@ impl ReplicaBufferQueue {
 				rpc_data.append(&mut missing_msgs);
 
 				// Prepare an RPC to ask the replica node for missing data
-				let fetch_request = AppData::FetchData {
+				let fetch_request = AppData::SendRpc {
 					keys: rpc_data,
 					peer: repl_peer_id,
 				};
 
 				// Send the fetch request
 				if let Ok(response) = core.query_network(fetch_request).await {
-					if let AppResponse::FetchData(messages) = response {
+					if let AppResponse::SendRpc(messages) = response {
 						// Parse response
 						let response = util::unmarshal_messages(messages);
 
@@ -732,7 +732,7 @@ impl ReplicaBufferQueue {
 		];
 
 		// Prepare an RPC to ask the replica node for missing data
-		let fetch_request = AppData::FetchData {
+		let fetch_request = AppData::SendRpc {
 			keys: rpc_data,
 			peer: replica_node,
 		};
@@ -743,7 +743,7 @@ impl ReplicaBufferQueue {
 			Some(local_state) => {
 				// Send the fetch request
 				match core.query_network(fetch_request).await? {
-					AppResponse::FetchData(messages) => {
+					AppResponse::SendRpc(messages) => {
 						// Parse response
 						let response = util::unmarshal_messages(messages);
 						// Insert into data buffer queue

@@ -574,7 +574,7 @@ fn rpc_fetch_works() {
 		let multi_addr = format!("/ip4/127.0.0.1/tcp/{}", 49666);
 
 		// Prepare fetch request
-		let fetch_request = AppData::FetchData {
+		let fetch_request = AppData::SendRpc {
 			keys: fetch_key.clone(),
 			peer: node_1_peer_id,
 		};
@@ -582,7 +582,7 @@ fn rpc_fetch_works() {
 		let stream_id = node_2.send_to_network(fetch_request).await.unwrap();
 
 		if let Ok(result) = node_2.recv_from_network(stream_id).await {
-			assert_eq!(AppResponse::FetchData(fetch_key), result);
+			assert_eq!(AppResponse::SendRpc(fetch_key), result);
 		}
 	});
 }

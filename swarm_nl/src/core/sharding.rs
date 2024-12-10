@@ -7,6 +7,12 @@ use super::*;
 use async_trait::async_trait;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
+/// Trait that interfaces with the storage layer of a node in a shard. It is important for handling forwarded
+/// data requests. This is a mechanism to trap into the application storage layer to read sharded data.
+pub trait ShardStorage: Send + Sync + Clone {
+	fn fetch_data(&self, key: ByteVector) -> Option<ByteVector>;
+}
+
 /// Important data for the operation of the sharding protocol.
 #[derive(Debug, Clone)]
 pub struct ShardingInfo {
@@ -123,7 +129,8 @@ where
 			drop(shard_state);
 
 			// Leave the underlying sharding (gossip) network
-			let gossip_request = AppData::GossipsubJoinNetwork(core.network_info.sharding.id.clone());
+			let gossip_request =
+				AppData::GossipsubJoinNetwork(core.network_info.sharding.id.clone());
 			core.query_network(gossip_request).await?;
 		}
 
@@ -141,7 +148,7 @@ where
 		// Locate the shard that would store the key.
 		let shard_id = match self.locate_shard(key) {
 			Some(shard_id) => shard_id,
-			None => return Err(NetworkError::ShardingFailureError),
+			None => return Err(NetworkError::ShardNotFound),
 		};
 
 		// Retrieve the nodes in the logical shard.
@@ -153,7 +160,7 @@ where
 		// If no nodes exist for the shard, return an error.
 		let mut nodes = match nodes {
 			Some(nodes) => nodes,
-			None => return Err(NetworkError::ShardingFailureError),
+			None => return Err(NetworkError::MissingShardNodesError),
 		};
 
 		// Check if the current node is part of the shard.
@@ -177,7 +184,7 @@ where
 
 		// Attempt to forward the data to peers.
 		for peer in nodes {
-			let rpc_request = AppData::FetchData {
+			let rpc_request = AppData::SendRpc {
 				keys: message.clone(),
 				peer: peer.clone(),
 			};
@@ -237,14 +244,14 @@ where
 
 		// Attempt to forward the data to peers.
 		for peer in nodes {
-			let rpc_request = AppData::FetchData {
+			let rpc_request = AppData::SendRpc {
 				keys: message.clone(),
 				peer: peer.clone(),
 			};
 
 			// Query the network and return the response on the first successful response.
 			if let Ok(response) = core.query_network(rpc_request).await {
-				if let AppResponse::FetchData(data) = response {
+				if let AppResponse::SendRpc(data) = response {
 					return Ok(Some(data));
 				}
 			}

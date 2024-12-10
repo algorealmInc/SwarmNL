@@ -255,7 +255,7 @@ async fn run_node_2() {
 			let fetch_key = vec![value];
 
 			// prepare fetch request
-			let fetch_request = AppData::FetchData {
+			let fetch_request = AppData::SendRpc {
 				keys: fetch_key.clone(),
 				peer: node_1_peer_id.clone(), // The peer to query for data
 			};
@@ -271,7 +271,7 @@ async fn run_node_2() {
 
 			// Poll the network for the result
 			if let Ok(response) = node_2.recv_from_network(stream_id).await {
-				if let AppResponse::FetchData(response_file) = response {
+				if let AppResponse::SendRpc(response_file) = response {
 					// Get the file
 					let file = response_file[0].clone();
 

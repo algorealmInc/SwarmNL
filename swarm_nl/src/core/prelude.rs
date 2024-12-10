@@ -89,7 +89,7 @@ pub enum AppData {
 	/// Return important information about the local routing table.
 	KademliaGetRoutingTableInfo,
 	/// Fetch data(s) quickly from a peer over the network.
-	FetchData { keys: RpcData, peer: PeerId },
+	SendRpc { keys: RpcData, peer: PeerId },
 	/// Get network information about the node.
 	GetNetworkInfo,
 	/// Send message to gossip peers in a mesh network.
@@ -131,7 +131,7 @@ pub enum AppResponse {
 	/// Routing table information.
 	KademliaGetRoutingTableInfo { protocol_id: String },
 	/// Result of RPC operation.
-	FetchData(RpcData),
+	SendRpc(RpcData),
 	/// A network error occured while executing the request.
 	Error(NetworkError),
 	/// Important information about the node.
@@ -194,6 +194,10 @@ pub enum NetworkError {
 	ShardingFailureError,
 	#[error("failed to fetch sharded data")]
 	ShardingFetchError,
+	#[error("shard not found for input key")]
+	ShardNotFound,
+	#[error("no nodes found in logical shard")]
+	MissingShardNodesError
 }
 
 /// A simple struct used to track requests sent from the application layer to the network layer.

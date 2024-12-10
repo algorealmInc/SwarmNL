@@ -1,14 +1,16 @@
 //! Copyright 2024 Algorealm, Inc.
 
-//! Sharding Example.
+//! Range-based Sharding Example.
 //! This example demonstrates the sharding configurations and capabilities of
 //! SwarmNL. Here we will be implementing a range-based sharding policy. Also, it is important to
 //! note that replication must be configured for sharding to take place. It is a prerequisite.
-//! If no replication is configured, then the default behaviour will be assumed.
+//! If no replication is configured explicitly, then the default replication behaviour will be
+//! assumed.
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, HashMap, VecDeque},
 	io::{self, Write},
+	sync::Arc,
 	time::Duration,
 };
 
@@ -22,6 +24,7 @@ use swarm_nl::{
 	setup::BootstrapConfig,
 	Keypair, MessageId, MultiaddrString, PeerId, PeerIdString, Port,
 };
+use tokio::sync::Mutex;
 
 /// The constant that represents the id of the sharding network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
@@ -83,9 +86,9 @@ where
 	}
 }
 
-/// Function to respond to a request to read data off a node explicitly (data forwarding fetch
-/// request)
-fn callback(req: ByteVector) -> ByteVector {
+/// Function to respond to a shards request to read data off a node explicitly (data forwarding
+/// fetch request)
+fn shard_request_handler(req: ByteVector) -> ByteVector {
 	// Return the request + some additional data
 	let mut response = req[0].clone();
 	response.push(b'@');
@@ -131,7 +134,7 @@ async fn setup_node(
 
 	builder
 		.with_replication(repl_config)
-		.with_sharding(NETWORK_SHARDING_ID.into(), callback)
+		.with_sharding(NETWORK_SHARDING_ID.into(), shard_request_handler)
 		.build()
 		.await
 		.unwrap()
@@ -189,8 +192,12 @@ async fn run_node(
 		}
 	}
 
+	// Local storage
+	let local_storage = Arc::new(Mutex::new(VecDeque::new()));
+
 	// Spin up a task to listen for replication events
 	let new_node = node.clone();
+	let storage = local_storage.clone();
 	tokio::task::spawn(async move {
 		let mut node = new_node.clone();
 		loop {
@@ -199,10 +206,12 @@ async fn run_node(
 				// Check for only incoming repl data
 				if let NetworkEvent::IncomingForwardedData { data, source } = event {
 					println!(
-						"Recieved forwarded data: {} from peer: {}",
-						data[0],
+						"Recieved forwarded data: {:?} from peer: {}",
+						data,
 						source.to_base58()
 					);
+
+					storage.lock().await.push_back(data[0].clone());
 				}
 			}
 
@@ -216,10 +225,8 @@ async fn run_node(
 	let shard_id_2 = 2;
 	let shard_id_3 = 3;
 
-	// Define shard ranges
+	// Define shard ranges (Key ranges => Shard id)
 	let mut ranges = BTreeMap::new();
-
-	// Key ranges => Shard id
 	ranges.insert(100, shard_id_1);
 	ranges.insert(200, shard_id_2);
 	ranges.insert(300, shard_id_3);
@@ -229,23 +236,43 @@ async fn run_node(
 
 	// Join appropriate shards each
 	match name {
-		"Node1" => {
-			shard_manager.join_network(node.clone(), &shard_id_1).await;
+		"Node 1" => {
+			if shard_manager
+				.join_network(node.clone(), &shard_id_1)
+				.await
+				.is_ok()
+			{
+				println!("Successfully joined shard: {}", shard_id_1);
+			}
 		},
-		"Node2" => {
-			shard_manager.join_network(node.clone(), &shard_id_2).await;
+		"Node 2" => {
+			if shard_manager
+				.join_network(node.clone(), &shard_id_2)
+				.await
+				.is_ok()
+			{
+				println!("Successfully joined shard: {}", shard_id_2);
+			}
 		},
-		"Node3" => {
-			shard_manager.join_network(node.clone(), &shard_id_3).await;
+		"Node 3" => {
+			if shard_manager
+				.join_network(node.clone(), &shard_id_3)
+				.await
+				.is_ok()
+			{
+				println!("Successfully joined shard: {}", shard_id_3);
+			}
 		},
 		_ => {},
 	}
 
+	// Menu section
 	println!("\n===================");
 	println!("Sharding Example Menu");
 	println!("Usage:");
-	println!("shard <key> <data>          - Place data in appropriate shards");
+	println!("shard <key> <data>          - Place data in appropriate shard");
 	println!("Fetch <key> <request>       - Request data from the network");
+	println!("read        				  - Read data stored locally on this shard");
 	println!("exit                        - Exit the application");
 
 	loop {
@@ -253,12 +280,13 @@ async fn run_node(
 		let mut input = String::new();
 		print!("> ");
 
-		io::stdout().flush().unwrap(); // Flush stdout to display prompt
+		// Flush stdout to display prompt
+		io::stdout().flush().unwrap();
 		io::stdin().read_line(&mut input).unwrap();
 
 		// Trim input and split into parts
 		let mut parts = input.trim().split_whitespace();
-		let command = parts.next(); // Get the first word
+		let command = parts.next();
 		let data = parts.collect::<Vec<_>>();
 
 		// Match the first word and take action
@@ -266,9 +294,10 @@ async fn run_node(
 			Some("shard") => {
 				if data.len() >= 2 {
 					if let Ok(key) = data[0].parse::<u64>() {
-						let shard_data = &data[2..].join(" "); // Join the remaining parts as data
-						println!("Sharding data with key '{}': {}", key, shard_data);
-						// Call your sharding logic here
+						let shard_data = &data[1..].join(" ");
+						println!("Sharding data with key '{}': {}...", key, shard_data);
+
+						// Shard data across the network
 						match shard_manager
 							.shard(node.clone(), &key, vec![(*shard_data).clone().into()])
 							.await
@@ -276,10 +305,16 @@ async fn run_node(
 							Ok(response) => match response {
 								Some(data) => {
 									println!(
-										"The data to shard is '{}'",
+										"The data to shard is '{}'.",
 										String::from_utf8_lossy(&data[0])
 									);
 									println!("It falls into the range of the current node and will be stored locally.");
+
+									// Save locally
+									local_storage
+										.lock()
+										.await
+										.push_back(String::from_utf8_lossy(&data[0]).to_string());
 								},
 								None => println!("Successfully placed data in the right shard."),
 							},
@@ -295,9 +330,10 @@ async fn run_node(
 			Some("fetch") => {
 				if data.len() >= 2 {
 					if let Ok(key) = data[0].parse::<u64>() {
-						let request = &data[2..].join(" "); // Join the remaining parts as data
+						let request = &data[1..].join(" ");
 						println!("Requesting data with key '{}': {}", key, request);
-						// Call your sharding logic here
+
+						// Fetch data from network
 						match shard_manager
 							.fetch(node.clone(), &key, vec![(*request).clone().into()])
 							.await
@@ -319,6 +355,12 @@ async fn run_node(
 					}
 				} else {
 					println!("Error: 'fetch' command requires at least a key and request data.");
+				}
+			},
+			Some("read") => {
+				println!("Local storage data:");
+				while let Some(data) = local_storage.lock().await.pop_front() {
+					println!("- {data}");
 				}
 			},
 			Some("exit") => {
