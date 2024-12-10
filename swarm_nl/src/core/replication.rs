@@ -397,18 +397,8 @@ impl ReplicaBufferQueue {
 				ConsistencyModel::Eventual => 0,
 				ConsistencyModel::Strong(consensus_model) => match consensus_model {
 					ConsensusModel::All => {
-						let request = AppData::GossipsubGetInfo;
-						let mut replica_peers = 0;
-						if let Ok(response) = core.query_network(request).await {
-							if let AppResponse::GossipsubGetInfo { mesh_peers, .. } = response {
-								for (_, networks) in mesh_peers {
-									if networks.contains(&replica_network) {
-										replica_peers += 1;
-									}
-								}
-							}
-						}
-						replica_peers // Return the count
+						// Get total number of replica peers
+						core.replica_peers(&replica_network).await.len() as u64
 					},
 					ConsensusModel::MinPeers(required_peers) => required_peers,
 				},
