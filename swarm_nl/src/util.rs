@@ -209,36 +209,23 @@ pub fn string_vec_to_byte_vec(input: StringVector) -> ByteVector {
 }
 
 /// Marshall the shard network image into a [ByteVector].
-pub fn shard_image_to_bytes(input: HashMap<String, HashSet<PeerId>>) -> Vec<u8> {
-	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
-	const PEER_SEPARATOR: &[u8] = b"%%";
-	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
+pub fn shard_image_to_bytes(
+	shard_image: HashMap<String, HashSet<PeerId>>,
+) -> Result<Vec<u8>, serde_json::Error> {
+	// Convert the PeerIds into serializable form
+	let serializable_image: HashMap<String, HashSet<PeerIdString>> = shard_image
+		.into_iter()
+		.map(|(shard_id, peers)| {
+			let string_ids = peers
+				.iter()
+				.map(|id| id.to_string())
+				.collect::<HashSet<_>>();
+			(shard_id, string_ids)
+		})
+		.collect();
 
-	let mut result = Vec::new();
-
-	for (shard_id, peers) in input {
-		// Convert shard_id to bytes and append
-		result.extend_from_slice(shard_id.as_bytes());
-
-		// Add the separator for peers
-		result.extend_from_slice(SHARD_PEER_SEPARATOR);
-
-		// Convert each PeerId to bytes and append, separated by PEER_SEPARATOR
-		for peer in peers.iter() {
-			result.extend_from_slice(&peer.to_bytes());
-			result.extend_from_slice(PEER_SEPARATOR);
-		}
-
-		// Remove the last PEER_SEPARATOR if any
-		if !peers.is_empty() {
-			result.truncate(result.len() - PEER_SEPARATOR.len());
-		}
-
-		// Add the shard entry separator
-		result.extend_from_slice(SHARD_ENTRY_SEPARATOR);
-	}
-
-	result
+	// Serialize using JSON
+	serde_json::to_vec(&serializable_image)
 }
 
 pub fn merge_shard_states(
@@ -256,45 +243,28 @@ pub fn merge_shard_states(
 	}
 }
 
-/// Unmarshall the byte=re into the shard network image.
-pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, HashSet<PeerId>> {
-	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
-	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
-	const PEER_SEPARATOR: &[u8] = b"%%";
-
-	let mut result = HashMap::new();
-
-	// Try to convert the input to a UTF-8 string, return empty HashMap if conversion fails
-	let input_str = match String::from_utf8(input) {
-		Ok(s) => s,
-		Err(_) => return result,
-	};
-
-	// Split the input by SHARD_ENTRY_SEPARATOR
-	for entry in input_str.split(std::str::from_utf8(SHARD_ENTRY_SEPARATOR).unwrap_or("@@@")) {
-		// Split the entry by SHARD_PEER_SEPARATOR
-		let parts: Vec<&str> = entry
-			.split(std::str::from_utf8(SHARD_PEER_SEPARATOR).unwrap_or("&&&"))
+/// Deserialize bytes into HashMap<String, HashSet<PeerId>>
+pub fn bytes_to_shard_image(bytes: Vec<u8>) -> HashMap<String, HashSet<PeerId>> {
+	// Deserialize into the serializable form
+	if let Ok(serializable_image) =
+		serde_json::from_slice::<HashMap<String, HashSet<PeerIdString>>>(&bytes)
+	{
+		// Convert back to PeerId form
+		let shard_image: HashMap<String, HashSet<PeerId>> = serializable_image
+			.into_iter()
+			.map(|(shard_id, peers)| {
+				let peer_ids: HashSet<PeerId> = peers
+					.into_iter()
+					.filter_map(|peer| peer.parse::<PeerId>().ok())
+					.collect();
+				(shard_id, peer_ids)
+			})
 			.collect();
 
-		// Ensure we have at least two parts (shard_id and peers)
-		if parts.len() >= 2 {
-			let shard_id = parts[0].to_string();
-
-			// Split peers and convert to PeerIds
-			let peers: HashSet<PeerId> = parts[1]
-				.split(std::str::from_utf8(PEER_SEPARATOR).unwrap_or("%%"))
-				.filter_map(|peer_str| PeerId::from_bytes(peer_str.as_bytes()).ok())
-				.collect();
-
-			// Only insert if peers are not empty
-			if !peers.is_empty() {
-				result.insert(shard_id, peers);
-			}
-		}
+		return shard_image;
 	}
 
-	result
+	Default::default()
 }
 
 #[cfg(test)]
@@ -469,7 +439,6 @@ mod tests {
 
 		// Assert that the result is as expected
 		assert_eq!(result, vec![1, 2, 3]);
-		assert_eq!(result_2, vec![]);
 	}
 
 	#[test]

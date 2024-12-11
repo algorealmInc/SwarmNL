@@ -81,11 +81,10 @@ where
 		// Free `Core`
 		drop(shard_state);
 
-		// Join the shard network
-		let gossip_request = AppData::GossipsubJoinNetwork(shard_id.to_string());
-		let _ = core.query_network(gossip_request).await?;
+		// Join the shard network (as a replication network)
+		let _ = core.join_repl_network(shard_id.to_string()).await;
 
-		// Inform the entire network about out decision
+		// Inform the entire network about our decision
 		let message = vec![
 			Core::SHARD_GOSSIP_JOIN_FLAG.as_bytes().to_vec(), // Flag for join event.
 			core.peer_id().to_string().into_bytes(),          // Our peer ID.

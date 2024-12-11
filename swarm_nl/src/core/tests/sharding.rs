@@ -1,9 +1,22 @@
-use std::{collections::{btree_map::Range, BTreeMap, HashMap, VecDeque}, sync::Arc, time::Duration};
+use crate::{
+	core::{
+		gossipsub_cfg::GossipsubConfig,
+		replication::{ConsensusModel, ConsistencyModel, ReplNetworkConfig},
+		sharding::{ShardStorage, Sharding},
+		tests::replication::REPL_NETWORK_ID,
+		ByteVector, Core, CoreBuilder, RpcConfig,
+	},
+	setup::BootstrapConfig,
+	MultiaddrString, PeerIdString, Port,
+};
 use libp2p::{gossipsub::MessageId, PeerId};
 use libp2p_identity::Keypair;
+use std::{
+	collections::{btree_map::Range, BTreeMap, HashMap, VecDeque},
+	sync::Arc,
+	time::Duration,
+};
 use tokio::sync::Mutex;
-use crate::{core::{gossipsub_cfg::GossipsubConfig, replication::{ConsensusModel, ConsistencyModel, ReplNetworkConfig}, sharding::{ShardStorage, Sharding}, tests::replication::REPL_NETWORK_ID, ByteVector, Core, CoreBuilder, RpcConfig}, setup::BootstrapConfig, MultiaddrString, PeerIdString, Port};
-
 
 /// The constant that represents the id of the sharding network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
@@ -139,13 +152,12 @@ async fn setup_node(
 
 #[tokio::test]
 async fn join_and_exit_shard_network() {
-    
-    // Shard Id's
+	// Shard Id's
 	let shard_id_1 = 1;
 	let shard_id_2 = 2;
-    let shard_id_3 = 3;
+	let shard_id_3 = 3;
 
-    let mut ranges = BTreeMap::new();
+	let mut ranges = BTreeMap::new();
 
 	// Define shard ranges (Key ranges => Shard id)
 	ranges.insert(100, shard_id_1);
@@ -156,7 +168,7 @@ async fn join_and_exit_shard_network() {
 	// Initialize the range-based sharding policy
 	let shard_exec = Arc::new(Mutex::new(RangeSharding::new(ranges)));
 
-    // Local shard storage
+	// Local shard storage
 	let local_storage_buffer = Arc::new(Mutex::new(LocalStorage {
 		buffer: Default::default(),
 	}));
@@ -206,13 +218,13 @@ async fn join_and_exit_shard_network() {
 	let ports_2: (Port, Port) = (48153, 54101);
 	let ports_3: (Port, Port) = (48154, 54102);
 
-    // Clone the sharding executor
-    let sharding_executor = shard_exec.clone();
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
 
-    // Clone the local storage
-    let local_storage = local_storage_buffer.clone();
-	
-    // Setup node 1
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 1
 	let task_1 = tokio::task::spawn(async move {
 		// Bootnodes
 		let mut bootnodes = HashMap::new();
@@ -227,29 +239,30 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let mut node = setup_node(
-			ports_1,
-			&node_1_keypair[..],
-			bootnodes,
-            local_storage
-            
-		)
-		.await;
+		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
 
 		// Join first shard network
-        let _ = sharding_executor.lock().await.join_network(node.clone(), &shard_id_1).await;
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_1)
+			.await;
 
 		// Sleep for 3 seconds
 		tokio::time::sleep(Duration::from_secs(3)).await;
 
 		// Exit shard network
-		let _ = sharding_executor.lock().await.exit_network(node.clone(), &shard_id_1).await;
+		let _ = sharding_executor
+			.lock()
+			.await
+			.exit_network(node.clone(), &shard_id_1)
+			.await;
 	});
 
-    // Clone the sharding executor
-    let sharding_executor = shard_exec.clone();
-    // Clone the local storage
-    let local_storage = local_storage_buffer.clone();
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
 
 	// Setup node 2
 	let task_2 = tokio::task::spawn(async move {
@@ -266,29 +279,31 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let mut node = setup_node(
-			ports_2,
-			&node_2_keypair[..],
-			bootnodes,
-            local_storage
-		)
-		.await;
+		let node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
 
-        // Join second shard network
-        let _ = sharding_executor.lock().await.join_network(node.clone(), &shard_id_2).await;
+		// Join second shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_2)
+			.await;
 
-        // Sleep for 3 seconds
-        tokio::time::sleep(Duration::from_secs(3)).await;
+		// Sleep for 3 seconds
+		tokio::time::sleep(Duration::from_secs(3)).await;
 
-        // Exit shard network
-        let _ = sharding_executor.lock().await.exit_network(node.clone(), &shard_id_2).await;
+		// Exit shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.exit_network(node.clone(), &shard_id_2)
+			.await;
 	});
 
-    // Clone the sharding executor
-    let sharding_executor = shard_exec.clone();
-    // Clone the local storage
-    let local_storage = local_storage_buffer.clone();
-    
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
 	// Setup node 3
 	let task_3 = tokio::task::spawn(async move {
 		// Bootnodes
@@ -304,42 +319,39 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 
-		let mut node = setup_node(
-			ports_3,
-			&node_3_keypair[..],
-			bootnodes,
-            local_storage
-		)
-		.await;
+		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, local_storage).await;
 
 		// Join shard network
-		let _ = sharding_executor.lock().await.join_network(node.clone(), &shard_id_3).await;
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_3)
+			.await;
 
 		// Assert there are 3 shards containing one node each
-        let shard_network_state = <RangeSharding<String> as Sharding>::network_state(node.clone()).await;
-        assert_eq!(shard_network_state.len(), 3);
+		let shard_network_state =
+			<RangeSharding<String> as Sharding>::network_state(node.clone()).await;
+		assert_eq!(shard_network_state.len(), 3);
 
-        for shard in &shard_network_state {
-            assert_eq!(shard.1.len(), 1);
-        }
-        
-        // Sleep
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        let shard_network_state = <RangeSharding<String> as Sharding>::network_state(node.clone()).await;
-        assert_eq!(shard_network_state.len(), 3);
-        
-        // Check that the first shard contains one node (node 3)
-        assert_eq!(shard_network_state.iter().nth(0).unwrap().1.len(), 1);
+		for shard in &shard_network_state {
+			assert_eq!(shard.1.len(), 1);
+		}
+
+		// Sleep
+		tokio::time::sleep(Duration::from_secs(5)).await;
+		let shard_network_state =
+			<RangeSharding<String> as Sharding>::network_state(node.clone()).await;
+		assert_eq!(shard_network_state.len(), 3);
+
+		// Check that the first shard contains one node (node 3)
+		assert_eq!(shard_network_state.iter().nth(0).unwrap().1.len(), 1);
 	});
 
 	for task in vec![task_1, task_2, task_3] {
 		task.await.unwrap();
 	}
-    
 }
 
-
-// Join the network of shards and tell others nodes you’ve arrived. This ensures that the state is consistent.Query network state: peerid of hashset of peers.
-// Check that nodes have received the data correctly
-// Make sure that replication works as expected 
-
+// Join the network of shards and tell others nodes you’ve arrived. This ensures that the state is
+// consistent.Query network state: peerid of hashset of peers. Check that nodes have received the
+// data correctly Make sure that replication works as expected

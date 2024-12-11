@@ -8,7 +8,7 @@
 //! 1. **Replication Prerequisite**:
 //!    - Sharding requires replication to be configured beforehand.
 //!    - If replication is not explicitly configured, the system will assume default replication
-//!      behavior. 
+//!      behavior.
 //!    - REPLICATION MUST BE SET TO EVENTUAL CONSISTENCY
 //!
 //! 2. **Sharding Configuration**:
@@ -459,7 +459,7 @@ async fn run_node(
 					println!("Reading data from file: {}", file_name);
 
 					// Read from file
-					match tokio::fs::read_to_string(file_name).await {
+					match tokio::fs::read_to_string(&format!("storage/{}", file_name)).await {
 						Ok(contents) => {
 							for line in contents.lines() {
 								println!("- {}", line);
@@ -474,6 +474,12 @@ async fn run_node(
 			Some("exit") => {
 				println!("Exiting the application. Goodbye!");
 				break;
+			},
+			Some("state") => {
+				println!(
+					"{:?}",
+					<HashSharding as Sharding>::network_state(node.clone()).await
+				);
 			},
 			Some(unknown) => println!("Unknown command: '{}'. Please try again.", unknown),
 			None => println!("No command entered. Please try again."),
