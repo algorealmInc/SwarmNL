@@ -511,7 +511,7 @@ pub enum NetworkEvent {
 		/// Data
 		data: StringVector,
 		/// The replica network that owns the data
-		network: String,
+		network: St
 		/// Timestamp at which the message left the sending node
 		outgoing_timestamp: Seconds,
 		/// Timestamp at which the message arrived

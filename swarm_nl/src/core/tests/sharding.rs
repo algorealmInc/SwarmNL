@@ -239,7 +239,7 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let mut node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
 
 		// Join first shard network
 		let _ = sharding_executor
@@ -261,6 +261,7 @@ async fn join_and_exit_shard_network() {
 
 	// Clone the sharding executor
 	let sharding_executor = shard_exec.clone();
+
 	// Clone the local storage
 	let local_storage = local_storage_buffer.clone();
 
@@ -301,6 +302,7 @@ async fn join_and_exit_shard_network() {
 
 	// Clone the sharding executor
 	let sharding_executor = shard_exec.clone();
+
 	// Clone the local storage
 	let local_storage = local_storage_buffer.clone();
 
@@ -319,7 +321,7 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 
-		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_3, &node_3_keypair[..], bootnodes, local_storage).await;
 
 		// Join shard network
 		let _ = sharding_executor

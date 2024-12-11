@@ -50,7 +50,7 @@ pub type MultiaddrString = String;
 pub type Nodes = HashMap<PeerIdString, MultiaddrString>;
 
 /// Lower bound port range (u16::MIN).
-pub const MIN_PORT: u16 = 49152;
+pub const MIN_PORT: u16 = 1000;
 /// Upper bound port range (u16::MAX).
 pub const MAX_PORT: u16 = 65535;
 

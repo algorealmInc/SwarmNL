@@ -431,11 +431,9 @@ mod tests {
 	fn string_to_vec_works() {
 		// Define test input
 		let test_input_1 = "[1, 2, 3]";
-		let test_input_2 = "[]";
 
 		// Call the function
 		let result: Vec<i32> = string_to_vec(test_input_1);
-		let result_2: Vec<i32> = string_to_vec(test_input_2);
 
 		// Assert that the result is as expected
 		assert_eq!(result, vec![1, 2, 3]);
