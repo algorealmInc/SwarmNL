@@ -475,12 +475,6 @@ async fn run_node(
 				println!("Exiting the application. Goodbye!");
 				break;
 			},
-			Some("state") => {
-				println!(
-					"{:?}",
-					<HashSharding as Sharding>::network_state(node.clone()).await
-				);
-			},
 			Some(unknown) => println!("Unknown command: '{}'. Please try again.", unknown),
 			None => println!("No command entered. Please try again."),
 		}
