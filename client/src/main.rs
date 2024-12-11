@@ -1,9 +1,9 @@
 //! © 2024 Algorealm, Inc. All rights reserved.
 
-//! Example: Range-Based Sharding
+//! Example: Hash-Based Sharding
 //!
 //! This example demonstrates the sharding configurations and capabilities of SwarmNL
-//! using a range-based sharding policy. The key points to note are as follows:
+//! using a hash-based sharding policy. The key points to note are as follows:
 //!
 //! 1. **Replication Prerequisite**:
 //!    - Sharding requires replication to be configured beforehand.
@@ -15,15 +15,16 @@
 //!    - Local storage is used to respond to forwarded data requests within the network.
 //!
 //! 3. **Local Storage**:
-//!    - In this example, local storage is implemented as a simple queue of strings to handle data
-//!      requests.
+//!    - In this example, local storage is implemented as a directory in the local filesystem.
 //!
 //! This setup highlights the flexibility of SwarmNL in implementing custom sharding policies
 //! while maintaining seamless integration with replication mechanisms.
 
 use std::{
-	collections::{BTreeMap, HashMap, VecDeque},
-	io::{self, Write},
+	collections::{BTreeMap, HashMap},
+	fs,
+	io::{self, Read, Write},
+	path::Path,
 	sync::Arc,
 	time::Duration,
 };
@@ -38,7 +39,7 @@ use swarm_nl::{
 	setup::BootstrapConfig,
 	Keypair, MessageId, MultiaddrString, PeerId, PeerIdString, Port,
 };
-use tokio::sync::Mutex;
+use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::Mutex};
 
 /// The constant that represents the id of the sharding network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
@@ -63,68 +64,88 @@ fn gossipsub_filter_fn(
 	true
 }
 
-/// The shard local storage
+/// The shard local storage which is a directory in the local filesystem.
 #[derive(Debug)]
-struct LocalStorage {
-	buffer: VecDeque<String>,
+struct LocalStorage;
+
+impl LocalStorage {
+	/// Reads a file's content from the working directory
+	fn read_file(&self, key: &str) -> Option<ByteVector> {
+		let mut file = fs::File::open(key).ok()?;
+		let mut content = Vec::new();
+		file.read_to_end(&mut content).ok()?;
+		// Wrap the content in an outer Vec
+		Some(vec![content])
+	}
 }
 
 // Implement the `ShardStorage` trait for our local storage
 impl ShardStorage for LocalStorage {
 	fn fetch_data(&self, key: ByteVector) -> ByteVector {
-		// Convert the key to a UTF-8 string
-		let key_str = String::from_utf8_lossy(&key[0]);
-
-		// Iterate through the buffer to find a matching entry
-		for data in self.buffer.iter() {
-			if data.starts_with(key_str.as_ref()) {
-				// If a match is found, take the latter part
-				let data = data.split("-->").collect::<Vec<&str>>();
-				return vec![data[1].as_bytes().to_vec()];
+		// Process each key in the ByteVector
+		for sub_key in key.iter() {
+			let key_str = String::from_utf8_lossy(sub_key);
+			// Attempt to read the file corresponding to the key
+			if let Some(data) = self.read_file(key_str.as_ref()) {
+				return data;
 			}
 		}
-
 		// If no match is found, return an empty ByteVector
 		Default::default()
 	}
 }
 
 /// Implement the `Sharding` trait
-/// Range-based sharding implementation
-pub struct RangeSharding<T>
-where
-	T: ToString + Send + Sync,
-{
-	/// A map where the key represents the upper bound of a range, and the value is the
-	/// corresponding shard ID
-	ranges: BTreeMap<u64, T>,
-}
+/// Hash-based sharding implementation
+pub struct HashSharding;
 
-impl<T> RangeSharding<T>
-where
-	T: ToString + Send + Sync,
-{
-	/// Creates a new RangeSharding instance
-	pub fn new(ranges: BTreeMap<u64, T>) -> Self {
-		Self { ranges }
+impl HashSharding {
+	/// Compute a simple hash for the key.
+	fn hash_key(&self, key: &str) -> u64 {
+		// Convert the key to bytes
+		let key_bytes = key.as_bytes();
+
+		// Generate a hash from the first byte
+		if let Some(&first_byte) = key_bytes.get(0) {
+			key_bytes.iter().fold(first_byte as u64, |acc, &byte| {
+				acc.wrapping_add(byte as u64)
+			})
+		} else {
+			0
+		}
 	}
 }
 
-impl<T> Sharding for RangeSharding<T>
-where
-	T: ToString + Send + Sync + Clone,
-{
-	type Key = u64;
-	type ShardId = T;
+impl Sharding for HashSharding {
+	type Key = String;
+	type ShardId = String;
 
 	/// Locate the shard corresponding to the given key
 	fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId> {
-		// Find the first range whose upper bound is greater than or equal to the key
-		self.ranges
-			.iter()
-			.find(|(&upper_bound, _)| key <= &upper_bound)
-			.map(|(_, shard_id)| shard_id.clone())
+		// Calculate and return hash
+		Some(self.hash_key(key).to_string())
 	}
+}
+
+/// Utility function to append content to a file
+async fn append_to_file(file_name: &str, content: &str) -> Result<(), std::io::Error> {
+	let location = format!("storage/{}", file_name);
+	let file_path = Path::new(&location);
+
+	// Open the file in append mode, create it if it doesn't exist
+	let mut file = OpenOptions::new()
+		.create(true) // Create file if it doesn't exist
+		.append(true) // Open in append mode
+		.open(file_path)
+		.await?;
+
+	// Prepare content to append (adding a new line)
+	let content_to_write = format!("{}\n", content);
+
+	// Write content to the file asynchronously
+	file.write_all(content_to_write.as_bytes()).await?;
+
+	Ok(())
 }
 
 // Create a determininstic node
@@ -194,9 +215,7 @@ async fn run_node(
 	);
 
 	// Local shard storage
-	let local_storage = Arc::new(Mutex::new(LocalStorage {
-		buffer: Default::default(),
-	}));
+	let local_storage = Arc::new(Mutex::new(LocalStorage));
 
 	// Setup node
 	let mut node = setup_node(ports_1, &keypair[..], bootnodes, local_storage.clone()).await;
@@ -229,24 +248,49 @@ async fn run_node(
 		}
 	}
 
-	// Spin up a task to listen for replication events
+	// Spin up a task to listen for network events
 	let new_node = node.clone();
-	let storage = local_storage.clone();
-
 	tokio::task::spawn(async move {
 		let mut node = new_node.clone();
 		loop {
 			// Check for incoming data events
 			if let Some(event) = node.next_event().await {
 				// Check for only incoming repl data
-				if let NetworkEvent::IncomingForwardedData { data, source } = event {
-					println!(
-						"Recieved forwarded data: {:?} from peer: {}",
-						data,
-						source.to_base58()
-					);
+				match event {
+					NetworkEvent::IncomingForwardedData { data, source } => {
+						println!(
+							"Received forwarded data: {:?} from peer: {}",
+							data,
+							source.to_base58()
+						);
 
-					storage.lock().await.buffer.push_back(data[0].clone());
+						// Extract file name and content
+						if let [file_name, content] = &data[..] {
+							let _ = append_to_file(file_name, content).await;
+						}
+					},
+					NetworkEvent::ReplicaDataIncoming {
+						data,
+						network,
+						source,
+						..
+					} => {
+						println!(
+							"Received replica data: {:?} from shard peer: {}",
+							data,
+							source.to_base58()
+						);
+
+						if let Some(repl_data) = node.consume_repl_data(&network).await {
+							// Extract file name and content
+							if let [file_name, content] = &repl_data.data[..] {
+								let _ = append_to_file(file_name, content).await;
+							}
+						} else {
+							println!("Error: No message in replica buffer");
+						}
+					},
+					_ => {},
 				}
 			}
 
@@ -255,47 +299,43 @@ async fn run_node(
 		}
 	});
 
-	// Shard Id's
-	let shard_id_1 = 1;
-	let shard_id_2 = 2;
-	let shard_id_3 = 3;
-
-	// Define shard ranges (Key ranges => Shard id)
-	let mut ranges = BTreeMap::new();
-	ranges.insert(100, shard_id_1);
-	ranges.insert(200, shard_id_2);
-	ranges.insert(300, shard_id_3);
+	// Shard keys. Since it is hash-based then the keys have to be specific.
+	let shard_key_1 = "earth".to_string();
+	let shard_key_2 = "mars".to_string();
+	// let shard_key_3 = "venus";
 
 	// Initialize the range-based sharding policy
-	let shard_manager = RangeSharding::new(ranges);
+	let shard_manager = HashSharding;
 
 	// Join appropriate shards each
+	// Node 2 and 3 will join the same shard. Then replication will happen among them to maintain a
+	// consistent shard state accross the nodes.
 	match name {
 		"Node 1" => {
 			if shard_manager
-				.join_network(node.clone(), &shard_id_1)
+				.join_network(node.clone(), &shard_key_1)
 				.await
 				.is_ok()
 			{
-				println!("Successfully joined shard: {}", shard_id_1);
+				println!("Successfully joined shard: {}", shard_key_1);
 			}
 		},
 		"Node 2" => {
 			if shard_manager
-				.join_network(node.clone(), &shard_id_2)
+				.join_network(node.clone(), &shard_key_2)
 				.await
 				.is_ok()
 			{
-				println!("Successfully joined shard: {}", shard_id_2);
+				println!("Successfully joined shard: {}", shard_key_2);
 			}
 		},
 		"Node 3" => {
 			if shard_manager
-				.join_network(node.clone(), &shard_id_3)
+				.join_network(node.clone(), &shard_key_2)
 				.await
 				.is_ok()
 			{
-				println!("Successfully joined shard: {}", shard_id_3);
+				println!("Successfully joined shard: {}", shard_key_2);
 			}
 		},
 		_ => {},
@@ -305,10 +345,10 @@ async fn run_node(
 	println!("\n===================");
 	println!("Sharding Example Menu");
 	println!("Usage:");
-	println!("shard <key> <data>          - Place data in appropriate shard");
-	println!("Fetch <key> <request>       - Request data from the network");
-	println!("read        				  - Read data stored locally on this shard");
-	println!("exit                        - Exit the application");
+	println!("shard <key> <file> <data>          - Place data in appropriate shard");
+	println!("Fetch <key> <file>                 - Request data from the network");
+	println!("read <file>      				     - Read data stored locally on this shard");
+	println!("exit                               - Exit the application");
 
 	loop {
 		// Read user input
@@ -327,14 +367,22 @@ async fn run_node(
 		// Match the first word and take action
 		match command {
 			Some("shard") => {
-				if data.len() >= 2 {
+				if data.len() >= 3 {
 					if let Ok(key) = data[0].parse::<u64>() {
-						let shard_data = &data[1..].join(" ");
-						println!("Sharding data with key '{}': {}...", key, shard_data);
+						let file_name = &data[1];
+						let shard_data = &data[2..].join(" ");
+						println!(
+							"Sharding data with key '{}': {} to file '{}'",
+							key, shard_data, file_name
+						);
 
 						// Shard data across the network
 						match shard_manager
-							.shard(node.clone(), &key, vec![(*shard_data).clone().into()])
+							.shard(
+								node.clone(),
+								&key.to_string(),
+								vec![(*shard_data).clone().into()],
+							)
 							.await
 						{
 							Ok(response) => match response {
@@ -345,12 +393,15 @@ async fn run_node(
 									);
 									println!("It falls into the range of the current node and will be stored locally.");
 
-									// Save locally
-									local_storage
-										.lock()
-										.await
-										.buffer
-										.push_back(String::from_utf8_lossy(&data[0]).to_string());
+									// Save to file instead of memory buffer
+									if let Err(e) = append_to_file(
+										file_name,
+										&String::from_utf8_lossy(&data[0]),
+									)
+									.await
+									{
+										println!("Failed to save data to file: {}", e);
+									}
 								},
 								None => println!("Successfully placed data in the right shard."),
 							},
@@ -360,47 +411,62 @@ async fn run_node(
 						println!("Error: 'key' must be a u64");
 					}
 				} else {
-					println!("Error: 'shard' command requires at least a key and data.");
+					println!(
+						"Error: 'shard' command requires at least a key, file name, and data."
+					);
 				}
 			},
 			Some("fetch") => {
 				if data.len() >= 2 {
-					if let Ok(key) = data[0].parse::<u64>() {
-						let request = &data[1..].join(" ");
-						println!("Requesting data with key '{}': {}", key, request);
+					let key = data[0];
+					let file_name = &data[1];
+					println!("Requesting data with key '{}': {}", key, file_name);
 
-						// Fetch data from network
-						match shard_manager
-							.fetch(node.clone(), &key, vec![(*request).clone().into()])
-							.await
-						{
-							Ok(response) => match response {
-								Some(data) => {
-									if !data[0].is_empty() {
-										println!(
-											"The response data is '{}'",
-											String::from_utf8_lossy(&data[0])
-										);
-									} else {
-										println!("The remote node does not have the data stored.");
-									}
-									println!("Successfully pulled data from the network.");
-								},
-								None => println!("Data exists locally on node."),
+					// Fetch data from network
+					match shard_manager
+						.fetch(
+							node.clone(),
+							&key.to_string(),
+							vec![file_name.to_owned().into()],
+						)
+						.await
+					{
+						Ok(response) => match response {
+							Some(data) => {
+								if !data[0].is_empty() {
+									println!(
+										"The response data is '{}'",
+										String::from_utf8_lossy(&data[0])
+									);
+								} else {
+									println!("The remote node does not have the data stored.");
+								}
+								println!("Successfully pulled data from the network.");
 							},
-							Err(e) => println!("Fetching failed: {}", e.to_string()),
-						}
-					} else {
-						println!("Error: 'key' must be a u64");
+							None => println!("Data exists locally on node."),
+						},
+						Err(e) => println!("Fetching failed: {}", e.to_string()),
 					}
 				} else {
-					println!("Error: 'fetch' command requires at least a key and request data.");
+					println!("Error: 'fetch' command requires at least a key and file name.");
 				}
 			},
 			Some("read") => {
-				println!("Local storage data:");
-				while let Some(data) = local_storage.lock().await.buffer.pop_front() {
-					println!("- {data}");
+				if data.len() >= 2 {
+					let file_name = &data[1];
+					println!("Reading data from file: {}", file_name);
+
+					// Read from file
+					match tokio::fs::read_to_string(file_name).await {
+						Ok(contents) => {
+							for line in contents.lines() {
+								println!("- {}", line);
+							}
+						},
+						Err(e) => println!("Error reading from file: {}", e),
+					}
+				} else {
+					println!("Error: 'read' command requires a file name.");
 				}
 			},
 			Some("exit") => {

@@ -1068,6 +1068,7 @@ impl Core {
 		self.event_queue
 			.push(NetworkEvent::ReplicaDataIncoming {
 				data: replica_data.data,
+				network: repl_network.clone(),
 				outgoing_timestamp: replica_data.outgoing_timestamp,
 				incoming_timestamp: replica_data.incoming_timestamp,
 				message_id: replica_data.message_id,

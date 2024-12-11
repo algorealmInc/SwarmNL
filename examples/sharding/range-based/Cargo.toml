@@ -15,7 +15,6 @@ warp = "0.3.7"
 reqwest = "0.12.8"
 
 [features]
-client = []
 first-node = []
 second-node = []
 third-node = []

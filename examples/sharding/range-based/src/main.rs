@@ -229,7 +229,7 @@ async fn run_node(
 		}
 	}
 
-	// Spin up a task to listen for replication events
+	// Spin up a task to listen for sharding related events
 	let new_node = node.clone();
 	let storage = local_storage.clone();
 
