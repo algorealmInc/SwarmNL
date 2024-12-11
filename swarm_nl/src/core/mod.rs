@@ -1844,7 +1844,7 @@ impl Core {
 																		let _ = core.handle_incoming_shard_data(shard_id, peer, incoming_data).await;
 																	});
 																}
-																// It is an incmoing request to ask for data on this node because it is a member of a logical shard
+																// It is an incoming request to ask for data on this node because it is a member of a logical shard
 																Core::SHARD_RPC_REQUEST_FLAG => {
 																	// Pass request data to configured shard request handler
 																	let response_data = network_info.sharding.local_storage.lock().await.fetch_data(data[1..].into());

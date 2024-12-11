@@ -43,10 +43,10 @@ use tokio::sync::Mutex;
 /// The constant that represents the id of the sharding network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
 
-/// The time to wait for events, if necessary
+/// The time to wait for events, if necessary.
 pub const WAIT_TIME: u64 = 2;
 
-/// Handle incoming RPC
+/// Handle incoming RPC.
 fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 	// Just return incomding data
 	data
@@ -63,7 +63,7 @@ fn gossipsub_filter_fn(
 	true
 }
 
-/// The shard local storage
+/// The shard local storage.
 #[derive(Debug)]
 struct LocalStorage {
 	buffer: VecDeque<String>,
@@ -117,9 +117,9 @@ where
 	type Key = u64;
 	type ShardId = T;
 
-	/// Locate the shard corresponding to the given key
+	/// Locate the shard corresponding to the given key.
 	fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId> {
-		// Find the first range whose upper bound is greater than or equal to the key
+		// Find the first range whose upper bound is greater than or equal to the key.
 		self.ranges
 			.iter()
 			.find(|(&upper_bound, _)| key <= &upper_bound)
@@ -267,12 +267,12 @@ async fn run_node(
 	ranges.insert(300, shard_id_3);
 
 	// Initialize the range-based sharding policy
-	let shard_manager = RangeSharding::new(ranges);
+	let shard_executor = RangeSharding::new(ranges);
 
 	// Join appropriate shards each
 	match name {
 		"Node 1" => {
-			if shard_manager
+			if shard_executor
 				.join_network(node.clone(), &shard_id_1)
 				.await
 				.is_ok()
@@ -281,7 +281,7 @@ async fn run_node(
 			}
 		},
 		"Node 2" => {
-			if shard_manager
+			if shard_executor
 				.join_network(node.clone(), &shard_id_2)
 				.await
 				.is_ok()
@@ -290,7 +290,7 @@ async fn run_node(
 			}
 		},
 		"Node 3" => {
-			if shard_manager
+			if shard_executor
 				.join_network(node.clone(), &shard_id_3)
 				.await
 				.is_ok()
@@ -333,7 +333,7 @@ async fn run_node(
 						println!("Sharding data with key '{}': {}...", key, shard_data);
 
 						// Shard data across the network
-						match shard_manager
+						match shard_executor
 							.shard(node.clone(), &key, vec![(*shard_data).clone().into()])
 							.await
 						{
@@ -370,7 +370,7 @@ async fn run_node(
 						println!("Requesting data with key '{}': {}", key, request);
 
 						// Fetch data from network
-						match shard_manager
+						match shard_executor
 							.fetch(node.clone(), &key, vec![(*request).clone().into()])
 							.await
 						{
@@ -423,7 +423,7 @@ async fn main() {
 		148, 159, 36, 170, 109, 178,
 	];
 
-	// Node 2 Keypair
+	// Node 2 keypair
 	let node_2_keypair: [u8; 68] = [
 		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
 		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
@@ -431,7 +431,7 @@ async fn main() {
 		10, 127, 128, 52, 52, 68, 31,
 	];
 
-	// Node 3 Keypair
+	// Node 3 keypair
 	let node_3_keypair: [u8; 68] = [
 		8, 1, 18, 64, 211, 172, 68, 234, 95, 121, 188, 130, 107, 113, 212, 215, 211, 189, 219, 190,
 		137, 91, 250, 222, 34, 152, 190, 117, 139, 199, 250, 5, 33, 65, 14, 180, 214, 5, 151, 109,
