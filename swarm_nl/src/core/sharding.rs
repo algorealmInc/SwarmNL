@@ -3,6 +3,8 @@
 
 //! Module that contains important data structures to manage [`Sharding`] operations on the
 //! network.
+use std::fmt::Debug;
+
 use super::*;
 use async_trait::async_trait;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
@@ -10,8 +12,8 @@ use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 /// Trait that interfaces with the storage layer of a node in a shard. It is important for handling
 /// forwarded data requests. This is a mechanism to trap into the application storage layer to read
 /// sharded data.
-pub trait ShardStorage: Send + Sync + Clone {
-	fn fetch_data(&self, key: ByteVector) -> Option<ByteVector>;
+pub trait ShardStorage: Send + Sync + Debug {
+	fn fetch_data(&self, key: ByteVector) -> ByteVector;
 }
 
 /// Important data for the operation of the sharding protocol.
@@ -19,17 +21,21 @@ pub trait ShardStorage: Send + Sync + Clone {
 pub struct ShardingInfo {
 	/// The id of the entire sharding network.
 	pub id: String,
-	/// Shard configuration.
-	pub config: ShardingCfg,
+	/// Shard local storage.
+	pub local_storage: Arc<Mutex<dyn ShardStorage>>,
 	/// The shards and the various nodes they contain.
 	pub state: Arc<Mutex<HashMap<ShardId, Vec<PeerId>>>>,
 }
 
-/// Important config for the operation of the sharding protocol.
-#[derive(Debug, Clone)]
-pub struct ShardingCfg {
-	/// Callback to handle explicit network requests.
-	pub callback: fn(RpcData) -> RpcData,
+/// Default shard storage to respond to forwarded data requests.
+#[derive(Debug)]
+pub(super) struct DefaultShardStorage;
+
+impl ShardStorage for DefaultShardStorage {
+	fn fetch_data(&self, key: ByteVector) -> ByteVector {
+		// Simply echo incoming data request
+		key
+	}
 }
 
 /// Trait that specifies sharding logic and behaviour of shards.

@@ -42,7 +42,7 @@ use replication::{
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
-	sharding::{ShardingCfg, ShardingInfo},
+	sharding::{DefaultShardStorage, ShardStorage, ShardingInfo},
 };
 
 use super::*;
@@ -235,9 +235,7 @@ impl CoreBuilder {
 			// The default peers to be forwarded sharded data must be 25% of the total in a shard
 			sharding: ShardingInfo {
 				id: Default::default(),
-				config: ShardingCfg {
-					callback: rpc_handler_fn,
-				},
+				local_storage: Arc::new(Mutex::new(DefaultShardStorage)),
 				state: Default::default(),
 			},
 		}
@@ -309,11 +307,15 @@ impl CoreBuilder {
 	}
 
 	/// Configure the `Sharding` protocol for the network.
-	pub fn with_sharding(self, network_id: String, callback: fn(RpcData) -> RpcData) -> Self {
+	pub fn with_sharding<T: ShardStorage + 'static>(
+		self,
+		network_id: String,
+		local_shard_storage: Arc<Mutex<T>>,
+	) -> Self {
 		CoreBuilder {
 			sharding: ShardingInfo {
 				id: network_id,
-				config: ShardingCfg { callback },
+				local_storage: local_shard_storage,
 				state: Default::default(),
 			},
 			..self
@@ -1837,7 +1839,7 @@ impl Core {
 																// It is an incmoing request to ask for data on this node because it is a member of a logical shard
 																Core::SHARD_RPC_REQUEST_FLAG => {
 																	// Pass request data to configured shard request handler
-																	let response_data = (network_info.sharding.config.callback)(data[1..].into());
+																	let response_data = network_info.sharding.local_storage.lock().await.fetch_data(data[1..].into());
 																	// Send the response
 																	let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
 																}
