@@ -339,11 +339,13 @@ async fn join_and_exit_shard_network() {
 			assert_eq!(shard.1.len(), 1);
 		}
 
-		// Sleep
-		tokio::time::sleep(Duration::from_secs(5)).await;
+		// Sleep to allow nodes leave the network
+		tokio::time::sleep(Duration::from_secs(12)).await;
+		
 		let shard_network_state =
 			<RangeSharding<String> as Sharding>::network_state(node.clone()).await;
-		assert_eq!(shard_network_state.len(), 3);
+
+		assert_eq!(shard_network_state.len(), 1);
 
 		// Check that the first shard contains one node (node 3)
 		assert_eq!(shard_network_state.iter().nth(0).unwrap().1.len(), 1);

@@ -260,7 +260,6 @@ where
 			Core::SHARD_RPC_REQUEST_FLAG.as_bytes().to_vec(), /* Flag to indicate shard data
 			                                                   * request */
 		];
-
 		message.append(&mut data);
 
 		// Attempt to forward the data to peers.

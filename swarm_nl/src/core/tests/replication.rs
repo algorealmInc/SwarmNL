@@ -423,7 +423,6 @@ async fn repl_itest_fully_replicate_node() {
 // Strong(All) and Strong(MinPeers) for this.
 
 mod strong_consistency {
-
 	use super::*;
 	use crate::core::replication::ReplBufferData;
 
@@ -739,7 +738,7 @@ mod strong_consistency {
 		let ports_1: (Port, Port) = (49555, 55503);
 		let ports_2: (Port, Port) = (49553, 55501);
 		let ports_3: (Port, Port) = (49554, 55502);
-		let ports_4: (Port, Port) = (49555, 55504);
+		let ports_4: (Port, Port) = (49552, 55504);
 
 		// Setup node 1
 		let task_1 = tokio::task::spawn(async move {
