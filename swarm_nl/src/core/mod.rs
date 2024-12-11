@@ -1031,7 +1031,7 @@ impl Core {
 
 		// If the node is joining
 		if join {
-			shard_entry.push(peer);
+			shard_entry.insert(peer);
 		} else {
 			// Update shard state to reflect exit
 			shard_entry.retain(|entry| entry != &peer);
@@ -1043,6 +1043,8 @@ impl Core {
 	async fn publish_shard_state(&mut self, peer: PeerId) {
 		// Marshall the local state into a byte vector
 		let shard_state = self.network_info.sharding.state.lock().await.clone();
+
+		println!("---> shard state {:#?}", shard_state);
 		let bytes = shard_image_to_bytes(shard_state);
 
 		let message = vec![

@@ -13,7 +13,7 @@ use ini::Ini;
 use libp2p_identity::PeerId;
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	path::Path,
 	str::FromStr,
 	time::{SystemTime, UNIX_EPOCH},
@@ -209,7 +209,7 @@ pub fn string_vec_to_byte_vec(input: StringVector) -> ByteVector {
 }
 
 /// Marshall the shard network image into a [ByteVector].
-pub fn shard_image_to_bytes(input: HashMap<String, Vec<PeerId>>) -> Vec<u8> {
+pub fn shard_image_to_bytes(input: HashMap<String, HashSet<PeerId>>) -> Vec<u8> {
 	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
 	const PEER_SEPARATOR: &[u8] = b"%%";
 	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
@@ -241,28 +241,23 @@ pub fn shard_image_to_bytes(input: HashMap<String, Vec<PeerId>>) -> Vec<u8> {
 	result
 }
 
-/// Merge the incoming shard state with the local shard state of the network.
 pub fn merge_shard_states(
-	local_state: &mut HashMap<String, Vec<PeerId>>,
-	incoming_state: HashMap<String, Vec<PeerId>>,
+	local_state: &mut HashMap<String, HashSet<PeerId>>,
+	incoming_state: HashMap<String, HashSet<PeerId>>,
 ) {
 	for (shard_id, incoming_peers) in incoming_state.iter() {
 		local_state
 			.entry(shard_id.to_owned())
 			.and_modify(|local_peers| {
-				// Add only unique peers from incoming_peers to local_peers
-				for peer in incoming_peers {
-					if !local_peers.contains(peer) {
-						local_peers.push(peer.clone());
-					}
-				}
+				// Use HashSet's `extend` method to add all unique peers from incoming_peers
+				local_peers.extend(incoming_peers);
 			})
-			.or_insert(incoming_peers.to_owned()); // If the shard_id doesn't exist, insert it directly
+			.or_insert(incoming_peers.clone()); // Insert directly if the shard_id doesn't exist
 	}
 }
 
 /// Unmarshall the byte=re into the shard network image.
-pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, Vec<PeerId>> {
+pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, HashSet<PeerId>> {
 	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
 	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
 	const PEER_SEPARATOR: &[u8] = b"%%";
@@ -287,7 +282,7 @@ pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, Vec<PeerId>> {
 			let shard_id = parts[0].to_string();
 
 			// Split peers and convert to PeerIds
-			let peers: Vec<PeerId> = parts[1]
+			let peers: HashSet<PeerId> = parts[1]
 				.split(std::str::from_utf8(PEER_SEPARATOR).unwrap_or("%%"))
 				.filter_map(|peer_str| PeerId::from_bytes(peer_str.as_bytes()).ok())
 				.collect();

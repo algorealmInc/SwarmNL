@@ -8,7 +8,8 @@
 //! 1. **Replication Prerequisite**:
 //!    - Sharding requires replication to be configured beforehand.
 //!    - If replication is not explicitly configured, the system will assume default replication
-//!      behavior.
+//!      behavior. 
+//!    - REPLICATION MUST BE SET TO EVENTUAL CONSISTENCY
 //!
 //! 2. **Sharding Configuration**:
 //!    - When setting up the sharding network, you must provide the local storage configuration.
@@ -95,7 +96,6 @@ impl ShardStorage for LocalStorage {
 	}
 }
 
-/// Implement the `Sharding` trait
 /// Hash-based sharding implementation
 pub struct HashSharding;
 
@@ -116,8 +116,9 @@ impl HashSharding {
 	}
 }
 
+/// Implement the `Sharding` trait
 impl Sharding for HashSharding {
-	type Key = String;
+	type Key = str;
 	type ShardId = String;
 
 	/// Locate the shard corresponding to the given key
@@ -181,7 +182,7 @@ async fn setup_node(
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		consistency_model: ConsistencyModel::Eventual,
 		data_aging_period: 2,
 	};
 
@@ -259,13 +260,16 @@ async fn run_node(
 				match event {
 					NetworkEvent::IncomingForwardedData { data, source } => {
 						println!(
-							"Received forwarded data: {:?} from peer: {}",
+							"recieved forwarded data: {:?} from peer: {}",
 							data,
 							source.to_base58()
 						);
 
+						// Split the contents of the incoming data
+						let data_vec = data[0].split(" ").collect::<Vec<_>>();
+
 						// Extract file name and content
-						if let [file_name, content] = &data[..] {
+						if let [file_name, content] = &data_vec[..] {
 							let _ = append_to_file(file_name, content).await;
 						}
 					},
@@ -276,14 +280,17 @@ async fn run_node(
 						..
 					} => {
 						println!(
-							"Received replica data: {:?} from shard peer: {}",
+							"recieved replica data: {:?} from shard peer: {}",
 							data,
 							source.to_base58()
 						);
 
 						if let Some(repl_data) = node.consume_repl_data(&network).await {
+							// Split the contents of the incoming data
+							let data = repl_data.data[0].split(" ").collect::<Vec<_>>();
+
 							// Extract file name and content
-							if let [file_name, content] = &repl_data.data[..] {
+							if let [file_name, content] = &data[..] {
 								let _ = append_to_file(file_name, content).await;
 							}
 						} else {
@@ -299,43 +306,43 @@ async fn run_node(
 		}
 	});
 
-	// Shard keys. Since it is hash-based then the keys have to be specific.
-	let shard_key_1 = "earth".to_string();
-	let shard_key_2 = "mars".to_string();
-	// let shard_key_3 = "venus";
-
-	// Initialize the range-based sharding policy
+	// Initialize the hash-based sharding policy
 	let shard_manager = HashSharding;
+
+	// Convert shard keys to their IDs
+	let shard_id_1 = shard_manager.locate_shard("earth").unwrap();
+	let shard_id_2 = shard_manager.locate_shard("mars").unwrap();
+	// let shard_id_3 = "venus";
 
 	// Join appropriate shards each
 	// Node 2 and 3 will join the same shard. Then replication will happen among them to maintain a
-	// consistent shard state accross the nodes.
+	// consistent shard network state across the nodes.
 	match name {
 		"Node 1" => {
 			if shard_manager
-				.join_network(node.clone(), &shard_key_1)
+				.join_network(node.clone(), &shard_id_1)
 				.await
 				.is_ok()
 			{
-				println!("Successfully joined shard: {}", shard_key_1);
+				println!("Successfully joined shard: {}", shard_id_1);
 			}
 		},
 		"Node 2" => {
 			if shard_manager
-				.join_network(node.clone(), &shard_key_2)
+				.join_network(node.clone(), &shard_id_2)
 				.await
 				.is_ok()
 			{
-				println!("Successfully joined shard: {}", shard_key_2);
+				println!("Successfully joined shard: {}", shard_id_2);
 			}
 		},
 		"Node 3" => {
 			if shard_manager
-				.join_network(node.clone(), &shard_key_2)
+				.join_network(node.clone(), &shard_id_2)
 				.await
 				.is_ok()
 			{
-				println!("Successfully joined shard: {}", shard_key_2);
+				println!("Successfully joined shard: {}", shard_id_2);
 			}
 		},
 		_ => {},
@@ -368,47 +375,42 @@ async fn run_node(
 		match command {
 			Some("shard") => {
 				if data.len() >= 3 {
-					if let Ok(key) = data[0].parse::<u64>() {
-						let file_name = &data[1];
-						let shard_data = &data[2..].join(" ");
-						println!(
-							"Sharding data with key '{}': {} to file '{}'",
-							key, shard_data, file_name
-						);
+					let key = data[0];
+					let file_name = &data[1];
+					let shard_data = &data[1..].join(" ");
+					println!(
+						"Sharding data with key '{}': {} to file '{}'",
+						key, shard_data, file_name
+					);
 
-						// Shard data across the network
-						match shard_manager
-							.shard(
-								node.clone(),
-								&key.to_string(),
-								vec![(*shard_data).clone().into()],
-							)
-							.await
-						{
-							Ok(response) => match response {
-								Some(data) => {
-									println!(
-										"The data to shard is '{}'.",
-										String::from_utf8_lossy(&data[0])
-									);
-									println!("It falls into the range of the current node and will be stored locally.");
+					// Shard data across the network
+					match shard_manager
+						.shard(
+							node.clone(),
+							&key.to_string(),
+							vec![(*shard_data).clone().into()],
+						)
+						.await
+					{
+						Ok(response) => match response {
+							Some(data) => {
+								println!(
+									"The data to shard is '{}'.",
+									String::from_utf8_lossy(&data[0])
+								);
+								println!("It falls into the range of the current node and will be stored locally.");
 
-									// Save to file instead of memory buffer
-									if let Err(e) = append_to_file(
-										file_name,
-										&String::from_utf8_lossy(&data[0]),
-									)
-									.await
-									{
-										println!("Failed to save data to file: {}", e);
-									}
-								},
-								None => println!("Successfully placed data in the right shard."),
+								// Save locally
+								if let Err(e) =
+									append_to_file(file_name, &String::from_utf8_lossy(&data[0]))
+										.await
+								{
+									println!("Failed to save data to file: {}", e);
+								}
 							},
-							Err(e) => println!("Sharding failed: {}", e.to_string()),
-						}
-					} else {
-						println!("Error: 'key' must be a u64");
+							None => println!("Successfully placed data in the right shard."),
+						},
+						Err(e) => println!("Sharding failed: {}", e.to_string()),
 					}
 				} else {
 					println!(
@@ -452,8 +454,8 @@ async fn run_node(
 				}
 			},
 			Some("read") => {
-				if data.len() >= 2 {
-					let file_name = &data[1];
+				if data.len() >= 1 {
+					let file_name = &data[0];
 					println!("Reading data from file: {}", file_name);
 
 					// Read from file

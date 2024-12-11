@@ -24,7 +24,7 @@ pub struct ShardingInfo {
 	/// Shard local storage.
 	pub local_storage: Arc<Mutex<dyn ShardStorage>>,
 	/// The shards and the various nodes they contain.
-	pub state: Arc<Mutex<HashMap<ShardId, Vec<PeerId>>>>,
+	pub state: Arc<Mutex<HashMap<ShardId, HashSet<PeerId>>>>,
 }
 
 /// Default shard storage to respond to forwarded data requests.
@@ -46,7 +46,7 @@ where
 	Self::ShardId: ToString + Send + Sync,
 {
 	/// The type of the shard key e.g hash, range etc.
-	type Key;
+	type Key: ?Sized;
 	/// The identifier pointing to a specific group of shards.
 	type ShardId;
 
@@ -71,7 +71,7 @@ where
 		shard_state
 			.entry(shard_id.to_string())
 			.or_insert_with(Default::default)
-			.push(core.peer_id());
+			.insert(core.peer_id());
 
 		// Free `Core`
 		drop(shard_state);
@@ -187,6 +187,8 @@ where
 
 		// Shuffle nodes so their order of query is randomized
 		let mut rng = StdRng::from_entropy();
+		let mut nodes = nodes.iter().cloned().collect::<Vec<_>>();
+		
 		nodes.shuffle(&mut rng);
 
 		// Attempt to forward the data to peers.
@@ -197,6 +199,7 @@ where
 			};
 
 			// Query the network and return success on the first successful response.
+			// The recieving node will then replicate it to other nodes in the shard.
 			if core.query_network(rpc_request).await.is_ok() {
 				return Ok(None); // Forwarding succeeded.
 			}
@@ -204,6 +207,11 @@ where
 
 		// If all peers fail, return an error.
 		Err(NetworkError::DataForwardingError)
+	}
+
+	/// Return the state of the shard network
+	async fn shard_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
+		core.network_info.sharding.state.lock().await.clone()
 	}
 
 	/// Fetch data from the shard network.
@@ -226,7 +234,7 @@ where
 		};
 
 		// If no nodes exist for the shard, return an error.
-		let mut nodes = match nodes {
+		let nodes = match nodes {
 			Some(nodes) => nodes,
 			None => return Err(NetworkError::ShardingFetchError),
 		};
@@ -239,6 +247,8 @@ where
 
 		// Shuffle the peers.
 		let mut rng = StdRng::from_entropy();
+		let mut nodes = nodes.iter().cloned().collect::<Vec<_>>();
+
 		nodes.shuffle(&mut rng);
 
 		// Prepare an RPC to ask for the data from nodes in the shard.
