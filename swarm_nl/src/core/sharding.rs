@@ -53,6 +53,11 @@ where
 	/// Map a key to a shard.
 	fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId>;
 
+	/// Return the state of the shard network.
+	async fn network_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
+		core.network_info.sharding.state.lock().await.clone()
+	}
+	
 	/// Join a shard network.
 	async fn join_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> {
 		// Ensure the network sharding ID is set.
@@ -212,11 +217,6 @@ where
 
 		// If all peers fail, return an error.
 		Err(NetworkError::DataForwardingError)
-	}
-
-	/// Return the state of the shard network
-	async fn network_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
-		core.network_info.sharding.state.lock().await.clone()
 	}
 
 	/// Fetch data from the shard network.
