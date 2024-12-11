@@ -1035,6 +1035,11 @@ impl Core {
 		} else {
 			// Update shard state to reflect exit
 			shard_entry.retain(|entry| entry != &peer);
+
+			// If the last node has exited the shard, dissolve it
+			if shard_entry.is_empty() {
+				shard_state.remove(&shard_id.to_string());
+			}
 		}
 	}
 

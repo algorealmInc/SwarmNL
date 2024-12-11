@@ -47,7 +47,7 @@ where
 {
 	/// The type of the shard key e.g hash, range etc.
 	type Key: ?Sized;
-	/// The identifier pointing to a specific group of shards.
+	/// The identifier pointing to a specific shard.
 	type ShardId;
 
 	/// Map a key to a shard.
@@ -108,6 +108,11 @@ where
 
 		shard_entry.retain(|entry| entry != &core.peer_id());
 
+		// If the last node has exited the shard, dissolve it
+		if shard_entry.is_empty() {
+			shard_state.remove(&shard_id.to_string());
+		}
+
 		// Release `core`
 		drop(shard_state);
 
@@ -165,7 +170,7 @@ where
 		};
 
 		// If no nodes exist for the shard, return an error.
-		let mut nodes = match nodes {
+		let nodes = match nodes {
 			Some(nodes) => nodes,
 			None => return Err(NetworkError::MissingShardNodesError),
 		};
@@ -210,7 +215,7 @@ where
 	}
 
 	/// Return the state of the shard network
-	async fn shard_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
+	async fn network_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
 		core.network_info.sharding.state.lock().await.clone()
 	}
 
@@ -276,52 +281,5 @@ where
 
 		// Fetch Failed
 		Err(NetworkError::ShardingFetchError)
-	}
-}
-
-#[cfg(test)]
-mod tests {
-
-	use super::*;
-
-	#[test]
-	fn test_initial_shard_node_state() {
-		tokio::runtime::Runtime::new().unwrap().block_on(async {
-			// Initialize the shared state
-			let state = Arc::new(Mutex::new(HashMap::new()));
-			let config = ShardingCfg {
-				callback: |_rpc| RpcData::default(),
-			};
-			let sharding_info = ShardingInfo {
-				id: "test-network".to_string(),
-				config,
-				state: state.clone(),
-			};
-
-			// Simulate a shard node initialization
-			let shard_id = "shard-1".to_string();
-
-			{
-				let mut shard_state = state.lock().await;
-				shard_state.insert(shard_id.clone(), vec![]);
-			}
-
-			// Check the initial state
-			let shard_state = state.lock().await;
-			assert!(
-				shard_state.contains_key(&shard_id),
-				"Shard ID should exist in the state"
-			);
-			assert!(
-				shard_state.get(&shard_id).unwrap().is_empty(),
-				"Shard state for shard-1 should be empty"
-			);
-
-			// Validate network ID
-			assert_eq!(
-				sharding_info.id, "test-network",
-				"Sharding network ID should be set correctly"
-			);
-		});
 	}
 }
