@@ -1049,9 +1049,7 @@ impl Core {
 		// Marshall the local state into a byte vector
 		let shard_state = self.network_info.sharding.state.lock().await.clone();
 
-		println!("---> shard state {:#?}", shard_state);
 		let bytes = shard_image_to_bytes(shard_state);
-
 		let message = vec![
 			Core::SHARD_RPC_SYNC_FLAG.as_bytes().to_vec(), // Flag to indicate a sync request
 			bytes,                                         // Network state
