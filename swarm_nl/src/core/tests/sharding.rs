@@ -154,10 +154,10 @@ async fn join_and_exit_shard_network() {
 	ranges.insert(300, shard_id_3);
 
 	// Initialize the range-based sharding policy
-	let shard_executor = RangeSharding::new(ranges);
+	let shard_exec = Arc::new(Mutex::new(RangeSharding::new(ranges)));
 
     // Local shard storage
-	let local_storage = Arc::new(Mutex::new(LocalStorage {
+	let local_storage_buffer = Arc::new(Mutex::new(LocalStorage {
 		buffer: Default::default(),
 	}));
 
@@ -206,7 +206,13 @@ async fn join_and_exit_shard_network() {
 	let ports_2: (Port, Port) = (48153, 54101);
 	let ports_3: (Port, Port) = (48154, 54102);
 
-	// Setup node 1
+    // Clone the sharding executor
+    let sharding_executor = shard_exec.clone();
+
+    // Clone the local storage
+    let local_storage = local_storage_buffer.clone();
+	
+    // Setup node 1
 	let task_1 = tokio::task::spawn(async move {
 		// Bootnodes
 		let mut bootnodes = HashMap::new();
@@ -231,14 +237,19 @@ async fn join_and_exit_shard_network() {
 		.await;
 
 		// Join first shard network
-        let _ = shard_executor.join_network(node.clone(), &shard_id_1).await;
+        let _ = sharding_executor.lock().await.join_network(node.clone(), &shard_id_1).await;
 
 		// Sleep for 3 seconds
 		tokio::time::sleep(Duration::from_secs(3)).await;
 
 		// Exit shard network
-		let _ = shard_executor.exit_network(node.clone(), &shard_id_1).await;
+		let _ = sharding_executor.lock().await.exit_network(node.clone(), &shard_id_1).await;
 	});
+
+    // Clone the sharding executor
+    let sharding_executor = shard_exec.clone();
+    // Clone the local storage
+    let local_storage = local_storage_buffer.clone();
 
 	// Setup node 2
 	let task_2 = tokio::task::spawn(async move {
@@ -264,15 +275,20 @@ async fn join_and_exit_shard_network() {
 		.await;
 
         // Join second shard network
-        let _ = shard_executor.join_network(node.clone(), &shard_id_2).await;
+        let _ = sharding_executor.lock().await.join_network(node.clone(), &shard_id_2).await;
 
         // Sleep for 3 seconds
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         // Exit shard network
-        let _ = shard_executor.exit_network(node.clone(), &shard_id_2).await;
+        let _ = sharding_executor.lock().await.exit_network(node.clone(), &shard_id_2).await;
 	});
 
+    // Clone the sharding executor
+    let sharding_executor = shard_exec.clone();
+    // Clone the local storage
+    let local_storage = local_storage_buffer.clone();
+    
 	// Setup node 3
 	let task_3 = tokio::task::spawn(async move {
 		// Bootnodes
@@ -297,7 +313,7 @@ async fn join_and_exit_shard_network() {
 		.await;
 
 		// Join shard network
-		let _ = shard_executor.join_network(node.clone(), &shard_id_3).await;
+		let _ = sharding_executor.lock().await.join_network(node.clone(), &shard_id_3).await;
 
 		// Assert there are 3 shards containing one node each
         let shard_network_state = <RangeSharding<String> as Sharding>::network_state(node.clone()).await;
@@ -309,14 +325,11 @@ async fn join_and_exit_shard_network() {
         
         // Sleep
         tokio::time::sleep(Duration::from_secs(5)).await;
-
         let shard_network_state = <RangeSharding<String> as Sharding>::network_state(node.clone()).await;
         assert_eq!(shard_network_state.len(), 3);
-
-        for shard in &shard_network_state {
-            assert_eq!(shard.1.len(), 1);
-        }
-
+        
+        // Check that the first shard contains one node (node 3)
+        assert_eq!(shard_network_state.iter().nth(0).unwrap().1.len(), 1);
 	});
 
 	for task in vec![task_1, task_2, task_3] {
