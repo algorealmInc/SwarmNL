@@ -9,7 +9,7 @@ SwarmNL is a library designed for P2P networking in distributed systems. It's li
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
 
 - [Why SwarmNL?](#why-swarmnl)
-- [Tutorials](#tutorials)
+- [examples](#examples)
 - [Documentation](#documentation)
 - [Features and examples](#features-and-examples)
   - [Node configuration](#node-configuration)
@@ -23,9 +23,9 @@ SwarmNL makes buiding a peer-to-peer decentralized and distributed networking st
 
 Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic.
 
-## Tutorials
+## examples
 
-Have a look at some tutorials that demonstrate the use of SwarmNl in various contexts:
+Have a look at some examples that demonstrate the use of SwarmNl in various contexts:
 
 - [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/echo_server): demonstrates a simple use case of setting up a node and querying the network layer.
 - [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/file_sharing_app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
