@@ -33,6 +33,8 @@ Have a look at some examples that demonstrate the use of SwarmNl in various cont
 - [The sharding tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/sharding): demonstrates splitting a network into shards for scaling and handling communication between various nodes in a shard and across the network.
 - [The replication tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
 
+Visit the examples folder [here](https://github.com/algorealmInc/SwarmNL/tree/dev/examples) to understand more on how to use the library. The examples also contains integration with IPFS, HTTP servers etc.
+
 
 ## Documentation
 
