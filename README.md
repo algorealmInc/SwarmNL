@@ -254,7 +254,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 
 Here’s how you can set up and use SwarmNL's replication capabilities:
 
-### Configuring a Node for Replication
+#### Configuring a Node for Replication
 ```rust
     //! Configure the node for replication with a strong consistency model
 
@@ -280,7 +280,7 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
     node.replicate(payload, REPL_NETWORK_ID).await;
 ```
 
-### Handling Replication Events
+#### Handling Replication Events
 SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
 
 ```rust
@@ -294,7 +294,7 @@ SwarmNL exposes network events to your application, allowing you to process inco
             }
         }
 
-        // Try to consume data from the replica network
+        // Try to consume data from the replication buffer
         if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
             println!(
                 "Data received from replica: {} ({} confirmations)",
