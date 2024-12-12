@@ -844,29 +844,13 @@ async fn fetching_sharded_data() {
 		buffer: Default::default(),
 	}));
 
-	// Node 1 keypair
-	let node_1_keypair: [u8; 68] = [
-		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
-		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
-		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
-		148, 159, 36, 170, 109, 178,
-	];
-
-	// Node 2 keypair
-	let node_2_keypair: [u8; 68] = [
-		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
-		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
-		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
-		10, 127, 128, 52, 52, 68, 31,
-	];
-
 	// Get Peer Id's
-	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+	let peer_id_1 = Keypair::from_protobuf_encoding(&NODE_1_KEYPAIR[..])
 		.unwrap()
 		.public()
 		.to_peer_id();
 
-	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+	let peer_id_2 = Keypair::from_protobuf_encoding(&NODE_2_KEYPAIR[..])
 		.unwrap()
 		.public()
 		.to_peer_id();
