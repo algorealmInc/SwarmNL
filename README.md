@@ -472,13 +472,13 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
         _ => {}
     }
 
-    let shard_key = "mars";
+    let shard_key = "mars".to_string();
 
     // Store data across the network in the shard pointed to by the key
     match shard_executor
         .shard(
             node.clone(),
-            &shard_key.to_string(),
+            &shard_key,
             payload,
         )
         .await;
