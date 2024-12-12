@@ -326,7 +326,7 @@ Sharding is a capability in distributed systems that enables networks to scale e
 - **Data Forwarding**: SwarmNL implements data-forwarding, allowing any node to handle requests for data stored on other nodes within any shard. Data is forwarded to the appropriate node for storage, and a network search algorithm enables retrieval from any node in any shard.
 - **Integrated Application Layer Traps**: To maintain flexibility, SwarmNL permits nodes storing data to `trap` into the application layer when handling data requests. This ensures practicality and usability in real-world scenarios.
 
-### Example: Configuring a sharded network
+### Example: Configuring and Operating a Sharded Network
 
 Here’s how you can set up and use SwarmNL's sharding capabilities:
 
