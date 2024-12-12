@@ -244,7 +244,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
           assert_eq!(AppResponse::GossipsubBroadcastSuccess, result);
       }
 ```
-# Replication
+## Replication
 
 **SwarmNL** makes fault tolerance through redundancy simple and easy to integrate into your application. With replication built into SwarmNL, you can achieve robust and scalable systems effortlessly.
 
