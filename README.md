@@ -426,7 +426,7 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
         .unwrap();
 ```
 
-#### Choosing a sharding algorithm and storing data on the nwtwork
+#### Choosing a sharding algorithm and storing data on the network
 
 ```rust
     //! Select a sharding algorithm and assign nodes to their respective shards
