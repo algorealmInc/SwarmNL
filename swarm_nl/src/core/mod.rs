@@ -164,7 +164,6 @@ pub struct CoreBuilder {
 impl CoreBuilder {
 	/// Return a [`CoreBuilder`] struct configured with [`BootstrapConfig`] and default values.
 	/// Here, it is certain that [`BootstrapConfig`] contains valid data.
-	/// A type that implements [`EventHandler`] is passed to handle and respond to network events.
 	pub fn with_config(config: BootstrapConfig) -> Self {
 		// The default network id
 		let network_id = DEFAULT_NETWORK_ID;
