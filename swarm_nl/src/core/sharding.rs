@@ -3,6 +3,8 @@
 
 //! Module that contains important data structures to manage [`Sharding`] operations on the
 //! network.
+use std::fmt::Debug;
+
 use super::*;
 use async_trait::async_trait;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
@@ -10,26 +12,30 @@ use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 /// Trait that interfaces with the storage layer of a node in a shard. It is important for handling
 /// forwarded data requests. This is a mechanism to trap into the application storage layer to read
 /// sharded data.
-pub trait ShardStorage: Send + Sync + Clone {
-	fn fetch_data(&self, key: ByteVector) -> Option<ByteVector>;
+pub trait ShardStorage: Send + Sync + Debug {
+	fn fetch_data(&self, key: ByteVector) -> ByteVector;
 }
 
 /// Important data for the operation of the sharding protocol.
 #[derive(Debug, Clone)]
 pub struct ShardingInfo {
-	/// The id of the entire sharding network.
+	/// The id of the entire sharded network.
 	pub id: String,
-	/// Shard configuration.
-	pub config: ShardingCfg,
+	/// Shard local storage.
+	pub local_storage: Arc<Mutex<dyn ShardStorage>>,
 	/// The shards and the various nodes they contain.
-	pub state: Arc<Mutex<HashMap<ShardId, Vec<PeerId>>>>,
+	pub state: Arc<Mutex<HashMap<ShardId, HashSet<PeerId>>>>,
 }
 
-/// Important config for the operation of the sharding protocol.
-#[derive(Debug, Clone)]
-pub struct ShardingCfg {
-	/// Callback to handle explicit network requests.
-	pub callback: fn(RpcData) -> RpcData,
+/// Default shard storage to respond to forwarded data requests.
+#[derive(Debug)]
+pub(super) struct DefaultShardStorage;
+
+impl ShardStorage for DefaultShardStorage {
+	fn fetch_data(&self, key: ByteVector) -> ByteVector {
+		// Simply echo incoming data request
+		key
+	}
 }
 
 /// Trait that specifies sharding logic and behaviour of shards.
@@ -40,13 +46,18 @@ where
 	Self::ShardId: ToString + Send + Sync,
 {
 	/// The type of the shard key e.g hash, range etc.
-	type Key;
-	/// The identifier pointing to a specific group of shards.
+	type Key: ?Sized;
+	/// The identifier pointing to a specific shard.
 	type ShardId;
 
 	/// Map a key to a shard.
 	fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId>;
 
+	/// Return the state of the shard network.
+	async fn network_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
+		core.network_info.sharding.state.lock().await.clone()
+	}
+	
 	/// Join a shard network.
 	async fn join_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> {
 		// Ensure the network sharding ID is set.
@@ -65,16 +76,15 @@ where
 		shard_state
 			.entry(shard_id.to_string())
 			.or_insert_with(Default::default)
-			.push(core.peer_id());
+			.insert(core.peer_id());
 
 		// Free `Core`
 		drop(shard_state);
 
-		// Join the shard network
-		let gossip_request = AppData::GossipsubJoinNetwork(shard_id.to_string());
-		let _ = core.query_network(gossip_request).await?;
+		// Join the shard network (as a replication network)
+		let _ = core.join_repl_network(shard_id.to_string()).await;
 
-		// Inform the entire network about out decision
+		// Inform the entire network about our decision
 		let message = vec![
 			Core::SHARD_GOSSIP_JOIN_FLAG.as_bytes().to_vec(), // Flag for join event.
 			core.peer_id().to_string().into_bytes(),          // Our peer ID.
@@ -101,6 +111,11 @@ where
 			.or_insert(Default::default());
 
 		shard_entry.retain(|entry| entry != &core.peer_id());
+
+		// If the last node has exited the shard, dissolve it
+		if shard_entry.is_empty() {
+			shard_state.remove(&shard_id.to_string());
+		}
 
 		// Release `core`
 		drop(shard_state);
@@ -159,7 +174,7 @@ where
 		};
 
 		// If no nodes exist for the shard, return an error.
-		let mut nodes = match nodes {
+		let nodes = match nodes {
 			Some(nodes) => nodes,
 			None => return Err(NetworkError::MissingShardNodesError),
 		};
@@ -181,6 +196,8 @@ where
 
 		// Shuffle nodes so their order of query is randomized
 		let mut rng = StdRng::from_entropy();
+		let mut nodes = nodes.iter().cloned().collect::<Vec<_>>();
+		
 		nodes.shuffle(&mut rng);
 
 		// Attempt to forward the data to peers.
@@ -191,6 +208,7 @@ where
 			};
 
 			// Query the network and return success on the first successful response.
+			// The recieving node will then replicate it to other nodes in the shard.
 			if core.query_network(rpc_request).await.is_ok() {
 				return Ok(None); // Forwarding succeeded.
 			}
@@ -220,7 +238,7 @@ where
 		};
 
 		// If no nodes exist for the shard, return an error.
-		let mut nodes = match nodes {
+		let nodes = match nodes {
 			Some(nodes) => nodes,
 			None => return Err(NetworkError::ShardingFetchError),
 		};
@@ -233,6 +251,8 @@ where
 
 		// Shuffle the peers.
 		let mut rng = StdRng::from_entropy();
+		let mut nodes = nodes.iter().cloned().collect::<Vec<_>>();
+
 		nodes.shuffle(&mut rng);
 
 		// Prepare an RPC to ask for the data from nodes in the shard.
@@ -240,7 +260,6 @@ where
 			Core::SHARD_RPC_REQUEST_FLAG.as_bytes().to_vec(), /* Flag to indicate shard data
 			                                                   * request */
 		];
-
 		message.append(&mut data);
 
 		// Attempt to forward the data to peers.
@@ -260,52 +279,5 @@ where
 
 		// Fetch Failed
 		Err(NetworkError::ShardingFetchError)
-	}
-}
-
-#[cfg(test)]
-mod tests {
-
-	use super::*;
-
-	#[test]
-	fn test_initial_shard_node_state() {
-		tokio::runtime::Runtime::new().unwrap().block_on(async {
-			// Initialize the shared state
-			let state = Arc::new(Mutex::new(HashMap::new()));
-			let config = ShardingCfg {
-				callback: |_rpc| RpcData::default(),
-			};
-			let sharding_info = ShardingInfo {
-				id: "test-network".to_string(),
-				config,
-				state: state.clone(),
-			};
-
-			// Simulate a shard node initialization
-			let shard_id = "shard-1".to_string();
-
-			{
-				let mut shard_state = state.lock().await;
-				shard_state.insert(shard_id.clone(), vec![]);
-			}
-
-			// Check the initial state
-			let shard_state = state.lock().await;
-			assert!(
-				shard_state.contains_key(&shard_id),
-				"Shard ID should exist in the state"
-			);
-			assert!(
-				shard_state.get(&shard_id).unwrap().is_empty(),
-				"Shard state for shard-1 should be empty"
-			);
-
-			// Validate network ID
-			assert_eq!(
-				sharding_info.id, "test-network",
-				"Sharding network ID should be set correctly"
-			);
-		});
 	}
 }

@@ -220,7 +220,7 @@ async fn main() {
 		148, 159, 36, 170, 109, 178,
 	];
 
-	// Node 2 Keypair
+	// Node 2 keypair
 	let node_2_keypair: [u8; 68] = [
 		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
 		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
@@ -228,7 +228,7 @@ async fn main() {
 		10, 127, 128, 52, 52, 68, 31,
 	];
 
-	// Node 3 Keypair
+	// Node 3 keypair
 	let node_3_keypair: [u8; 68] = [
 		8, 1, 18, 64, 211, 172, 68, 234, 95, 121, 188, 130, 107, 113, 212, 215, 211, 189, 219, 190,
 		137, 91, 250, 222, 34, 152, 190, 117, 139, 199, 250, 5, 33, 65, 14, 180, 214, 5, 151, 109,
@@ -253,9 +253,9 @@ async fn main() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (49555, 55003);
-	let ports_2: (Port, Port) = (49153, 55001);
-	let ports_3: (Port, Port) = (49154, 55002);
+	let ports_1: (Port, Port) = (49595, 55093);
+	let ports_2: (Port, Port) = (49193, 55091);
+	let ports_3: (Port, Port) = (49194, 55092);
 
 	// Spin up the coordinator node
 	#[cfg(feature = "third-node")]

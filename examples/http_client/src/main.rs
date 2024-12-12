@@ -1,15 +1,22 @@
 //! Copyright 2024 Algorealm, Inc.
+//!
+//! HTTP Server Integration with SwarmNL
+//!
+//! SwarmNL supports seamless integration with HTTP clients working in the application layer by
+//! providing interfaces to handle network events as they occur. This example demonstrates how to
+//! send an HTTP POST request to a remote server in response to incoming replication data events.
 
-//! This example demonstrates the replication of data accross nodes in a network using the
-//! strong data consistency synchronization model. Here we are spinning up three replica nodes that accept data
-//! from standard input and then immedately replicates the data across the replica network.
+use std::{
+	collections::HashMap,
+	io::{self, Write},
+	time::Duration,
+};
 
-use std::{collections::HashMap, io, time::Duration};
-
+use reqwest::Client;
 use swarm_nl::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
-		replication::{ConsensusModel, ConsistencyModel, ReplConfigData, ReplNetworkConfig},
+		replication::{ConsistencyModel, ReplNetworkConfig},
 		Core, CoreBuilder, NetworkEvent, RpcConfig,
 	},
 	setup::BootstrapConfig,
@@ -65,19 +72,18 @@ async fn setup_node(
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
 
-	// Configure node for replication, we will be using a strong consistency model here
+	// Configure node for replication, we will be using an eventual consistency model here
 	let repl_config = ReplNetworkConfig::Custom {
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		consistency_model: ConsistencyModel::Eventual,
 		data_aging_period: 2,
 	};
 
 	builder.with_replication(repl_config).build().await.unwrap()
 }
 
-// #[cfg(feature = "first-node")]
 async fn run_node(
 	name: &str,
 	ports_1: (Port, Port),
@@ -86,6 +92,7 @@ async fn run_node(
 	peer_ids: (PeerId, PeerId),
 	keypair: [u8; 68],
 ) {
+
 	// Bootnodes
 	let mut bootnodes = HashMap::new();
 	bootnodes.insert(
@@ -98,11 +105,11 @@ async fn run_node(
 		format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 	);
 
-	// Setup node 1 and try to connect to node 2 and 3
+	// Setup node
 	let mut node = setup_node(ports_1, &keypair[..], bootnodes).await;
 
 	// Join replica network
-	println!("Joining replication network");
+	println!("Joining replication network...");
 	if let Ok(_) = node.join_repl_network(REPL_NETWORK_ID.into()).await {
 		println!("Replica network successfully joined");
 	} else {
@@ -137,6 +144,12 @@ async fn run_node(
 		}
 	}
 
+	// Initialize the HTTP client
+	let http_client = Client::new(); 
+
+	// URL to send POST request to
+	let post_url = "https://eonatfm66lk31fs.m.pipedream.net"; 
+
 	// Spin up a task to listen for replication events
 	let new_node = node.clone();
 	tokio::task::spawn(async move {
@@ -145,21 +158,32 @@ async fn run_node(
 			// Check for incoming data events
 			if let Some(event) = node.next_event().await {
 				// Check for only incoming repl data
-				if let NetworkEvent::ReplicaDataIncoming { source, .. } = event {
+				if let NetworkEvent::ReplicaDataIncoming { source, data, .. } = event {
 					println!("Recieved incoming replica data from {}", source.to_base58());
+
+					// Prepare the POST request payload
+					let payload = serde_json::json!({
+						"source": source.to_base58(),
+						"data": data,
+					});
+
+					// Send the POST request
+					println!("Sending a POST request to a remote server...");
+					match http_client.post(post_url).json(&payload).send().await {
+						Ok(response) => {
+							if response.status().is_success() {
+								println!("Successfully sent POST request.");
+							} else {
+								eprintln!(
+									"Failed to send POST request. Status: {}",
+									response.status()
+								);
+							}
+						},
+						Err(e) => eprintln!("Error sending POST request: {}", e),
+					}
 				}
 			}
-
-			// Try to read the data from the buffer. Since we are using a strong
-			// consistency model, we will not be able to read anything unless the
-			// confirmations are complete
-			if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
-				println!(
-					"Data gotten from replica: {} ({} confirmations)",
-					repl_data.data[0],
-					repl_data.confirmations.unwrap()
-				);
-			} 
 
 			// Sleep
 			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
@@ -169,29 +193,52 @@ async fn run_node(
 	// Wait for some time for replication protocol intitialization across the network
 	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
-	// Read input from standard input and then replicate it to peers
-	let stdin = io::stdin();
+
+	println!("\n===================");
+	println!("HTTP Client Example Menu");
+	println!("Usage:");
+	println!("repl <data> - Replicate to peers");
+	println!("read        - Read content from buffer");
+	println!("exit        - Exit the application");
 	loop {
-		print!("Enter some input: ");
-		io::Write::flush(&mut io::stdout()).unwrap(); // Ensure the prompt is displayed immediately
-
+		// Read user input
 		let mut input = String::new();
-		stdin.read_line(&mut input).unwrap();
-		let trimmed_input = input.trim();
+		print!("> ");
 
-		if trimmed_input == "exit" {
-			break;
-		}
+		io::stdout().flush().unwrap(); // Flush stdout to display prompt
+		io::stdin().read_line(&mut input).unwrap();
 
-		println!("Replicating...");
+		// Trim input and split into parts
+		let mut parts = input.trim().split_whitespace();
+		let command = parts.next(); // Get the first word
+		let data = parts.collect::<Vec<_>>().join(" "); // Collect the rest as data
 
-		// Replicate input
-		match node
-			.replicate(vec![trimmed_input.into()], REPL_NETWORK_ID)
-			.await
-		{
-			Ok(_) => println!("Replication successful"),
-			Err(e) => println!("Replication failed: {}", e.to_string()),
+		// Match the first word and take action
+		match command {
+			Some("repl") => {
+				if !data.is_empty() {
+					println!("Replicating data: {}", data);
+					// Replicate input
+					match node.replicate(vec![data.into()], REPL_NETWORK_ID).await {
+						Ok(_) => println!("Replication successful"),
+						Err(e) => println!("Replication failed: {}", e.to_string()),
+					}
+				} else {
+					println!("Error: No data provided to replicate.");
+				}
+			},
+			Some("read") => {
+				println!("Reading contents from buffer...");
+				while let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
+					println!("Buffer Data: {}", repl_data.data[0],);
+				}
+			},
+			Some("exit") => {
+				println!("Exiting the application. Goodbye!");
+				break;
+			},
+			Some(unknown) => println!("Unknown command: '{}'. Please try again.", unknown),
+			None => println!("No command entered. Please try again."),
 		}
 	}
 }
@@ -239,9 +286,9 @@ async fn main() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (29555, 55009);
-	let ports_2: (Port, Port) = (29153, 55008);
-	let ports_3: (Port, Port) = (29154, 55007);
+	let ports_1: (Port, Port) = (49555, 55003);
+	let ports_2: (Port, Port) = (49153, 55001);
+	let ports_3: (Port, Port) = (49154, 55002);
 
 	// Spin up the coordinator node
 	#[cfg(feature = "third-node")]

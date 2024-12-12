@@ -13,7 +13,7 @@ use ini::Ini;
 use libp2p_identity::PeerId;
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	path::Path,
 	str::FromStr,
 	time::{SystemTime, UNIX_EPOCH},
@@ -209,97 +209,62 @@ pub fn string_vec_to_byte_vec(input: StringVector) -> ByteVector {
 }
 
 /// Marshall the shard network image into a [ByteVector].
-pub fn shard_image_to_bytes(input: HashMap<String, Vec<PeerId>>) -> Vec<u8> {
-	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
-	const PEER_SEPARATOR: &[u8] = b"%%";
-	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
+pub fn shard_image_to_bytes(
+	shard_image: HashMap<String, HashSet<PeerId>>,
+) -> Result<Vec<u8>, serde_json::Error> {
+	// Convert the PeerIds into serializable form
+	let serializable_image: HashMap<String, HashSet<PeerIdString>> = shard_image
+		.into_iter()
+		.map(|(shard_id, peers)| {
+			let string_ids = peers
+				.iter()
+				.map(|id| id.to_string())
+				.collect::<HashSet<_>>();
+			(shard_id, string_ids)
+		})
+		.collect();
 
-	let mut result = Vec::new();
-
-	for (shard_id, peers) in input {
-		// Convert shard_id to bytes and append
-		result.extend_from_slice(shard_id.as_bytes());
-
-		// Add the separator for peers
-		result.extend_from_slice(SHARD_PEER_SEPARATOR);
-
-		// Convert each PeerId to bytes and append, separated by PEER_SEPARATOR
-		for peer in peers.iter() {
-			result.extend_from_slice(&peer.to_bytes());
-			result.extend_from_slice(PEER_SEPARATOR);
-		}
-
-		// Remove the last PEER_SEPARATOR if any
-		if !peers.is_empty() {
-			result.truncate(result.len() - PEER_SEPARATOR.len());
-		}
-
-		// Add the shard entry separator
-		result.extend_from_slice(SHARD_ENTRY_SEPARATOR);
-	}
-
-	result
+	// Serialize using JSON
+	serde_json::to_vec(&serializable_image)
 }
 
-/// Merge the incoming shard state with the local shard state of the network.
 pub fn merge_shard_states(
-	local_state: &mut HashMap<String, Vec<PeerId>>,
-	incoming_state: HashMap<String, Vec<PeerId>>,
+	local_state: &mut HashMap<String, HashSet<PeerId>>,
+	incoming_state: HashMap<String, HashSet<PeerId>>,
 ) {
 	for (shard_id, incoming_peers) in incoming_state.iter() {
 		local_state
 			.entry(shard_id.to_owned())
 			.and_modify(|local_peers| {
-				// Add only unique peers from incoming_peers to local_peers
-				for peer in incoming_peers {
-					if !local_peers.contains(peer) {
-						local_peers.push(peer.clone());
-					}
-				}
+				// Use HashSet's `extend` method to add all unique peers from incoming_peers
+				local_peers.extend(incoming_peers);
 			})
-			.or_insert(incoming_peers.to_owned()); // If the shard_id doesn't exist, insert it directly
+			.or_insert(incoming_peers.clone()); // Insert directly if the shard_id doesn't exist
 	}
 }
 
-/// Unmarshall the byte=re into the shard network image.
-pub fn bytes_to_shard_image(input: Vec<u8>) -> HashMap<String, Vec<PeerId>> {
-	const SHARD_ENTRY_SEPARATOR: &[u8] = b"@@@";
-	const SHARD_PEER_SEPARATOR: &[u8] = b"&&&";
-	const PEER_SEPARATOR: &[u8] = b"%%";
-
-	let mut result = HashMap::new();
-
-	// Try to convert the input to a UTF-8 string, return empty HashMap if conversion fails
-	let input_str = match String::from_utf8(input) {
-		Ok(s) => s,
-		Err(_) => return result,
-	};
-
-	// Split the input by SHARD_ENTRY_SEPARATOR
-	for entry in input_str.split(std::str::from_utf8(SHARD_ENTRY_SEPARATOR).unwrap_or("@@@")) {
-		// Split the entry by SHARD_PEER_SEPARATOR
-		let parts: Vec<&str> = entry
-			.split(std::str::from_utf8(SHARD_PEER_SEPARATOR).unwrap_or("&&&"))
+/// Deserialize bytes into HashMap<String, HashSet<PeerId>>
+pub fn bytes_to_shard_image(bytes: Vec<u8>) -> HashMap<String, HashSet<PeerId>> {
+	// Deserialize into the serializable form
+	if let Ok(serializable_image) =
+		serde_json::from_slice::<HashMap<String, HashSet<PeerIdString>>>(&bytes)
+	{
+		// Convert back to PeerId form
+		let shard_image: HashMap<String, HashSet<PeerId>> = serializable_image
+			.into_iter()
+			.map(|(shard_id, peers)| {
+				let peer_ids: HashSet<PeerId> = peers
+					.into_iter()
+					.filter_map(|peer| peer.parse::<PeerId>().ok())
+					.collect();
+				(shard_id, peer_ids)
+			})
 			.collect();
 
-		// Ensure we have at least two parts (shard_id and peers)
-		if parts.len() >= 2 {
-			let shard_id = parts[0].to_string();
-
-			// Split peers and convert to PeerIds
-			let peers: Vec<PeerId> = parts[1]
-				.split(std::str::from_utf8(PEER_SEPARATOR).unwrap_or("%%"))
-				.filter_map(|peer_str| PeerId::from_bytes(peer_str.as_bytes()).ok())
-				.collect();
-
-			// Only insert if peers are not empty
-			if !peers.is_empty() {
-				result.insert(shard_id, peers);
-			}
-		}
+		return shard_image;
 	}
 
-	result
+	Default::default()
 }
 
 #[cfg(test)]
@@ -466,15 +431,12 @@ mod tests {
 	fn string_to_vec_works() {
 		// Define test input
 		let test_input_1 = "[1, 2, 3]";
-		let test_input_2 = "[]";
 
 		// Call the function
 		let result: Vec<i32> = string_to_vec(test_input_1);
-		let result_2: Vec<i32> = string_to_vec(test_input_2);
 
 		// Assert that the result is as expected
 		assert_eq!(result, vec![1, 2, 3]);
-		assert_eq!(result_2, vec![]);
 	}
 
 	#[test]

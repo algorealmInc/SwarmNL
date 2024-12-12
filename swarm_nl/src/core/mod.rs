@@ -42,7 +42,7 @@ use replication::{
 use self::{
 	gossipsub_cfg::{Blacklist, GossipsubConfig, GossipsubInfo},
 	ping_config::*,
-	sharding::{ShardingCfg, ShardingInfo},
+	sharding::{DefaultShardStorage, ShardStorage, ShardingInfo},
 };
 
 use super::*;
@@ -235,9 +235,7 @@ impl CoreBuilder {
 			// The default peers to be forwarded sharded data must be 25% of the total in a shard
 			sharding: ShardingInfo {
 				id: Default::default(),
-				config: ShardingCfg {
-					callback: rpc_handler_fn,
-				},
+				local_storage: Arc::new(Mutex::new(DefaultShardStorage)),
 				state: Default::default(),
 			},
 		}
@@ -309,11 +307,15 @@ impl CoreBuilder {
 	}
 
 	/// Configure the `Sharding` protocol for the network.
-	pub fn with_sharding(self, network_id: String, callback: fn(RpcData) -> RpcData) -> Self {
+	pub fn with_sharding<T: ShardStorage + 'static>(
+		self,
+		network_id: String,
+		local_shard_storage: Arc<Mutex<T>>,
+	) -> Self {
 		CoreBuilder {
 			sharding: ShardingInfo {
 				id: network_id,
-				config: ShardingCfg { callback },
+				local_storage: local_shard_storage,
 				state: Default::default(),
 			},
 			..self
@@ -1029,10 +1031,15 @@ impl Core {
 
 		// If the node is joining
 		if join {
-			shard_entry.push(peer);
+			shard_entry.insert(peer);
 		} else {
 			// Update shard state to reflect exit
 			shard_entry.retain(|entry| entry != &peer);
+
+			// If the last node has exited the shard, dissolve it
+			if shard_entry.is_empty() {
+				shard_state.remove(&shard_id.to_string());
+			}
 		}
 	}
 
@@ -1041,8 +1048,8 @@ impl Core {
 	async fn publish_shard_state(&mut self, peer: PeerId) {
 		// Marshall the local state into a byte vector
 		let shard_state = self.network_info.sharding.state.lock().await.clone();
-		let bytes = shard_image_to_bytes(shard_state);
 
+		let bytes = shard_image_to_bytes(shard_state).unwrap_or_default();
 		let message = vec![
 			Core::SHARD_RPC_SYNC_FLAG.as_bytes().to_vec(), // Flag to indicate a sync request
 			bytes,                                         // Network state
@@ -1066,6 +1073,7 @@ impl Core {
 		self.event_queue
 			.push(NetworkEvent::ReplicaDataIncoming {
 				data: replica_data.data,
+				network: repl_network.clone(),
 				outgoing_timestamp: replica_data.outgoing_timestamp,
 				incoming_timestamp: replica_data.incoming_timestamp,
 				message_id: replica_data.message_id,
@@ -1834,10 +1842,10 @@ impl Core {
 																		let _ = core.handle_incoming_shard_data(shard_id, peer, incoming_data).await;
 																	});
 																}
-																// It is an incmoing request to ask for data on this node because it is a member of a logical shard
+																// It is an incoming request to ask for data on this node because it is a member of a logical shard
 																Core::SHARD_RPC_REQUEST_FLAG => {
 																	// Pass request data to configured shard request handler
-																	let response_data = (network_info.sharding.config.callback)(data[1..].into());
+																	let response_data = network_info.sharding.local_storage.lock().await.fetch_data(data[1..].into());
 																	// Send the response
 																	let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
 																}
@@ -1959,7 +1967,7 @@ impl Core {
 												}
 												// It is a broadcast to inform us about the addition of a new node to a shard network
 												Core::SHARD_GOSSIP_JOIN_FLAG => {
-													// Update sharding network state of remote node
+													// Update sharded network state of remote node
 													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
 														// Send an RPC to the joining node to update its sharding state of the network
 														let mut core = network_core.clone();
@@ -1980,7 +1988,7 @@ impl Core {
 												}
 												// It is a broadcast to inform us about the exit of a node from a shard network
 												Core::SHARD_GOSSIP_EXIT_FLAG => {
-													// Upload sharding network state
+													// Upload sharded network state
 													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
 														let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), false /* exit */).await;
 													}
