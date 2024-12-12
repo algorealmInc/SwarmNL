@@ -288,7 +288,6 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
 SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
 
 ```rust
-
     // Listen for replication events
     loop {
         // Check for incoming data events
@@ -325,7 +324,104 @@ Sharding is a capability in distributed systems that enables networks to scale e
 - **Customizable Sharding Algorithms**: SwarmNL supports generic interfaces that let you specify your own sharding algorithm, such as hash-based or range-based, while leveraging the full capabilities of the network.
 - **Replication-Driven Sharding**: Sharding in SwarmNL is built on its replication capabilities, ensuring the library remains lightweight and highly functional.
 - **Data Forwarding**: SwarmNL implements data-forwarding, allowing any node to handle requests for data stored on other nodes within any shard. Data is forwarded to the appropriate node for storage, and a network search algorithm enables retrieval from any node in any shard.
-- **Integrated Application Layer Traps**: To maintain flexibility, SwarmNL permits nodes storing data to "trap" into the application layer when handling data requests. This ensures practicality and usability in real-world scenarios.
+- **Integrated Application Layer Traps**: To maintain flexibility, SwarmNL permits nodes storing data to `trap` into the application layer when handling data requests. This ensures practicality and usability in real-world scenarios.
+
+### Example: Configuring and Sharding Operations
+
+Here’s how you can set up and use SwarmNL's sharding capabilities:
+
+#### Choosing a sharding algorithm and configuring a node for sharding
+
+```rust
+
+    //! Configure a node for sharding operations
+
+    /// The constant that represents the id of the sharded network. Should be kept as a secret.
+    pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
+
+    /// The shard local storage which is a directory in the local filesystem.
+    #[derive(Debug)]
+    struct LocalStorage;
+
+    impl LocalStorage {
+        /// Reads a file's content from the working directory.
+        fn read_file(&self, key: &str) -> Option<ByteVector> {
+            let mut file = fs::File::open(key).ok()?;
+            let mut content = Vec::new();
+            file.read_to_end(&mut content).ok()?;
+            // Wrap the content in an outer Vec
+            Some(vec![content])
+        }
+    }
+
+    // Implement the `ShardStorage` trait for our local storage
+    impl ShardStorage for LocalStorage {
+        fn fetch_data(&self, key: ByteVector) -> ByteVector {
+            // Process each key in the ByteVector
+            for sub_key in key.iter() {
+                let key_str = String::from_utf8_lossy(sub_key);
+                // Attempt to read the file corresponding to the key
+                if let Some(data) = self.read_file(&format!("storage/{}", key_str.as_ref())) {
+                    return data;
+                }
+            }
+            // If no match is found, return an empty ByteVector
+            Default::default()
+        }
+    }
+
+    /// Hash-based sharding implementation.
+    pub struct HashSharding;
+
+    impl HashSharding {
+        /// Compute a simple hash for the key.
+        fn hash_key(&self, key: &str) -> u64 {
+            // Convert the key to bytes
+            let key_bytes = key.as_bytes();
+
+            // Generate a hash from the first byte
+            if let Some(&first_byte) = key_bytes.get(0) {
+                key_bytes.iter().fold(first_byte as u64, |acc, &byte| {
+                    acc.wrapping_add(byte as u64)
+                })
+            } else {
+                0
+            }
+        }
+    }
+
+    /// Implement the `Sharding` trait.
+    impl Sharding for HashSharding {
+        type Key = str;
+        type ShardId = String;
+
+        /// Locate the shard corresponding to the given key.
+        fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId> {
+            // Calculate and return hash
+            Some(self.hash_key(key).to_string())
+        }
+    }
+
+	// Local shard storage
+	let local_storage = Arc::new(Mutex::new(LocalStorage));
+
+    // Configure node for replication, we will be using an eventual consistency model here.
+    // If we will be replication, our consistency model MUST be set to EVENTUAL.
+	let repl_config = ReplNetworkConfig::Custom {
+		queue_length: 150,
+		expiry_time: Some(10),
+		sync_wait_time: 5,
+		consistency_model: ConsistencyModel::Eventual,
+		data_aging_period: 2,
+	};
+
+	let node = builder
+		.with_replication(repl_config)
+		.with_sharding(NETWORK_SHARDING_ID.into(), shard_storage)
+		.build()
+		.await
+		.unwrap();
+```
 
 ### Why Use SwarmNL for Sharding?
 
