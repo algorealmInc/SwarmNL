@@ -87,7 +87,7 @@ impl ShardStorage for LocalStorage {
 		for sub_key in key.iter() {
 			let key_str = String::from_utf8_lossy(sub_key);
 			// Attempt to read the file corresponding to the key
-			if let Some(data) = self.read_file(key_str.as_ref()) {
+			if let Some(data) = self.read_file(&format!("storage/{}", key_str.as_ref())) {
 				return data;
 			}
 		}
@@ -435,10 +435,17 @@ async fn run_node(
 					{
 						Ok(response) => match response {
 							Some(data) => {
-								if !data[0].is_empty() {
+								if !data.is_empty() {
+									// Parse incoming data
+									let remote_data = String::from_utf8_lossy(&data[0]); // Process the entire buffer
+									let trimmed_data = remote_data
+										.trim_matches('\'')
+										.split_whitespace()
+										.collect::<Vec<_>>();
+
 									println!(
-										"The response data is '{}'",
-										String::from_utf8_lossy(&data[0])
+										"The response data is:\n '{}'",
+										trimmed_data.join(", ")
 									);
 								} else {
 									println!("The remote node does not have the data stored.");
