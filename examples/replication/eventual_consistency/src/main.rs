@@ -1,4 +1,4 @@
-//! Copyright 2024 Algorealm, Inc.
+// Copyright 2024 Algorealm, Inc.
 
 //! This example demonstrates the replication of data accross nodes in a network using the
 //! eventual data consistency synchronization model. Here we are spinning up three replica nodes that accept data

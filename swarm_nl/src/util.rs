@@ -1,5 +1,5 @@
-//! Copyright 2024 Algorealm, Inc.
-//! Apache 2.0 License
+// Copyright 2024 Algorealm, Inc.
+// Apache 2.0 License
 
 //! Utility helper functions for reading from and writing to `.ini` config files.
 

@@ -1,5 +1,5 @@
 //! Copyright 2024 Algorealm, Inc.
-
+//! 
 //! This example demonstrates the replication of data accross nodes in a network using the
 //! strong data consistency synchronization model. Here we are spinning up three replica nodes that accept data
 //! from standard input and then immedately replicates the data across the replica network.
