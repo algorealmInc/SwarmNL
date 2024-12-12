@@ -2,7 +2,7 @@
 
 # SwarmNL
 
-**A library to build custom networking layers for decentralized applications**
+**A library to build custom networking layers for decentralized and distributed applications**
 
 SwarmNL is a library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by [libp2p](https://docs.libp2p.io/), SwarmNL simplifies networking so developers can focus on building.
 
@@ -34,7 +34,6 @@ Have a look at some examples that demonstrate the use of SwarmNl in various cont
 - [The replication tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
 
 Visit the examples folder [here](https://github.com/algorealmInc/SwarmNL/tree/dev/examples) to understand more on how to use the library. The examples also contains integration with IPFS, HTTP servers etc.
-
 
 ## Documentation
 
@@ -242,12 +241,55 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
           assert_eq!(AppResponse::GossipsubBroadcastSuccess, result);
       }
 ```
+# Replication
 
-_In Development 👷_:
+**SwarmNL** makes fault tolerance through redundancy simple and easy to integrate into your application. With replication built into SwarmNL, you can achieve robust and scalable systems effortlessly.
 
-- _Node failure handling involving reconnection strategies, failover mechanisms etc_.
-- _Scaling involving techniques like sharding, data forwarding etc_.
-- _IPFS upload and download interfaces_.
+## Key Features
+- **Consistency Models**: Choose from a variety of consistency models, including strong consistency with customizable parameters.
+- **Dynamic Node Management**: Nodes can seamlessly join and leave replica networks without disrupting operations. Events are quickly propagated to all nodes.
+- **Ease of Use**: Minimal setup is required to add replication to your system, ensuring quick integration and deployment.
+
+## Example: Configuring and Using Replication
+
+Here’s how you can set up and use SwarmNL's replication capabilities:
+
+### Configuring a Node for Replication
+```rust
+    //! Configure the node for replication with a strong consistency model
+
+    // Define the replica network ID
+    const REPL_NETWORK_ID: &str = "replica_xx";
+
+    // Configure replication settings
+    let repl_config = ReplNetworkConfig::Custom {
+        queue_length: 150,
+        expiry_time: Some(10),
+        sync_wait_time: 5,
+        consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+        data_aging_period: 2,
+    };
+
+    // Build the node with replication enabled
+    let node = builder.with_replication(repl_config).build().await.unwrap();
+
+    // Join a replica network
+    node.join_repl_network(REPL_NETWORK_ID.into()).await;
+
+    // Replicate data across the network
+    node.replicate(vec![trimmed_input.into()], REPL_NETWORK_ID).await;
+```
+
+### Handling Replication Events
+SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
+
+## Why Use SwarmNL for Replication?
+
+- **Reliability**: Ensures data integrity across multiple nodes with customizable consistency guarantees.  
+- **Scalability**: Handles dynamic node changes with ease, making it suitable for large distributed systems.  
+- **Flexibility**: Provides a range of replication configurations to meet diverse application needs.
+
+
 
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
