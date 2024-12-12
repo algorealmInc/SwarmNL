@@ -405,25 +405,25 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
         }
     }
 
-	// Local shard storage
-	let local_storage = Arc::new(Mutex::new(LocalStorage));
+// Local shard storage
+let local_storage = Arc::new(Mutex::new(LocalStorage));
 
-    // Configure node for replication, we will be using an eventual consistency model here.
-    // If we will be replication, our consistency model MUST be set to EVENTUAL.
-	let repl_config = ReplNetworkConfig::Custom {
-		queue_length: 150,
-		expiry_time: Some(10),
-		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Eventual,
-		data_aging_period: 2,
-	};
+// Configure node for replication, we will be using an eventual consistency model here.
+// If we will be replication, our consistency model MUST be set to EVENTUAL.
+let repl_config = ReplNetworkConfig::Custom {
+    queue_length: 150,
+    expiry_time: Some(10),
+    sync_wait_time: 5,
+    consistency_model: ConsistencyModel::Eventual,
+    data_aging_period: 2,
+};
 
-	let node = builder
-		.with_replication(repl_config)
-		.with_sharding(NETWORK_SHARDING_ID.into(), shard_storage)
-		.build()
-		.await
-		.unwrap();
+let node = builder
+    .with_replication(repl_config)
+    .with_sharding(NETWORK_SHARDING_ID.into(), shard_storage)
+    .build()
+    .await
+    .unwrap();
 ```
 
 #### Choosing a sharding algorithm and storing data on the nwtwork
