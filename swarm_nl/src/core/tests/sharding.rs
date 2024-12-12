@@ -4,7 +4,7 @@ use crate::{
 		replication::{ConsensusModel, ConsistencyModel, ReplNetworkConfig},
 		sharding::{ShardStorage, Sharding},
 		tests::replication::REPL_NETWORK_ID,
-		ByteVector, Core, CoreBuilder, RpcConfig,
+		ByteVector, Core, CoreBuilder, NetworkEvent, RpcConfig,
 	},
 	setup::BootstrapConfig,
 	MultiaddrString, PeerIdString, Port,
@@ -150,6 +150,8 @@ async fn setup_node(
 		.unwrap()
 }
 
+// Range-based sharding
+
 #[tokio::test]
 async fn join_and_exit_shard_network() {
 	// Shard Id's
@@ -157,11 +159,9 @@ async fn join_and_exit_shard_network() {
 	let shard_id_2 = 2;
 	let shard_id_3 = 3;
 
-	let mut ranges = BTreeMap::new();
-
 	// Define shard ranges (Key ranges => Shard id)
-	ranges.insert(100, shard_id_1);
 	let mut ranges = BTreeMap::new();
+	ranges.insert(100, shard_id_1);
 	ranges.insert(200, shard_id_2);
 	ranges.insert(300, shard_id_3);
 
@@ -341,7 +341,7 @@ async fn join_and_exit_shard_network() {
 
 		// Sleep to allow nodes leave the network
 		tokio::time::sleep(Duration::from_secs(12)).await;
-		
+
 		let shard_network_state =
 			<RangeSharding<String> as Sharding>::network_state(node.clone()).await;
 
@@ -355,6 +355,521 @@ async fn join_and_exit_shard_network() {
 		task.await.unwrap();
 	}
 }
+
+#[tokio::test]
+async fn shard_data_forwarding() {
+	// Shard Id's
+	let shard_id_1 = 1;
+	let shard_id_2 = 2;
+
+	// Define shard ranges (Key ranges => Shard id)
+	let mut ranges = BTreeMap::new();
+	ranges.insert(100, shard_id_1);
+	ranges.insert(200, shard_id_2);
+
+	// Initialize the range-based sharding policy
+	let shard_exec = Arc::new(Mutex::new(RangeSharding::new(ranges)));
+
+	// Local shard storage
+	let local_storage_buffer = Arc::new(Mutex::new(LocalStorage {
+		buffer: Default::default(),
+	}));
+
+	// Node 1 keypair
+	let node_1_keypair: [u8; 68] = [
+		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
+		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
+		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
+		148, 159, 36, 170, 109, 178,
+	];
+
+	// Node 2 keypair
+	let node_2_keypair: [u8; 68] = [
+		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
+		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
+		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
+		10, 127, 128, 52, 52, 68, 31,
+	];
+
+	// Get Peer Id's
+	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	// Ports
+	let ports_1: (Port, Port) = (40155, 54200);
+	let ports_2: (Port, Port) = (40153, 54100);
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 1
+	let task_1 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_2.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
+		);
+
+		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+
+		// Join first shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_1)
+			.await;
+
+		// Sleep for 2 seconds to allow node 2 to setup and join its own shard
+		tokio::time::sleep(Duration::from_secs(2)).await;
+
+		// Store some data on the network with a shard key that points to the second shard which contains node 2
+		let shard_key = 150;
+		if let Ok(response) = sharding_executor
+			.lock()
+			.await
+			.shard(node.clone(), &shard_key, vec!["sharding works".into()])
+			.await
+		{
+			// Confirm that response is None because data is being forwarded
+			assert_eq!(response, None);
+		}
+
+		// Keep the node alive for 10 seconds
+		tokio::time::sleep(Duration::from_secs(10)).await;
+	});
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 2
+	let task_2 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_1.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
+		);
+
+		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
+
+		// Join second shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_2)
+			.await;
+
+		tokio::time::sleep(Duration::from_secs(5)).await;
+
+		while let Some(event) = node.next_event().await {
+			match event {
+				NetworkEvent::IncomingForwardedData { data, source } => {
+					println!(
+						"recieved forwarded data: {:?} from peer: {}",
+						data,
+						source.to_base58()
+					);
+					// Assert that the data forwarded by node 1 is what we received
+					assert_eq!(data, vec!["sharding works".to_string()]);
+				},
+				_ => {},
+			}
+		}
+	});
+
+	for task in vec![task_1, task_2] {
+		task.await.unwrap();
+	}
+}
+
+// when key falls in our own shard we store it locally
+#[tokio::test]
+async fn shard_local_storage() {
+	// Shard Id's
+	let shard_id_1 = 1;
+	let shard_id_2 = 2;
+
+	// Define shard ranges (Key ranges => Shard id)
+	let mut ranges = BTreeMap::new();
+	ranges.insert(100, shard_id_1);
+	ranges.insert(200, shard_id_2);
+
+	// Initialize the range-based sharding policy
+	let shard_exec = Arc::new(Mutex::new(RangeSharding::new(ranges)));
+
+	// Local shard storage
+	let local_storage_buffer = Arc::new(Mutex::new(LocalStorage {
+		buffer: Default::default(),
+	}));
+
+	// Node 1 keypair
+	let node_1_keypair: [u8; 68] = [
+		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
+		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
+		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
+		148, 159, 36, 170, 109, 178,
+	];
+
+	// Node 2 keypair
+	let node_2_keypair: [u8; 68] = [
+		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
+		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
+		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
+		10, 127, 128, 52, 52, 68, 31,
+	];
+
+	// Get Peer Id's
+	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	// Ports
+	let ports_1: (Port, Port) = (40155, 54200);
+	let ports_2: (Port, Port) = (40153, 54100);
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 1
+	let task_1 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_2.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
+		);
+
+		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+
+		// Join first shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_1)
+			.await;
+
+		// Sleep for 2 seconds to allow node 2 to setup and join its own shard
+		tokio::time::sleep(Duration::from_secs(2)).await;
+
+		// Store some data that falls into the range of the current node so it can be stored locally
+		let shard_key = 28;
+		if let Ok(response) = sharding_executor
+			.lock()
+			.await
+			.shard(node.clone(), &shard_key, vec!["sharding works".into()])
+			.await
+		{
+			// Check to see if response is None or contains Some data
+			// If it contains some data it means that the data should be stored locally and replicated among peers in the shard containing our node
+			assert_eq!(response, Some(vec!["sharding works".into()]));
+		}
+
+		// Keep the node alive for 10 seconds
+		tokio::time::sleep(Duration::from_secs(10)).await;
+	});
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 2
+	let task_2 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_1.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
+		);
+
+		let node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
+
+		// Join second shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_2)
+			.await;
+
+		tokio::time::sleep(Duration::from_secs(10)).await;
+	});
+
+	for task in vec![task_1, task_2] {
+		task.await.unwrap();
+	}
+}
+
+#[tokio::test]
+async fn data_forwarding_replication() {
+	// Shard Id's
+	let shard_id_1 = 1;
+	let shard_id_2 = 2;
+
+	// Define shard ranges (Key ranges => Shard id)
+	let mut ranges = BTreeMap::new();
+	ranges.insert(100, shard_id_1);
+	ranges.insert(200, shard_id_2);
+
+	// Initialize the range-based sharding policy
+	let shard_exec = Arc::new(Mutex::new(RangeSharding::new(ranges)));
+
+	// Local shard storage
+	let local_storage_buffer = Arc::new(Mutex::new(LocalStorage {
+		buffer: Default::default(),
+	}));
+
+	// Node 1 keypair
+	let node_1_keypair: [u8; 68] = [
+		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
+		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
+		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
+		148, 159, 36, 170, 109, 178,
+	];
+
+	// Node 2 keypair
+	let node_2_keypair: [u8; 68] = [
+		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
+		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
+		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
+		10, 127, 128, 52, 52, 68, 31,
+	];
+
+	// Node 3 keypair
+	let node_3_keypair: [u8; 68] = [
+		8, 1, 18, 64, 211, 172, 68, 234, 95, 121, 188, 130, 107, 113, 212, 215, 211, 189, 219, 190,
+		137, 91, 250, 222, 34, 152, 190, 117, 139, 199, 250, 5, 33, 65, 14, 180, 214, 5, 151, 109,
+		184, 106, 73, 186, 126, 52, 59, 220, 170, 158, 195, 249, 110, 74, 222, 161, 88, 194, 187,
+		112, 95, 131, 113, 251, 106, 94, 61, 177,
+	];
+
+	// Get Peer Id's
+	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	let peer_id_3 = Keypair::from_protobuf_encoding(&node_3_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	// Ports
+	let ports_1: (Port, Port) = (48155, 54103);
+	let ports_2: (Port, Port) = (48153, 54101);
+	let ports_3: (Port, Port) = (48154, 54102);
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 1
+	let task_1 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_2.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
+		);
+
+		bootnodes.insert(
+			peer_id_3.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
+		);
+
+		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+
+		// Join first shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_1)
+			.await;
+
+		// Sleep for 2 seconds to allow node 2 to setup and join its own shard
+		tokio::time::sleep(Duration::from_secs(2)).await;
+
+		// Store some data on the network with a shard key that points to the second shard which contains node 2
+		let shard_key = 150;
+		if let Ok(response) = sharding_executor
+			.lock()
+			.await
+			.shard(node.clone(), &shard_key, vec!["sharding works".into()])
+			.await
+		{
+			// Confirm that response is None because data is being forwarded
+			assert_eq!(response, None);
+		}
+
+		// Keep the node alive for 10 seconds
+		tokio::time::sleep(Duration::from_secs(15)).await;
+	});
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 2
+	let task_2 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_1.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
+		);
+
+		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
+
+		// Join second shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_2)
+			.await;
+
+		tokio::time::sleep(Duration::from_secs(15)).await;
+
+		while let Some(event) = node.next_event().await {
+			match event {
+				NetworkEvent::IncomingForwardedData { data, source } => {
+					println!(
+						"recieved forwarded data: {:?} from peer: {}",
+						data,
+						source.to_base58()
+					);
+					// Assert that the data forwarded by node 1 is what we received
+					assert_eq!(data, vec!["sharding works".to_string()]);
+				},
+				NetworkEvent::ReplicaDataIncoming {
+					data,
+					network,
+					source,
+					..
+				} => {
+					println!(
+						"recieved replica data: {:?} from shard peer: {}",
+						data,
+						source.to_base58()
+					);
+
+					if let Some(repl_data) = node.consume_repl_data(&network).await {
+						// Assert that the data forwarded by node 1 is what we received (forwarded from node 3)
+						assert_eq!(repl_data.data, vec!["sharding works".to_string()]);
+					}
+				},
+				_ => {},
+			}
+		}
+	});
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 3
+	let task_3 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_1.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
+		);
+
+		bootnodes.insert(
+			peer_id_2.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
+		);
+
+		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, local_storage).await;
+
+		// Join shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_2)
+			.await;
+
+		tokio::time::sleep(Duration::from_secs(15)).await;
+
+		while let Some(event) = node.next_event().await {
+			match event {
+				NetworkEvent::IncomingForwardedData { data, source } => {
+					println!(
+						"recieved forwarded data: {:?} from peer: {}",
+						data,
+						source.to_base58()
+					);
+					// Assert that the data forwarded by node 1 is what we received
+					assert_eq!(data, vec!["sharding works".to_string()]);
+				},
+				NetworkEvent::ReplicaDataIncoming {
+					data,
+					network,
+					source,
+					..
+				} => {
+					println!(
+						"recieved replica data: {:?} from shard peer: {}",
+						data,
+						source.to_base58()
+					);
+
+					if let Some(repl_data) = node.consume_repl_data(&network).await {
+						// Assert that the data forwarded by node 1 is what we received (forwarded from node 2)
+						assert_eq!(repl_data.data, vec!["sharding works".to_string()]);
+					}
+				},
+				_ => {},
+			}
+		}
+	});
+
+	for task in vec![task_1, task_2, task_3] {
+		task.await.unwrap();
+	}
+}
+
 
 // Join the network of shards and tell others nodes you’ve arrived. This ensures that the state is
 // consistent.Query network state: peerid of hashset of peers. Check that nodes have received the
