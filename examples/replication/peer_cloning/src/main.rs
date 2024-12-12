@@ -281,9 +281,9 @@ async fn main() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (49555, 55003);
-	let ports_2: (Port, Port) = (49153, 55001);
-	let ports_3: (Port, Port) = (49154, 55002);
+	let ports_1: (Port, Port) = (41555, 51003);
+	let ports_2: (Port, Port) = (41153, 51001);
+	let ports_3: (Port, Port) = (41154, 51002);
 
 	// Spin up the coordinator node
 	#[cfg(feature = "third-node")]
