@@ -326,17 +326,17 @@ Sharding is a capability in distributed systems that enables networks to scale e
 - **Data Forwarding**: SwarmNL implements data-forwarding, allowing any node to handle requests for data stored on other nodes within any shard. Data is forwarded to the appropriate node for storage, and a network search algorithm enables retrieval from any node in any shard.
 - **Integrated Application Layer Traps**: To maintain flexibility, SwarmNL permits nodes storing data to `trap` into the application layer when handling data requests. This ensures practicality and usability in real-world scenarios.
 
-### Example: Configuring and Sharding Operations
+### Example: Configuring a sharded network
 
 Here’s how you can set up and use SwarmNL's sharding capabilities:
 
-#### Choosing a sharding algorithm and configuring a node for sharding
+#### Configuring a node for sharding
 
 ```rust
 
     //! Configure a node for sharding operations
 
-    /// The constant that represents the id of the sharded network. Should be kept as a secret.
+    /// The constant id of the sharded network. Should be kept as a secret.
     pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
 
     /// The shard local storage which is a directory in the local filesystem.
@@ -421,6 +421,119 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
 		.build()
 		.await
 		.unwrap();
+```
+
+#### Choosing a sharding algorithm and storing data on the nwtwork
+
+```rust
+    //! Select a sharding algorithm and assign nodes to their respective shards
+
+    // Initialize the hash-based sharding policy
+    let shard_executor = HashSharding;
+
+    // Locate shard IDs using the shard keys
+    let shard_id_1 = shard_executor.locate_shard("earth").unwrap();
+    let shard_id_2 = shard_executor.locate_shard("mars").unwrap();
+
+    // Nodes join their respective shards
+    // Node 2 and Node 3 will join the same shard, enabling replication to maintain
+    // a consistent shard network state across nodes.
+    match name {
+        "Node 1" => {
+            if shard_executor
+                .join_network(node.clone(), &shard_id_1)
+                .await
+                .is_ok()
+            {
+                println!("Successfully joined shard: {}", shard_id_1);
+            }
+        },
+        "Node 2" => {
+            if shard_executor
+                .join_network(node.clone(), &shard_id_2)
+                .await
+                .is_ok()
+            {
+                println!("Successfully joined shard: {}", shard_id_2);
+            }
+        },
+        "Node 3" => {
+            if shard_executor
+                .join_network(node.clone(), &shard_id_2)
+                .await
+                .is_ok()
+            {
+                println!("Successfully joined shard: {}", shard_id_2);
+            }
+        },
+        _ => {}
+    }
+
+    let shard_key = "mars";
+
+    // Store data across the network in the shard pointed to by the key
+    match shard_executor
+        .shard(
+            node.clone(),
+            &shard_key.to_string(),
+            payload,
+        )
+        .await;
+```
+
+#### Handling Sharding Events
+
+A node can receive data either through forwarding from a node in another shard or via replication from a peer node in the same shard. Below is an example demonstrating how to listen for and handle both types of events.
+
+```rust
+    loop {
+        // Check for incoming data events
+        if let Some(event) = node.next_event().await {
+            // Handle incoming data events
+            match event {
+                NetworkEvent::IncomingForwardedData { data, source } => {
+                    println!(
+                        "Received forwarded data: {:?} from peer: {}",
+                        data,
+                        source.to_base58()
+                    );
+
+                    // Split the contents of the incoming data
+                    let data_vec = data[0].split(" ").collect::<Vec<_>>();
+
+                    // Extract file name and content
+                    if let [file_name, content] = &data_vec[..] {
+                        let _ = append_to_file(file_name, content).await;
+                    }
+                },
+                NetworkEvent::ReplicaDataIncoming {
+                    data,
+                    network,
+                    source,
+                    ..
+                } => {
+                    println!(
+                        "Received replica data: {:?} from shard peer: {}",
+                        data,
+                        source.to_base58()
+                    );
+
+                    if let Some(repl_data) = node.consume_repl_data(&network).await {
+                        // Split the contents of the incoming data
+                        let data = repl_data.data[0].split(" ").collect::<Vec<_>>();
+
+                        // Extract file name and content
+                        if let [file_name, content] = &data[..] {
+                            let _ = append_to_file(file_name, content).await;
+                        }
+                    } else {
+                        println!("Error: No message in replica buffer");
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
 ```
 
 ### Why Use SwarmNL for Sharding?

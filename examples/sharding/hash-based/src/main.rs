@@ -42,7 +42,7 @@ use swarm_nl::{
 };
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::Mutex};
 
-/// The constant that represents the id of the sharded network. Should be kept as a secret.
+/// The id of the sharded network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
 
 /// The time to wait for events, if necessary
