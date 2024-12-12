@@ -896,6 +896,7 @@ mod eventual_consistency {
 				peer_id_2.to_base58(),
 				format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 			);
+
 			let mut node = setup_node(
 				ports_3,
 				&NODE_3_KEYPAIR[..],
@@ -915,7 +916,7 @@ mod eventual_consistency {
 			while let Some(_) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
 				number_of_messages += 1;
 			}
-            // We expect to have 4 messages
+
 			assert_eq!(number_of_messages, 4);
 		});
 

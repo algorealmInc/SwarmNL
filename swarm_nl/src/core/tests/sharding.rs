@@ -877,7 +877,7 @@ async fn fetching_sharded_data() {
 
 		let node = setup_node(
 			ports_1,
-			&node_1_keypair[..],
+			&NODE_1_KEYPAIR[..],
 			bootnodes,
 			local_storage.clone(),
 		)
@@ -932,7 +932,7 @@ async fn fetching_sharded_data() {
 
 		let node = setup_node(
 			ports_2,
-			&node_2_keypair[..],
+			&NODE_2_KEYPAIR[..],
 			bootnodes,
 			local_storage.clone(),
 		)
