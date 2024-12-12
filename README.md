@@ -244,11 +244,13 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
           assert_eq!(AppResponse::GossipsubBroadcastSuccess, result);
       }
 ```
+
 ## Replication
 
 **SwarmNL** makes fault tolerance through redundancy simple and easy to integrate into your application. With replication built into SwarmNL, you can achieve robust and scalable systems effortlessly.
 
 ### Key Features
+
 - **Consistency Models**: Choose from a variety of consistency models, including strong consistency with customizable parameters.
 - **Dynamic Node Management**: Nodes can seamlessly join and leave replica networks without disrupting operations. Events are quickly propagated to all nodes.
 - **Ease of Use**: Minimal setup is required to add replication to your system, ensuring quick integration and deployment.
@@ -258,6 +260,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 Here’s how you can set up and use SwarmNL's replication capabilities:
 
 #### Configuring a Node for Replication
+
 ```rust
     //! Configure the node for replication with a strong consistency model
 
@@ -284,6 +287,7 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
 ```
 
 #### Handling Replication Events
+
 SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
 
 ```rust
@@ -311,11 +315,24 @@ SwarmNL exposes network events to your application, allowing you to process inco
 
 ### Why Use SwarmNL for Replication?
 
-- **Reliability**: Ensures data integrity across multiple nodes with customizable consistency guarantees.  
-- **Scalability**: Handles dynamic node changes with ease, making it suitable for large distributed systems.  
+- **Reliability**: Ensures data integrity across multiple nodes with customizable consistency guarantees.
+- **Scalability**: Handles dynamic node changes with ease, making it suitable for large distributed systems.
 - **Flexibility**: Provides a range of replication configurations to meet diverse application needs.
 
+## Sharding
 
+Sharding is a capability in distributed systems that enables networks to scale efficiently. SwarmNL provides a generic sharding functionality, allowing applications to easily partition their network and configure it for sharding.
+
+### Key Features
+
+- **Customizable Sharding Algorithms**: SwarmNL supports generic interfaces that let you specify your own sharding algorithm, such as hash-based or range-based, while leveraging the full capabilities of the network.
+- **Replication-Driven Sharding**: Sharding in SwarmNL is built on its replication capabilities, ensuring the library remains lightweight and highly functional.
+- **Data Forwarding**: SwarmNL implements data-forwarding, allowing any node to handle requests for data stored on other nodes within any shard. Data is forwarded to the appropriate node for storage, and a network search algorithm enables retrieval from any node in any shard.
+- **Integrated Application Layer Traps**: To maintain flexibility, SwarmNL permits nodes storing data to "trap" into the application layer when handling data requests. This ensures practicality and usability in real-world scenarios.
+
+### Why Use SwarmNL for Sharding?
+
+SwarmNL breaks its principle of separating the networking and storage layers to deliver the best possible sharding experience. By doing so, the library enables nodes to seamlessly interact with the application layer, making it a robust and flexible solution for scalable distributed systems.
 
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
