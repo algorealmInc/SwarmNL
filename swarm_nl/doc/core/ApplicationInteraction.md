@@ -49,3 +49,5 @@ There are two ways of querying the network layer with each having its own peculi
     }
 ```
 Note: The internal buffer is limited in capacity and pending responses should be removed as soon as possibe. A full buffer will prevent the network from recieving more requests.
+
+# Sharding 

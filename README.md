@@ -1,6 +1,6 @@
 <!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNL.png" alt="SwarmNL" style="border-radius: 15px !important;"> -->
 
-# SwarmNL
+# SwarmNL (Swarm Networking Library)
 
 **A library to build custom networking layers for decentralized applications**
 
