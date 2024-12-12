@@ -23,7 +23,7 @@ SwarmNL makes buiding a peer-to-peer decentralized and distributed networking st
 
 Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic.
 
-## examples
+## Examples
 
 Have a look at some examples that demonstrate the use of SwarmNl in various contexts:
 
