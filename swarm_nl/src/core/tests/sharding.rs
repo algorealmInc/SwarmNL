@@ -1,3 +1,9 @@
+//! Tests for data sharding and forwarding.
+ 
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+
 use crate::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
@@ -21,9 +27,6 @@ use super::constants::*;
 
 /// The constant that represents the id of the sharding network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
-
-/// The time to wait for events, if necessary.
-pub const WAIT_TIME: u64 = 2;
 
 /// Handle incoming RPC.
 fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -191,7 +194,7 @@ async fn join_and_exit_shard_network() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (48155, 54103);
+	let ports_1: (Port, Port) = (48152, 54103);
 	let ports_2: (Port, Port) = (48153, 54101);
 	let ports_3: (Port, Port) = (48154, 54102);
 
@@ -364,8 +367,8 @@ async fn shard_data_forwarding() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (40155, 54200);
-	let ports_2: (Port, Port) = (40153, 54100);
+	let ports_1: (Port, Port) = (40105, 54201);
+	let ports_2: (Port, Port) = (40103, 54109);
 
 	// Clone the sharding executor
 	let sharding_executor = shard_exec.clone();
@@ -629,9 +632,9 @@ async fn data_forwarding_replication() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (48155, 54103);
-	let ports_2: (Port, Port) = (48153, 54101);
-	let ports_3: (Port, Port) = (48154, 54102);
+	let ports_1: (Port, Port) = (48135, 54303);
+	let ports_2: (Port, Port) = (48133, 54301);
+	let ports_3: (Port, Port) = (48134, 54302);
 
 	// Clone the sharding executor
 	let sharding_executor = shard_exec.clone();

@@ -1,4 +1,8 @@
-// Replication tests
+//! Tests for node replication.
+
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
 
 use libp2p::{gossipsub::MessageId, PeerId};
 use libp2p_identity::Keypair;
@@ -57,7 +61,7 @@ async fn setup_node(
 		.with_bootnodes(boot_nodes);
 
 	// Set up network
-	let mut builder = CoreBuilder::with_config(config)
+	let builder = CoreBuilder::with_config(config)
 		.with_rpc(RpcConfig::Default, rpc_incoming_message_handler)
 		.with_gossipsub(GossipsubConfig::Default, gossipsub_filter_fn);
 
@@ -94,7 +98,7 @@ async fn repl_itest_join_and_exit_works() {
 		.to_peer_id();
 
 	// Ports
-	let ports_1: (Port, Port) = (49155, 55103);
+	let ports_1: (Port, Port) = (49152, 55103);
 	let ports_2: (Port, Port) = (49153, 55101);
 	let ports_3: (Port, Port) = (49154, 55102);
 
@@ -622,7 +626,7 @@ mod strong_consistency {
 			.unwrap()
 			.public()
 			.to_peer_id();
-        
+
 		let peer_id_4 = Keypair::from_protobuf_encoding(&NODE_4_KEYPAIR)
 			.unwrap()
 			.public()
@@ -805,9 +809,9 @@ mod eventual_consistency {
 			.to_peer_id();
 
 		// Ports
-		let ports_1: (Port, Port) = (49655, 55603);
-		let ports_2: (Port, Port) = (49653, 55606);
-		let ports_3: (Port, Port) = (49654, 55602);
+		let ports_1: (Port, Port) = (49652, 55603);
+		let ports_2: (Port, Port) = (49651, 55606);
+		let ports_3: (Port, Port) = (49650, 55602);
 
 		// Setup node 1
 		let task_1 = tokio::task::spawn(async move {

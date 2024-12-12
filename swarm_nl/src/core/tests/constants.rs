@@ -1,5 +1,7 @@
 //! Constants to run integration tests.
 
+#![allow(dead_code)]
+
 // Detereministic node keypairs
 pub const NODE_1_KEYPAIR: [u8; 68] = [
     8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
