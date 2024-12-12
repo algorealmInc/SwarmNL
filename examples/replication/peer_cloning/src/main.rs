@@ -1,5 +1,5 @@
 //! Copyright 2024 Algorealm, Inc.
-
+//! 
 //! This example demonstrates the complete replication of a node's buffer data (cloning).
 //! Particularly useful when a strong synchronization model is in effect, hence bringing the new
 //! node up to speed quickly. The data is stored directly into the primary public buffer for the
