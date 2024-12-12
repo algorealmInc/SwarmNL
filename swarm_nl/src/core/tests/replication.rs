@@ -904,9 +904,6 @@ mod eventual_consistency {
 			)
 			.await;
 
-			// Sleep to wait for nodes 1 and 2 to replicate data
-			tokio::time::sleep(Duration::from_secs(20)).await;
-
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
@@ -918,6 +915,7 @@ mod eventual_consistency {
 			while let Some(_) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
 				number_of_messages += 1;
 			}
+            // We expect to have 4 messages
 			assert_eq!(number_of_messages, 4);
 		});
 
