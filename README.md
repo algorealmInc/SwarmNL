@@ -248,12 +248,12 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 
 **SwarmNL** makes fault tolerance through redundancy simple and easy to integrate into your application. With replication built into SwarmNL, you can achieve robust and scalable systems effortlessly.
 
-## Key Features
+### Key Features
 - **Consistency Models**: Choose from a variety of consistency models, including strong consistency with customizable parameters.
 - **Dynamic Node Management**: Nodes can seamlessly join and leave replica networks without disrupting operations. Events are quickly propagated to all nodes.
 - **Ease of Use**: Minimal setup is required to add replication to your system, ensuring quick integration and deployment.
 
-## Example: Configuring and Using Replication
+### Example: Configuring and Using Replication
 
 Here’s how you can set up and use SwarmNL's replication capabilities:
 
