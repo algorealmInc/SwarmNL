@@ -398,7 +398,7 @@ async fn run_node(
 									"The data to shard is '{}'.",
 									String::from_utf8_lossy(&data[0])
 								);
-								println!("It falls into the range of the current node and will be stored locally.");
+								println!("It matches the hash of the shard of the current node and will be stored locally.");
 
 								// Save locally
 								if let Err(e) =
