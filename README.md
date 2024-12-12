@@ -548,6 +548,7 @@ _In future iterations, we will be working on:_
 - _Extending support for more transport layers._
 - _Optimization of network algorithms._
 
+<br>
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
 With ❤️ from [Deji](https://github.com/thewoodfish) and [Sacha](https://github.com/sacha-l).
