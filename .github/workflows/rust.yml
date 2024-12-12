@@ -21,4 +21,4 @@ jobs:
     - name: Build with tokio-runtime
       run: cd swarm_nl && cargo build --features=tokio-runtime
     - name: Run tests
-      run: cd swarm_nl && cargo test --features=tokio-runtime
+      run: cd swarm_nl && cargo test --lib --features=tokio-runtime 
