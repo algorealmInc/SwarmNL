@@ -283,6 +283,29 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
 ### Handling Replication Events
 SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
 
+```rust
+
+    // Listen for replication events
+    loop {
+        // Check for incoming data events
+        if let Some(event) = node.next_event().await {
+            if let NetworkEvent::ReplicaDataIncoming { source, .. } = event {
+                println!("Received incoming replica data from {}", source.to_base58());
+            }
+        }
+
+        // Try to consume data from the replica network
+        if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
+            println!(
+                "Data received from replica: {} ({} confirmations)",
+                repl_data.data[0],
+                repl_data.confirmations.unwrap()
+            );
+        }
+    }
+
+```
+
 ## Why Use SwarmNL for Replication?
 
 - **Reliability**: Ensures data integrity across multiple nodes with customizable consistency guarantees.  
