@@ -195,7 +195,7 @@ async fn join_and_exit_shard_network() {
 
 	// Ports
 	let ports_1: (Port, Port) = (48152, 54193);
-	let ports_2: (Port, Port) = (48153, 54101);
+	let ports_2: (Port, Port) = (32153, 54101);
 	let ports_3: (Port, Port) = (48154, 54102);
 
 	// Clone the sharding executor
