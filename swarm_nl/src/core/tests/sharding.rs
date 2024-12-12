@@ -857,7 +857,7 @@ async fn fetching_sharded_data() {
 
 	// Ports
 	let ports_1: (Port, Port) = (48155, 54103);
-	let ports_2: (Port, Port) = (48153, 54101);
+	let ports_2: (Port, Port) = (48153, 64101);
 
 	// Clone the sharding executor
 	let sharding_executor = shard_exec.clone();
