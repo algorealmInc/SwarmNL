@@ -542,8 +542,8 @@ SwarmNL integrates the networking and storage layers to deliver a seamless shard
 
 ### _Moving forward 👷🏼_
 _In future iterations, we will be working on:_
-_- Extending support for more transport layers._
-_- Optimization of network algorithms._
+- _Extending support for more transport layers._
+- _Optimization of network algorithms._
 
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
