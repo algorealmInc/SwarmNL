@@ -434,7 +434,7 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
     // Initialize the hash-based sharding policy
     let shard_executor = HashSharding;
 
-    // Locate shard IDs using the shard keys
+    // Get shard IDs using the configured location algorithm.
     let shard_id_1 = shard_executor.locate_shard("earth").unwrap();
     let shard_id_2 = shard_executor.locate_shard("mars").unwrap();
 
