@@ -309,7 +309,7 @@ SwarmNL exposes network events to your application, allowing you to process inco
 
 ```
 
-## Why Use SwarmNL for Replication?
+### Why Use SwarmNL for Replication?
 
 - **Reliability**: Ensures data integrity across multiple nodes with customizable consistency guarantees.  
 - **Scalability**: Handles dynamic node changes with ease, making it suitable for large distributed systems.  
