@@ -27,11 +27,11 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
 
 Have a look at some tutorials that demonstrate the use of SwarmNl in various contexts:
 
-- [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/echo_server): demonstrates a simple use case of setting up a node and querying the network layer.
-- [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/file_sharing_app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
-- [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/simple_game): demonstrates communicating with peers over the network through gossiping.
-- [The sharding tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/sharding): demonstrates splitting a network into shards for scaling and handling communication between various nodes in a shard.
-- [The replication tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/tutorials/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
+- [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/echo_server): demonstrates a simple use case of setting up a node and querying the network layer.
+- [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/file_sharing_app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
+- [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/simple_game): demonstrates communicating with peers over the network through gossiping.
+- [The sharding tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/sharding): demonstrates splitting a network into shards for scaling and handling communication between various nodes in a shard and across the network.
+- [The replication tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
 
 
 ## Documentation
