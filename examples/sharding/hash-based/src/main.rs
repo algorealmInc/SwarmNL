@@ -12,7 +12,7 @@
 //!    - REPLICATION MUST BE SET TO EVENTUAL CONSISTENCY
 //!
 //! 2. **Sharding Configuration**:
-//!    - When setting up the sharding network, you must provide the local storage configuration.
+//!    - When setting up the sharded network, you must provide the local storage configuration.
 //!    - Local storage is used to respond to forwarded data requests within the network.
 //!
 //! 3. **Local Storage**:
@@ -42,7 +42,7 @@ use swarm_nl::{
 };
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::Mutex};
 
-/// The constant that represents the id of the sharding network. Should be kept as a secret.
+/// The constant that represents the id of the sharded network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
 
 /// The time to wait for events, if necessary

@@ -1967,7 +1967,7 @@ impl Core {
 												}
 												// It is a broadcast to inform us about the addition of a new node to a shard network
 												Core::SHARD_GOSSIP_JOIN_FLAG => {
-													// Update sharding network state of remote node
+													// Update sharded network state of remote node
 													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
 														// Send an RPC to the joining node to update its sharding state of the network
 														let mut core = network_core.clone();
@@ -1988,7 +1988,7 @@ impl Core {
 												}
 												// It is a broadcast to inform us about the exit of a node from a shard network
 												Core::SHARD_GOSSIP_EXIT_FLAG => {
-													// Upload sharding network state
+													// Upload sharded network state
 													if let Ok(peer_id) = gossip_data[1].parse::<PeerId>() {
 														let _ = network_core.update_shard_state(peer_id, gossip_data[2].clone(), false /* exit */).await;
 													}

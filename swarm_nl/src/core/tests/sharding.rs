@@ -1,9 +1,10 @@
 //! Tests for data sharding and forwarding.
- 
+
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_imports)]
 
+use super::constants::*;
 use crate::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
@@ -23,9 +24,8 @@ use std::{
 	time::Duration,
 };
 use tokio::sync::Mutex;
-use super::constants::*;
 
-/// The constant that represents the id of the sharding network. Should be kept as a secret.
+/// The constant that represents the id of the sharded network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
 
 /// Handle incoming RPC.
@@ -398,7 +398,8 @@ async fn shard_data_forwarding() {
 		// Sleep for 2 seconds to allow node 2 to setup and join its own shard
 		tokio::time::sleep(Duration::from_secs(2)).await;
 
-		// Store some data on the network with a shard key that points to the second shard which contains node 2
+		// Store some data on the network with a shard key that points to the second shard which
+		// contains node 2
 		let shard_key = 150;
 		if let Ok(response) = sharding_executor
 			.lock()
@@ -532,7 +533,8 @@ async fn shard_local_storage_and_replication() {
 			.await
 		{
 			// Check to see if response is None or contains Some data
-			// If it contains some data it means that the data should be stored locally and replicated among peers in the shard containing our node
+			// If it contains some data it means that the data should be stored locally and
+			// replicated among peers in the shard containing our node
 			assert_eq!(response, Some(vec!["sharding works".into()]));
 		}
 
@@ -565,7 +567,7 @@ async fn shard_local_storage_and_replication() {
 			.join_network(node.clone(), &shard_id_1)
 			.await;
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+		tokio::time::sleep(Duration::from_secs(5)).await;
 
 		while let Some(event) = node.next_event().await {
 			match event {
@@ -582,7 +584,8 @@ async fn shard_local_storage_and_replication() {
 					);
 
 					if let Some(repl_data) = node.consume_repl_data(&network).await {
-						// Assert that the data forwarded by node 1 is what we received (forwarded from node 2)
+						// Assert that the data forwarded by node 1 is what we received (forwarded
+						// from node 2)
 						assert_eq!(repl_data.data, vec!["sharding works".to_string()]);
 					}
 				},
@@ -669,7 +672,8 @@ async fn data_forwarding_replication() {
 		// Sleep for 2 seconds to allow node 2 to setup and join its own shard
 		tokio::time::sleep(Duration::from_secs(2)).await;
 
-		// Store some data on the network with a shard key that points to the second shard which contains node 2
+		// Store some data on the network with a shard key that points to the second shard which
+		// contains node 2
 		let shard_key = 150;
 		if let Ok(response) = sharding_executor
 			.lock()
@@ -736,7 +740,8 @@ async fn data_forwarding_replication() {
 					);
 
 					if let Some(repl_data) = node.consume_repl_data(&network).await {
-						// Assert that the data forwarded by node 1 is what we received (forwarded from node 3)
+						// Assert that the data forwarded by node 1 is what we received (forwarded
+						// from node 3)
 						assert_eq!(repl_data.data, vec!["sharding works".to_string()]);
 					}
 				},
@@ -801,7 +806,8 @@ async fn data_forwarding_replication() {
 					);
 
 					if let Some(repl_data) = node.consume_repl_data(&network).await {
-						// Assert that the data forwarded by node 1 is what we received (forwarded from node 2)
+						// Assert that the data forwarded by node 1 is what we received (forwarded
+						// from node 2)
 						assert_eq!(repl_data.data, vec!["sharding works".to_string()]);
 					}
 				},
@@ -815,6 +821,179 @@ async fn data_forwarding_replication() {
 	}
 }
 
-// Join the network of shards and tell others nodes you’ve arrived. This ensures that the state is
-// consistent.Query network state: peerid of hashset of peers. Check that nodes have received the
-// data correctly Make sure that replication works as expected
+/// Test fetching data from the a sharded network
+#[tokio::test]
+async fn fetching_sharded_data() {
+	// Shard Id's
+	let shard_id_1 = 1;
+	let shard_id_2 = 2;
+
+	// Key that will determine where our data is placed.
+	let shard_key = 15;
+
+	// Define shard ranges (Key ranges => Shard id)
+	let mut ranges = BTreeMap::new();
+	ranges.insert(100, shard_id_1);
+	ranges.insert(200, shard_id_2);
+
+	// Initialize the range-based sharding policy
+	let shard_exec = Arc::new(Mutex::new(RangeSharding::new(ranges)));
+
+	// Local shard storage
+	let local_storage_buffer = Arc::new(Mutex::new(LocalStorage {
+		buffer: Default::default(),
+	}));
+
+	// Node 1 keypair
+	let node_1_keypair: [u8; 68] = [
+		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
+		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
+		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
+		148, 159, 36, 170, 109, 178,
+	];
+
+	// Node 2 keypair
+	let node_2_keypair: [u8; 68] = [
+		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
+		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
+		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
+		10, 127, 128, 52, 52, 68, 31,
+	];
+
+	// Get Peer Id's
+	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+		.unwrap()
+		.public()
+		.to_peer_id();
+
+	// Ports
+	let ports_1: (Port, Port) = (48155, 54103);
+	let ports_2: (Port, Port) = (48153, 54101);
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 1
+	let task_1 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_2.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
+		);
+
+		let node = setup_node(
+			ports_1,
+			&node_1_keypair[..],
+			bootnodes,
+			local_storage.clone(),
+		)
+		.await;
+
+		// Join first shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_1)
+			.await;
+
+		// Sleep for 2 seconds to allow node 2 to setup and join its own shard
+		tokio::time::sleep(Duration::from_secs(2)).await;
+
+		// Store some data that falls into the range of the current node so it can be stored
+		// locally
+		if let Ok(response) = sharding_executor
+			.lock()
+			.await
+			.shard(node.clone(), &shard_key, vec!["name-->Jesus".into()])
+			.await
+		{
+			// Check to see if response is None or contains Some data
+			// If it contains some data it means that the data should be stored locally and
+			// replicated among peers in the shard containing our node
+			assert_eq!(response, Some(vec!["name-->Jesus".into()]));
+
+			let res_data = response.unwrap()[0].clone();
+			let data = String::from_utf8_lossy(&res_data);
+
+			// Store the data locally
+			local_storage.lock().await.buffer.push_back(data.into());
+		}
+	});
+
+	// Clone the sharding executor
+	let sharding_executor = shard_exec.clone();
+
+	// Clone the local storage
+	let local_storage = local_storage_buffer.clone();
+
+	// Setup node 2
+	let task_2 = tokio::task::spawn(async move {
+		// Bootnodes
+		let mut bootnodes = HashMap::new();
+
+		bootnodes.insert(
+			peer_id_1.to_base58(),
+			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
+		);
+
+		let node = setup_node(
+			ports_2,
+			&node_2_keypair[..],
+			bootnodes,
+			local_storage.clone(),
+		)
+		.await;
+
+		// Join second shard network
+		let _ = sharding_executor
+			.lock()
+			.await
+			.join_network(node.clone(), &shard_id_2)
+			.await;
+
+		// Sleep for 5 seconds to allow Node 1 forward the data we need.
+		tokio::time::sleep(Duration::from_secs(5)).await;
+
+		// Request data from the sharded network. This data is stored in shard 1 (Node 1).
+		match sharding_executor
+			.lock()
+			.await
+			.fetch(node.clone(), &shard_key, vec!["name".into()])
+			.await
+		{
+			Ok(response) => match response {
+				Some(data) => {
+					// Parse the data returned into the name we want
+					let name = String::from_utf8_lossy(&data[0]);
+
+					if !data[0].is_empty() {
+						println!("The response data is '{}'", name);
+
+						// Make assertions
+						assert_eq!(name.as_ref(), "Jesus");
+					} else {
+						println!("The remote node does not have the data stored.");
+					}
+
+					println!("Successfully pulled data from the network.");
+				},
+				None => println!("Data exists locally on node."),
+			},
+			Err(e) => println!("Fetching failed: {}", e.to_string()),
+		}
+	});
+
+	for task in vec![task_1, task_2] {
+		task.await.unwrap();
+	}
+}

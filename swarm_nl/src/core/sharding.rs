@@ -19,7 +19,7 @@ pub trait ShardStorage: Send + Sync + Debug {
 /// Important data for the operation of the sharding protocol.
 #[derive(Debug, Clone)]
 pub struct ShardingInfo {
-	/// The id of the entire sharding network.
+	/// The id of the entire sharded network.
 	pub id: String,
 	/// Shard local storage.
 	pub local_storage: Arc<Mutex<dyn ShardStorage>>,
