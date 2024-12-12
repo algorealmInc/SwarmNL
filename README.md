@@ -280,7 +280,7 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
     node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
     // Replicate data across the network
-    node.replicate(vec![trimmed_input.into()], REPL_NETWORK_ID).await;
+    node.replicate(payload, REPL_NETWORK_ID).await;
 ```
 
 ### Handling Replication Events
