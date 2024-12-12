@@ -541,7 +541,7 @@ A node can receive data either through forwarding from a node in another shard o
 
 ### Why Use SwarmNL for Sharding?
 
-SwarmNL integrates the networking and storage layers to deliver a seamless sharding experience. This approach enables nodes to interact directly with the application layer, providing a robust and flexible solution for scalable distributed systems.
+SwarmNL integrates the networking and storage layers to deliver a seamless sharding experience. This approach enables nodes to interact directly with the application layer and local environment, providing a robust and flexible solution for scalable distributed systems.
 
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
