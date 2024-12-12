@@ -17,6 +17,7 @@ use std::{
 	time::Duration,
 };
 use tokio::sync::Mutex;
+use super::constants::*;
 
 /// The constant that represents the id of the sharding network. Should be kept as a secret.
 pub const NETWORK_SHARDING_ID: &'static str = "sharding_xx";
@@ -173,42 +174,18 @@ async fn join_and_exit_shard_network() {
 		buffer: Default::default(),
 	}));
 
-	// Node 1 keypair
-	let node_1_keypair: [u8; 68] = [
-		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
-		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
-		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
-		148, 159, 36, 170, 109, 178,
-	];
-
-	// Node 2 keypair
-	let node_2_keypair: [u8; 68] = [
-		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
-		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
-		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
-		10, 127, 128, 52, 52, 68, 31,
-	];
-
-	// Node 3 keypair
-	let node_3_keypair: [u8; 68] = [
-		8, 1, 18, 64, 211, 172, 68, 234, 95, 121, 188, 130, 107, 113, 212, 215, 211, 189, 219, 190,
-		137, 91, 250, 222, 34, 152, 190, 117, 139, 199, 250, 5, 33, 65, 14, 180, 214, 5, 151, 109,
-		184, 106, 73, 186, 126, 52, 59, 220, 170, 158, 195, 249, 110, 74, 222, 161, 88, 194, 187,
-		112, 95, 131, 113, 251, 106, 94, 61, 177,
-	];
-
 	// Get Peer Id's
-	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+	let peer_id_1 = Keypair::from_protobuf_encoding(&NODE_1_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
 
-	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+	let peer_id_2 = Keypair::from_protobuf_encoding(&NODE_2_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
 
-	let peer_id_3 = Keypair::from_protobuf_encoding(&node_3_keypair)
+	let peer_id_3 = Keypair::from_protobuf_encoding(&NODE_3_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
@@ -239,7 +216,7 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_1, &NODE_1_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join first shard network
 		let _ = sharding_executor
@@ -280,7 +257,7 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_2, &NODE_2_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join second shard network
 		let _ = sharding_executor
@@ -321,7 +298,7 @@ async fn join_and_exit_shard_network() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 
-		let node = setup_node(ports_3, &node_3_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_3, &NODE_3_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join shard network
 		let _ = sharding_executor
@@ -375,29 +352,13 @@ async fn shard_data_forwarding() {
 		buffer: Default::default(),
 	}));
 
-	// Node 1 keypair
-	let node_1_keypair: [u8; 68] = [
-		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
-		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
-		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
-		148, 159, 36, 170, 109, 178,
-	];
-
-	// Node 2 keypair
-	let node_2_keypair: [u8; 68] = [
-		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
-		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
-		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
-		10, 127, 128, 52, 52, 68, 31,
-	];
-
 	// Get Peer Id's
-	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+	let peer_id_1 = Keypair::from_protobuf_encoding(&NODE_1_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
 
-	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+	let peer_id_2 = Keypair::from_protobuf_encoding(&NODE_2_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
@@ -422,7 +383,7 @@ async fn shard_data_forwarding() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 
-		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_1, &NODE_1_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join first shard network
 		let _ = sharding_executor
@@ -466,7 +427,7 @@ async fn shard_data_forwarding() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
 		);
 
-		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
+		let mut node = setup_node(ports_2, &NODE_2_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join second shard network
 		let _ = sharding_executor
@@ -498,17 +459,15 @@ async fn shard_data_forwarding() {
 	}
 }
 
-// when key falls in our own shard we store it locally
+// When key falls in our own shard we store it locally and replicate it to our shard peers.
 #[tokio::test]
-async fn shard_local_storage() {
+async fn shard_local_storage_and_replication() {
 	// Shard Id's
 	let shard_id_1 = 1;
-	let shard_id_2 = 2;
 
 	// Define shard ranges (Key ranges => Shard id)
 	let mut ranges = BTreeMap::new();
 	ranges.insert(100, shard_id_1);
-	ranges.insert(200, shard_id_2);
 
 	// Initialize the range-based sharding policy
 	let shard_exec = Arc::new(Mutex::new(RangeSharding::new(ranges)));
@@ -518,29 +477,13 @@ async fn shard_local_storage() {
 		buffer: Default::default(),
 	}));
 
-	// Node 1 keypair
-	let node_1_keypair: [u8; 68] = [
-		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
-		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
-		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
-		148, 159, 36, 170, 109, 178,
-	];
-
-	// Node 2 keypair
-	let node_2_keypair: [u8; 68] = [
-		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
-		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
-		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
-		10, 127, 128, 52, 52, 68, 31,
-	];
-
 	// Get Peer Id's
-	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+	let peer_id_1 = Keypair::from_protobuf_encoding(&NODE_1_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
 
-	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+	let peer_id_2 = Keypair::from_protobuf_encoding(&NODE_2_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
@@ -565,7 +508,7 @@ async fn shard_local_storage() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 
-		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_1, &NODE_1_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join first shard network
 		let _ = sharding_executor
@@ -610,16 +553,39 @@ async fn shard_local_storage() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
 		);
 
-		let node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
+		let mut node = setup_node(ports_2, &NODE_2_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join second shard network
 		let _ = sharding_executor
 			.lock()
 			.await
-			.join_network(node.clone(), &shard_id_2)
+			.join_network(node.clone(), &shard_id_1)
 			.await;
 
-		tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+		while let Some(event) = node.next_event().await {
+			match event {
+				NetworkEvent::ReplicaDataIncoming {
+					data,
+					network,
+					source,
+					..
+				} => {
+					println!(
+						"recieved replica data: {:?} from shard peer: {}",
+						data,
+						source.to_base58()
+					);
+
+					if let Some(repl_data) = node.consume_repl_data(&network).await {
+						// Assert that the data forwarded by node 1 is what we received (forwarded from node 2)
+						assert_eq!(repl_data.data, vec!["sharding works".to_string()]);
+					}
+				},
+				_ => {},
+			}
+		}
 	});
 
 	for task in vec![task_1, task_2] {
@@ -646,42 +612,18 @@ async fn data_forwarding_replication() {
 		buffer: Default::default(),
 	}));
 
-	// Node 1 keypair
-	let node_1_keypair: [u8; 68] = [
-		8, 1, 18, 64, 34, 116, 25, 74, 122, 174, 130, 2, 98, 221, 17, 247, 176, 102, 205, 3, 27,
-		202, 193, 27, 6, 104, 216, 158, 235, 38, 141, 58, 64, 81, 157, 155, 36, 193, 50, 147, 85,
-		72, 64, 174, 65, 132, 232, 78, 231, 224, 88, 38, 55, 78, 178, 65, 42, 97, 39, 152, 42, 164,
-		148, 159, 36, 170, 109, 178,
-	];
-
-	// Node 2 keypair
-	let node_2_keypair: [u8; 68] = [
-		8, 1, 18, 64, 37, 37, 86, 103, 79, 48, 103, 83, 170, 172, 131, 160, 15, 138, 237, 128, 114,
-		144, 239, 7, 37, 6, 217, 25, 202, 210, 55, 89, 55, 93, 0, 153, 82, 226, 1, 54, 240, 36,
-		110, 110, 173, 119, 143, 79, 44, 82, 126, 121, 247, 154, 252, 215, 43, 21, 101, 109, 235,
-		10, 127, 128, 52, 52, 68, 31,
-	];
-
-	// Node 3 keypair
-	let node_3_keypair: [u8; 68] = [
-		8, 1, 18, 64, 211, 172, 68, 234, 95, 121, 188, 130, 107, 113, 212, 215, 211, 189, 219, 190,
-		137, 91, 250, 222, 34, 152, 190, 117, 139, 199, 250, 5, 33, 65, 14, 180, 214, 5, 151, 109,
-		184, 106, 73, 186, 126, 52, 59, 220, 170, 158, 195, 249, 110, 74, 222, 161, 88, 194, 187,
-		112, 95, 131, 113, 251, 106, 94, 61, 177,
-	];
-
 	// Get Peer Id's
-	let peer_id_1 = Keypair::from_protobuf_encoding(&node_1_keypair)
+	let peer_id_1 = Keypair::from_protobuf_encoding(&NODE_1_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
 
-	let peer_id_2 = Keypair::from_protobuf_encoding(&node_2_keypair)
+	let peer_id_2 = Keypair::from_protobuf_encoding(&NODE_2_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
 
-	let peer_id_3 = Keypair::from_protobuf_encoding(&node_3_keypair)
+	let peer_id_3 = Keypair::from_protobuf_encoding(&NODE_3_KEYPAIR)
 		.unwrap()
 		.public()
 		.to_peer_id();
@@ -712,7 +654,7 @@ async fn data_forwarding_replication() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_3.0),
 		);
 
-		let node = setup_node(ports_1, &node_1_keypair[..], bootnodes, local_storage).await;
+		let node = setup_node(ports_1, &NODE_1_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join first shard network
 		let _ = sharding_executor
@@ -756,7 +698,7 @@ async fn data_forwarding_replication() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_1.0),
 		);
 
-		let mut node = setup_node(ports_2, &node_2_keypair[..], bootnodes, local_storage).await;
+		let mut node = setup_node(ports_2, &NODE_2_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join second shard network
 		let _ = sharding_executor
@@ -821,7 +763,7 @@ async fn data_forwarding_replication() {
 			format!("/ip4/127.0.0.1/tcp/{}", ports_2.0),
 		);
 
-		let mut node = setup_node(ports_3, &node_3_keypair[..], bootnodes, local_storage).await;
+		let mut node = setup_node(ports_3, &NODE_3_KEYPAIR[..], bootnodes, local_storage).await;
 
 		// Join shard network
 		let _ = sharding_executor
@@ -869,7 +811,6 @@ async fn data_forwarding_replication() {
 		task.await.unwrap();
 	}
 }
-
 
 // Join the network of shards and tell others nodes you’ve arrived. This ensures that the state is
 // consistent.Query network state: peerid of hashset of peers. Check that nodes have received the
