@@ -540,6 +540,11 @@ A node can receive data either through forwarding from a node in another shard o
 
 SwarmNL integrates the networking and storage layers to deliver a seamless sharding experience. This approach enables nodes to interact directly with the application layer and local environment, providing a robust and flexible solution for scalable distributed systems.
 
+### Moving forward
+In future iterations, we will be working on:
+- Extending support for more transport layers.
+- Optimizing fundamental algorithms for replication and sharding.
+
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
 With ❤️ from [Deji](https://github.com/thewoodfish) and [Sacha](https://github.com/sacha-l).
