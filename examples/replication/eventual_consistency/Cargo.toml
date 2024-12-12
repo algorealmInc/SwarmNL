@@ -11,8 +11,6 @@ swarm_nl = { path = "../../../swarm_nl", features = ["async-std-runtime"] }
 # tokio = { version = "1.37.0", features = ["full"] }
 async-std = { version = "1.12", features = ["attributes"] }
 rand = "0.8.5"
-warp = "0.3.7"
-reqwest = "0.12.8"
 
 [features]
 client = []

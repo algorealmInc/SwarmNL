@@ -1,22 +1,18 @@
 //! Copyright 2024 Algorealm, Inc.
 //!
-//! IPFS Integration with SwarmNL
+//! HTTP Server Integration with SwarmNL
 //!
-//! SwarmNL supports seamless integration with IPFS by providing interfaces to handle network events
-//! as they occur. This example demonstrates how to interact with IPFS in response to incoming
-//! replication data events, allowing you to store or retrieve data from the IPFS network
-//! dynamically. By leveraging SwarmNL’s event-handling capabilities, you can seamlessly integrate
-//! IPFS for distributed data storage and retrieval in your applications.
-//! Please make sure you're running an IPFS daemon locally to run this example.
+//! SwarmNL supports seamless integration with HTTP clients working in the application layer by
+//! providing interfaces to handle network events as they occur. This example demonstrates how to
+//! send an HTTP POST request to a remote server in response to incoming replication data events.
 
 use std::{
 	collections::HashMap,
-	io::{self, Cursor, Write},
-	thread,
+	io::{self, Write},
 	time::Duration,
 };
 
-use ipfs_api::{IpfsApi, IpfsClient};
+use reqwest::Client;
 use swarm_nl::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
@@ -26,7 +22,6 @@ use swarm_nl::{
 	setup::BootstrapConfig,
 	Keypair, MessageId, MultiaddrString, PeerId, PeerIdString, Port,
 };
-use tokio::{runtime::Runtime, task::LocalSet};
 
 /// The constant that represents the id of the replica network. Should be kept as a secret
 pub const REPL_NETWORK_ID: &'static str = "replica_xx";
@@ -97,6 +92,7 @@ async fn run_node(
 	peer_ids: (PeerId, PeerId),
 	keypair: [u8; 68],
 ) {
+
 	// Bootnodes
 	let mut bootnodes = HashMap::new();
 	bootnodes.insert(
@@ -148,53 +144,58 @@ async fn run_node(
 		}
 	}
 
-	// Initialize the IPFS client
-	let client = IpfsClient::default();
+	// Initialize the HTTP client
+	let http_client = Client::new(); 
+
+	// URL to send POST request to
+	let post_url = "https://eonatfm66lk31fs.m.pipedream.net"; 
 
 	// Spin up a task to listen for replication events
 	let new_node = node.clone();
+	tokio::task::spawn(async move {
+		let mut node = new_node.clone();
+		loop {
+			// Check for incoming data events
+			if let Some(event) = node.next_event().await {
+				// Check for only incoming repl data
+				if let NetworkEvent::ReplicaDataIncoming { source, data, .. } = event {
+					println!("Recieved incoming replica data from {}", source.to_base58());
 
-	// Create a separate thread to monitor network events
-	thread::spawn(move || {
-		// Create a new Tokio runtime
-		let runtime = Runtime::new().unwrap();
+					// Prepare the POST request payload
+					let payload = serde_json::json!({
+						"source": source.to_base58(),
+						"data": data,
+					});
 
-		// Block the current thread until the future completes
-		runtime.block_on(async {
-			let mut node = new_node.clone();
-			loop {
-				// Check for incoming data events
-				if let Some(event) = node.next_event().await {
-					// Check for only incoming repl data
-					if let NetworkEvent::ReplicaDataIncoming { source, data, .. } = event {
-						eprintln!("Recieved incoming replica data from {}", source.to_base58());
-
-						// Data we want to write to IPFS that was replicated to us by our peers in
-						// the network
-						let ipfs_data = Cursor::new(data[0].clone());
-
-						// Store data on the IPFS network
-						match client.add(ipfs_data).await {
-							Ok(res) => eprintln!(
-								"File successfully uploaded to IPFS with hash: {}",
-								res.hash
-							),
-							Err(e) => eprintln!("Error adding file: {}", e),
-						}
+					// Send the POST request
+					println!("Sending a POST request to a remote server...");
+					match http_client.post(post_url).json(&payload).send().await {
+						Ok(response) => {
+							if response.status().is_success() {
+								println!("Successfully sent POST request.");
+							} else {
+								eprintln!(
+									"Failed to send POST request. Status: {}",
+									response.status()
+								);
+							}
+						},
+						Err(e) => eprintln!("Error sending POST request: {}", e),
 					}
 				}
-
-				// Sleep
-				tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
 			}
-		})
+
+			// Sleep
+			tokio::time::sleep(Duration::from_secs(WAIT_TIME)).await;
+		}
 	});
 
 	// Wait for some time for replication protocol intitialization across the network
 	tokio::time::sleep(Duration::from_secs(WAIT_TIME + 3)).await;
 
+
 	println!("\n===================");
-	println!("IPFS Example Menu");
+	println!("HTTP Client Example Menu");
 	println!("Usage:");
 	println!("repl <data> - Replicate to peers");
 	println!("read        - Read content from buffer");
