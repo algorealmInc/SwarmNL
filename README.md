@@ -39,6 +39,10 @@ Visit the examples folder [here](https://github.com/algorealmInc/SwarmNL/tree/de
 
 Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html).
 
+## Research and Technicalities
+
+Please check [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html) for more technical details and understanding of SwarmNL and it's design choices.
+
 ## Features and examples
 
 ### Node configuration
@@ -288,7 +292,8 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
 SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
 
 ```rust
-    // Listen for replication events
+    //! Listen for replication events
+    
     loop {
         // Check for incoming data events
         if let Some(event) = node.next_event().await {
@@ -486,6 +491,7 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
 A node can receive data either through forwarding from a node in another shard or via replication from a peer node in the same shard. Below is an example demonstrating how to listen for and handle both types of events.
 
 ```rust
+    //! Listen for and consume data from a sharded network.
     loop {
         // Check for incoming data events
         if let Some(event) = node.next_event().await {
@@ -543,9 +549,8 @@ SwarmNL integrates the networking and storage layers to deliver a seamless shard
 ### _Moving forward 👷🏼_
 _In future iterations, we will be working on:_
 - _Extending support for more transport layers._
-- _Optimization of network algorithms._
+- _Providing further optimizating of network algorithms for various network scenerios._
 
-<br>
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂
 
 With ❤️ from [Deji](https://github.com/thewoodfish) and [Sacha](https://github.com/sacha-l).

@@ -9,6 +9,7 @@
 //!    - Sharding requires replication to be configured beforehand.
 //!    - If replication is not explicitly configured, the system will assume default replication
 //!      behavior.
+//!    - REPLICATION MUST BE SET TO EVENTUAL CONSISTENCY
 //!
 //! 2. **Sharding Configuration**:
 //!    - When setting up the sharded network, you must provide the local storage configuration.
@@ -155,12 +156,12 @@ async fn setup_node(
 	let filter_fn = gossipsub_filter_fn;
 	let builder = builder.with_gossipsub(GossipsubConfig::Default, filter_fn);
 
-	// Configure node for replication, we will be using a strong consistency model here
+	// Configure node for replication
 	let repl_config = ReplNetworkConfig::Custom {
 		queue_length: 150,
 		expiry_time: Some(10),
 		sync_wait_time: 5,
-		consistency_model: ConsistencyModel::Strong(ConsensusModel::All),
+		consistency_model: ConsistencyModel::Eventual,
 		data_aging_period: 2,
 	};
 
