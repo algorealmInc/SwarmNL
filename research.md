@@ -137,6 +137,8 @@ If no custom configuration is provided, the library uses a default setup:
 - **`consistency_model`**: Eventual consistency
 - **`data_aging_period`**: 5 seconds
 
+#### Consistency Model
+
 Replication is greatly governed by the configured **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
 
 ```rust
