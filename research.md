@@ -24,6 +24,16 @@ SwarmNL facilitates seamless data replication among configured nodes in the netw
       /// Strong consistency
       Strong(ConsensusModel),
    }
+
+   /// This enum dictates how many nodes need to come to an agreement for consensus to be held
+   /// during the impl of a strong consistency sync model.
+   #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+   pub enum ConsensusModel {
+      /// All nodes in the network must contribute to consensus
+      All,
+      /// Just a subset of the network are needed for consensus
+      MinPeers(u64),
+   }
 ```
 
 ---
