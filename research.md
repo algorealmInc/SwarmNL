@@ -216,6 +216,52 @@ Scaling the network is primarily achieved through **replication** and **sharding
 
 SwarmNL provides a trait called `Sharding` to implement sharding. To maintain flexibility and configurability, developers are required to implement the `locate_shard()` function within the trait. This function maps a key or data item to a logical shard, allowing developers to define sharding strategies tailored to their application's needs.
 
+```rust
+   /// Trait that specifies sharding logic and behaviour of shards.
+   #[async_trait]
+   pub trait Sharding
+   where
+      Self::Key: Send + Sync,
+      Self::ShardId: ToString + Send + Sync,
+   {
+      /// The type of the shard key e.g hash, range etc.
+      type Key: ?Sized;
+      /// The identifier pointing to a specific shard.
+      type ShardId;
+
+      /// Map a key to a shard.
+      fn locate_shard(&self, key: &Self::Key) -> Option<Self::ShardId>;
+
+      /// Return the state of the shard network.
+      async fn network_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
+         core.network_info.sharding.state.lock().await.clone()
+      }
+
+      /// Join a shard network.
+      async fn join_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> { .. }
+
+      /// Exit a shard network.
+	   async fn exit_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> { .. }
+
+      /// Send data to peers in the appropriate logical shard. It returns the data if the node is a
+      /// member of the shard after replicating it to fellow nodes in the same shard.
+      async fn shard(
+         &self,
+         mut core: Core,
+         key: &Self::Key,
+         data: ByteVector,
+      ) -> NetworkResult<Option<ByteVector>> { .. }
+
+      /// Fetch data from the shard network.
+      async fn fetch(
+         &self,
+         mut core: Core,
+         key: &Self::Key,
+         mut data: ByteVector,
+      ) -> NetworkResult<Option<ByteVector>> { .. }
+   }
+```
+
 The `Sharding` trait also includes generic functions for:
 
 - Adding nodes to a shard.
