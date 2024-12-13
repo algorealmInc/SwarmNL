@@ -401,5 +401,5 @@ All nodes within a shard act as replicas of each other and synchronize their dat
 By combining replication and sharding, SwarmNL offers a scalable and fault-tolerant framework for managing decentralized networks while giving developers the freedom to design shard configurations that align with their use case.
 
 
-**Reference:**
+#### Reference:
 Andrew Tanenbaum, "Distributed Systems: Principles and Paradigms", 2002.
