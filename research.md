@@ -202,7 +202,7 @@ In the **Eventual Consistency** model, replicated data is immediately stored in 
 
 - Buffer Aging and Eviction:
    The buffer has a **maximum size** and supports an **aging mechanism**:
-  - Each data item has an associated lifespan (`max age`).
+  - Each data item has an associated lifespan `max_age` calculated as the current unix timestamp minus the `incoming_timestamp` of the data item.
   - If the buffer is full, items exceeding their lifespan are lazily removed during the next data insertion.
   - This ensures data remains accessible for sufficient time while optimizing buffer space.
 
