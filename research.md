@@ -73,13 +73,13 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
   Captures the time when replicated data is received on a node.
 
 - **`message_id`**  
-  A unique identifier, typically a hash of the message payload. It ensures the uniqueness of messages in the replication buffer and prevents duplication. In eventual consistency models, only `message_id`s are exchanged for comparison before data is pulled on demand.
+  A unique identifier, typically a hash of the message payload. It ensures the uniqueness of messages in the replication buffer and prevents duplication. In `eventual consistency` sychronization models, only `message_id`s are exchanged for comparison before data is pulled on demand.
 
 - **`source`**  
   The peer ID of the node that sent the replicated data across the network.
 
 - **`confirmations`**  
-  Relevant for strong consistency models, this field tracks the number of confirmations received from nodes in the network. Data is only moved from the transient replication buffer to the primary public buffer for application consumption once the configured confirmation threshold is met.
+  Relevant for `strong consistency` synchronization models, this field tracks the number of confirmations received from nodes in the network. Data is only moved from the transient replication buffer to the primary public buffer for application consumption once the configured confirmation threshold is met.
 
 
 Replication is configured by important setting that dictate the behaviour of the network. These settings are considered below:
