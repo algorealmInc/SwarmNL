@@ -399,3 +399,7 @@ This approach ensures flexibility, efficiency, and thread-safe handling of data.
 All nodes within a shard act as replicas of each other and synchronize their data based on the consistency model configured during replication setup. This tight integration between sharding and replication ensures that the data within each shard is reliable and consistent, as defined by the application's requirements.
 
 By combining replication and sharding, SwarmNL offers a scalable and fault-tolerant framework for managing decentralized networks while giving developers the freedom to design shard configurations that align with their use case.
+
+**Reference:**
+
+Andrew Tanenbaum, "Distributed Systems: Principles and Paradigms", 2002.
