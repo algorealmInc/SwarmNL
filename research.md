@@ -167,7 +167,7 @@ Replication is greatly influenced by the configured **consistency model**, which
    }
 ```
 
-- Strong Consistency
+**Strong Consistency**
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
@@ -185,7 +185,7 @@ In the **Strong Consistency** model, replicated data is temporarily stored in a 
 
 This model guarantees that data is fully synchronized across all replicas before it becomes available to the application layer.
 
-- Eventual Consistency
+**Eventual Consistency**
 
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
