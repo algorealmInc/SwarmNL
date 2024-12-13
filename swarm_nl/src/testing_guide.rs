@@ -5,10 +5,12 @@
 //! > Therefore, to run the tests you must specify the runtime feature flag e.g. `cargo test
 //! > --features=tokio-runtime`.
 //!
-//! There are two classes of tests in the core library:
+//! Tests are organised into the following modules:
 //!
 //! - `node_behaviour` tests for single node setup and behaviour.
 //! - `layer_communication` tests involving the synchronization between two nodes.
+//! - `replication` tests for integration tests involving replication configuration and behavior.
+//! - `sharding` tests for integration tests involving sharding configuration and behavior.
 //!
 //!
 //! # Node behaviour testing
@@ -169,8 +171,16 @@
 //! ## Replication tests
 //!
 //! For replication tests, we setup the nodes as separate threads to form replication networks. For
-//! testing joining and exiting functions, run:
+//! testing joining and exiting functions, for example run:
 //!
 //! ```bash
 //! cargo test repl_itest_join_and_exit_works
+//! ```
+//! 
+//! ## Sharding tests
+//! 
+//! For sharding tests, we setup the nodes as separate threads to form sharding networks. For example:
+//! 
+//! ```bash
+//! cargo test join_and_exit_shard_network
 //! ```
