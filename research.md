@@ -337,7 +337,6 @@ pub trait ShardStorage: Send + Sync + Debug {
 }
 ```
 
-```markdown
 ### Handling Incoming Requests
 
 Incoming requests can be easily managed by calling the `fetch_data()` function on the storage object, which returns the requested data to the asking node in the sharded network.
@@ -382,7 +381,7 @@ This approach ensures flexibility, efficiency, and thread-safe handling of data.
    }
 
 
-   // Internally, while handling network request
+   // Internally, while handling network requests
    // ...
 
    // It is an incoming request to ask for data on this node because it is a member of a logical shard
