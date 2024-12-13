@@ -10,6 +10,8 @@ Fault tolerance in SwarmNL is primarily achieved through **redundancy**, which e
 
 SwarmNL simplifies data replication across nodes, ensuring consistency and reliability in distributed systems. Below is the structure of an entry in the replication buffer, along with the purpose of each field:
 
+#### Replication data structure
+
 ```rust
    /// Represents an entry in the replication buffer for marshaling and transient storage
    /// of incoming replication payloads.
@@ -31,8 +33,6 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
       pub confirmations: Option<Nonce>,
    }
 ```
-
-### **Field Descriptions**
 
 - **`data`**  
   The raw data received from a replica peer. This field contains a `StringVector`, which is a vector of strings representing the replicated payload.
@@ -83,8 +83,8 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
 - **`confirmations`**  
   Relevant for `strong consistency` synchronization models, this field tracks the number of confirmations received from nodes in the network. Data is only moved from the transient replication buffer to the primary public buffer for application consumption once the configured confirmation threshold is met.
 
-Replication is configured by important primitives that dictate the behaviour of the nodes in the network and network at large. These settings are considered below:
-
+#### Configurations
+Replication is governed by key primitives that define the behavior of individual nodes and the network as a whole. These settings are detailed below:
 ```rust
    ///` Enum containing configurations for replication.
    #[derive(Clone, Debug)]
@@ -110,8 +110,6 @@ Replication is configured by important primitives that dictate the behaviour of 
       Default,
    }`
 ```
-
-### Data Descriptors
 
 - **`queue_length`**  
   The maximum number of entries the transient storage buffer can hold. Once the buffer exceeds this limit, new data may overwrite older entries depending on the configuration.
