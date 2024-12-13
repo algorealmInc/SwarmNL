@@ -9,7 +9,6 @@
 //!    - Sharding requires replication to be configured beforehand.
 //!    - If replication is not explicitly configured, the system will assume default replication
 //!      behavior.
-//!    - REPLICATION MUST BE SET TO EVENTUAL CONSISTENCY
 //!
 //! 2. **Sharding Configuration**:
 //!    - When setting up the sharded network, you must provide the local storage configuration.

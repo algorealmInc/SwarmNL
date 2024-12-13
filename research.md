@@ -218,7 +218,7 @@ In the eventual consistency model, the application layer operates with the expec
 
 Scaling the network is primarily achieved through **replication** and **sharding**. Replication has already been discussed in the context of fault tolerance. Scaling enables improved read and write performance by partitioning the network into logical `shards`, each responsible for a subset of the data. A `shard` may span multiple nodes, and each shard manages its own data storage and operations.
 
-### **Sharding in SwarmNL**
+### **The `Sharding` Trait**
 
 SwarmNL provides a trait called `Sharding` to implement sharding. To maintain flexibility and configurability, developers are required to implement the `locate_shard()` function within the trait. This function maps a key or data item to a logical shard, allowing developers to define sharding strategies tailored to their application's needs.
 
@@ -279,6 +279,8 @@ The `Sharding` trait also includes generic functions for:
 ### **Data Forwarding**
 
 Data forwarding occurs when a node receives data it is not configured to store or process due to the shard's configuration. In such cases, the node identifies the appropriate shard and forwards the data to the corresponding nodes within that shard.
+How it works:
+The nodes takes the key and calls the `locate_shard()` function to find the shard the data is to be stored. After that is done, the node finds nodes that belongs to the shard and then tries to forward the data to each peer in the loop using an `RPC` mechanism. Because nodes could be much in a shard, the loop has a clause in its algorithm. Whenever the RPC is sent, if a node responds with an `Ok()` having recieved the forwarded data, then the loop breaks and the sharding operation is complete. We expect that replication will take place immediately and cheaply as the node in the shard receieved it. Saving bandwidth for the sending node. That is why replication must be configured for sharding.
 
 ### **Shards and Replication**
 
