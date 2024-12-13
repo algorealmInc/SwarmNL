@@ -281,6 +281,7 @@ The `Sharding` trait also includes generic functions for:
 Data forwarding occurs when a node receives data it isn’t responsible for due to its shard configuration. In such cases, the node locates the appropriate shard and forwards the data to the relevant nodes within that shard.
 
 ### How It Works:
+
 1. The node takes the data's key and uses the `locate_shard()` function to determine which shard the data should go to.
 2. After identifying the target shard, the node finds the nodes in that shard and attempts to forward the data to them using an RPC mechanism.
 3. The forwarding process continues in a loop until one of the nodes responds with `Ok()`, indicating that the data has been successfully received. At this point, the loop breaks, completing the operation.
@@ -288,9 +289,9 @@ Data forwarding occurs when a node receives data it isn’t responsible for due 
 
 This is why replication should be configured for sharding to ensure smooth data forwarding and efficient network usage.
 
-```rust 
+```rust
    //! Forward data to peers in shard
-   
+
    // ...
    // Shuffle the peers.
    let mut rng = StdRng::from_entropy();
@@ -321,6 +322,77 @@ This is why replication should be configured for sharding to ensure smooth data 
    }
 
    //...
+```
+
+### **The `ShardStorage` Trait**
+
+The `ShardStorage` trait allows nodes to `trap` into their application logic and environment to answer the sharded network requests.
+
+```rust
+/// Trait that interfaces with the storage layer of a node in a shard. It is important for handling
+/// forwarded data requests. This is a mechanism to trap into the application storage layer to read
+/// sharded data.
+pub trait ShardStorage: Send + Sync + Debug {
+	fn fetch_data(&self, key: ByteVector) -> ByteVector;
+}
+```
+
+```markdown
+### Handling Incoming Requests
+
+Incoming requests can be easily managed by calling the `fetch_data()` function on the storage object, which returns the requested data to the asking node in the sharded network.
+
+SwarmNL remains storage-agnostic, meaning any storage system can be used with this generic interface e.g memory, filesystem etc. During network configuration, the storage object is passed via an atomic reference counter (`Arc`), which wraps an asynchronous `Mutex`. This allows the application to modify the storage state as needed while still enabling safe access to the data across different parts of the system, using async primitives.
+
+This approach ensures flexibility, efficiency, and thread-safe handling of data.
+
+```rust
+   //! Implement ShardStorage for reading from the filesystem of data requests
+
+   // ...
+   /// The shard local storage which is a directory in the local filesystem.
+   #[derive(Debug)]
+   struct LocalStorage;
+
+   impl LocalStorage {
+      /// Reads a file's content from the working directory.
+      fn read_file(&self, key: &str) -> Option<ByteVector> {
+         let mut file = fs::File::open(key).ok()?;
+         let mut content = Vec::new();
+         file.read_to_end(&mut content).ok()?;
+         // Wrap the content in an outer Vec
+         Some(vec![content])
+      }
+   }
+
+   // Implement the `ShardStorage` trait for our local storage
+   impl ShardStorage for LocalStorage {
+      fn fetch_data(&self, key: ByteVector) -> ByteVector {
+         // Process each key in the ByteVector
+         for sub_key in key.iter() {
+            let key_str = String::from_utf8_lossy(sub_key);
+            // Attempt to read the file corresponding to the key
+            if let Some(data) = self.read_file(&format!("storage/{}", key_str.as_ref())) {
+               return data;
+            }
+         }
+         // If no match is found, return an empty ByteVector
+         Default::default()
+      }
+   }
+
+
+   // Internally, while handling network request
+   // ...
+
+   // It is an incoming request to ask for data on this node because it is a member of a logical shard
+   Core::SHARD_RPC_REQUEST_FLAG => {
+      // Pass request data to configured shard request handler
+      let response_data = network_info.sharding.local_storage.lock().await.fetch_data(data[1..].into());
+      // Send the response
+      let _ = swarm.behaviour_mut().request_response.send_response(channel, Rpc::ReqResponse { data: response_data });
+   }
+   // ...
 ```
 
 ### **Shards and Replication**
