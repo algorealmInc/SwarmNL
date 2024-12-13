@@ -51,6 +51,7 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 #### Example
 
 ```rust
+    #![cfg_attr(not(doctest))]
       //! Using the default node setup configuration
 
       // Default config
@@ -96,6 +97,7 @@ Please look at a template `.ini` file [here](https://github.com/algorealmInc/Swa
 During network operations, various events are generated. These events help us track the activities in the network layer. When generated, they are stored in an internal buffer until they are explicitly polled and consumed, or until the queue is full. It is important to consume critical events promptly to prevent loss if the buffer becomes full.
 
 ```rust
+    #![cfg_attr(not(doctest))]
     //! Consuming the events by retrieving it as a iterator
 
    // Default config
@@ -175,6 +177,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 #### Communicate with the network layer
 
 ```rust
+    #![cfg_attr(not(doctest))]
       //! Communicate with remote nodes using the simple and familiar async-await paradigm.
 
       // Build node or network core
