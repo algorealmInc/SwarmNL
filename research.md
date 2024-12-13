@@ -123,7 +123,7 @@ Replication is governed by key primitives that define the behavior of individual
   The interval (in seconds) between synchronization attempts for data in the buffer. This ensures efficient utilization of network resources while maintaining data freshness.
 
 - **`consistency_model`**  
-  Defines the level of consistency required for data replication. This must be uniform across all nodes in the replication network to prevent inconsistent or undefined behavior.
+  Defines the level of consistency required for data replication and the behaviour to ensure it. This must be uniform across all nodes in the replication network to prevent inconsistent or undefined behavior.
 
 - **`data_aging_period`**  
   The waiting period (in seconds) after data is saved into the buffer before it is eligible for synchronization. This allows for additional processing or validations if needed.
@@ -131,14 +131,13 @@ Replication is governed by key primitives that define the behavior of individual
 #### Default Configuration
 
 If no custom configuration is provided, the library uses a default setup:
-
 - **`queue_length`**: 100
 - **`expiry_time`**: 60 seconds
 - **`sync_wait_time`**: 5 seconds
 - **`consistency_model`**: Eventual consistency
 - **`data_aging_period`**: 5 seconds
 
-This replication is governed by a configurable **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
+Replication is greatly governed by the configured **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
 
 ```rust
    /// The consistency models supported.
@@ -166,7 +165,7 @@ This replication is governed by a configurable **consistency model**, which ensu
    }
 ```
 
-#### - Strong Consistency
+- Strong Consistency
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
@@ -188,7 +187,7 @@ This model guarantees that data is fully synchronized across all replicas before
 
 ---
 
-#### - Eventual Consistency\*\*
+- Eventual Consistency
 
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
