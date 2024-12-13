@@ -31,6 +31,7 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
       pub confirmations: Option<Nonce>,
    }
 ```
+
 ### **Field Descriptions**
 
 - **`data`**  
@@ -66,6 +67,7 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
       }
    }
 ```
+
 - **`outgoing_timestamp`**  
   Records the time a message leaves the source node for replication across the network.
 
@@ -81,8 +83,60 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
 - **`confirmations`**  
   Relevant for `strong consistency` synchronization models, this field tracks the number of confirmations received from nodes in the network. Data is only moved from the transient replication buffer to the primary public buffer for application consumption once the configured confirmation threshold is met.
 
+Replication is configured by important primitives that dictate the behaviour of the nodes in the network and network at large. These settings are considered below:
 
-Replication is configured by important setting that dictate the behaviour of the network. These settings are considered below:
+```rust
+   ///` Enum containing configurations for replication.
+   #[derive(Clone, Debug)]
+   pub enum ReplNetworkConfig {
+      /// A custom configuration.
+      Custom {
+         /// Max capacity for transient storage.
+         queue_length: u64,
+         /// Expiry time of data in the buffer if the buffer is full. Set to `None` for no expiry.
+         expiry_time: Option<Seconds>,
+         /// Epoch to wait before attempting the next network synchronization of data in the buffer.
+         sync_wait_time: Seconds,
+         /// The data consistency model to be supported by the node. This must be uniform across all
+         /// nodes to prevent undefined behaviour.
+         consistency_model: ConsistencyModel,
+         /// When data has arrived and is saved into the buffer, the time to wait for it to get to
+         /// other peers after which it can be picked for synchronization.
+         data_aging_period: Seconds,
+      },
+      /// A default configuration: `queue_length` = 100, `expiry_time` = 60 seconds,
+      /// `sync_wait_time` = 5 seconds, `consistency_model`: `Eventual`, `data_wait_period` = 5
+      /// seconds.
+      Default,
+   }`
+```
+
+### Data Descriptors
+
+- **`queue_length`**  
+  The maximum number of entries the transient storage buffer can hold. Once the buffer exceeds this limit, new data may overwrite older entries depending on the configuration.
+
+- **`expiry_time`**  
+  Specifies how long data remains in the buffer before it expires if the buffer becomes full. Setting it to `None` disables expiry, allowing data to persist indefinitely until explicitly removed.
+
+- **`sync_wait_time`**  
+  The interval (in seconds) between synchronization attempts for data in the buffer. This ensures efficient utilization of network resources while maintaining data freshness.
+
+- **`consistency_model`**  
+  Defines the level of consistency required for data replication. This must be uniform across all nodes in the replication network to prevent inconsistent or undefined behavior.
+
+- **`data_aging_period`**  
+  The waiting period (in seconds) after data is saved into the buffer before it is eligible for synchronization. This allows for additional processing or validations if needed.
+
+### Default Configuration
+
+If no custom configuration is provided, the library uses a default setup:
+
+- **`queue_length`**: 100
+- **`expiry_time`**: 60 seconds
+- **`sync_wait_time`**: 5 seconds
+- **`consistency_model`**: Eventual consistency
+- **`data_aging_period`**: 5 seconds
 
 This replication is governed by a configurable **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
 
@@ -112,7 +166,7 @@ This replication is governed by a configurable **consistency model**, which ensu
    }
 ```
 
-#### - Strong Consistency**
+#### - Strong Consistency\*\*
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
@@ -134,7 +188,7 @@ This model guarantees that data is fully synchronized across all replicas before
 
 ---
 
-#### - Eventual Consistency**
+#### - Eventual Consistency\*\*
 
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
