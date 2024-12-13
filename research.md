@@ -41,28 +41,25 @@ SwarmNL facilitates seamless data replication among configured nodes in the netw
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
 ```rust
-   /// Enum containing configurations for replication.
+   /// Important data to marshall from incoming relication payload and store in the transient
+   /// buffer.
    #[derive(Clone, Debug)]
-   pub enum ReplNetworkConfig {
-      /// A custom configuration.
-      Custom {
-         /// Max capacity for transient storage.
-         queue_length: u64,
-         /// Expiry time of data in the buffer if the buffer is full. Set to `None` for no expiry.
-         expiry_time: Option<Seconds>,
-         /// Epoch to wait before attempting the next network synchronization of data in the buffer.
-         sync_wait_time: Seconds,
-         /// The data consistency model to be supported by the node. This must be uniform across all
-         /// nodes to prevent undefined behaviour.
-         consistency_model: ConsistencyModel,
-         /// When data has arrived and is saved into the buffer, the time to wait for it to get to
-         /// other peers after which it can be picked for synchronization.
-         data_aging_period: Seconds,
-      },
-      /// A default configuration: `queue_length` = 100, `expiry_time` = 60 seconds,
-      /// `sync_wait_time` = 5 seconds, `consistency_model`: `Eventual`, `data_wait_period` = 5
-      /// seconds.
-      Default,
+   pub struct ReplBufferData {
+      /// Raw incoming data.
+      pub data: StringVector,
+      /// Lamports clock for synchronization.
+      pub lamport_clock: Nonce,
+      /// Timestamp at which the message left the sending node.
+      pub outgoing_timestamp: Seconds,
+      /// Timestamp at which the message arrived.
+      pub incoming_timestamp: Seconds,
+      /// Message ID to prevent deduplication. It is usually a hash of the incoming message.
+      pub message_id: String,
+      /// Sender PeerId.
+      pub sender: PeerId,
+      /// Number of confirmations. This is to help the nodes using the strong consistency
+      /// synchronization data model to come to an agreement
+      pub confirmations: Option<Nonce>,
    }
 ```
 
