@@ -139,7 +139,7 @@ If no custom configuration is provided, the library uses a default setup:
 
 #### Consistency Model
 
-Replication is greatly governed by the configured **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
+Replication is greatly influenced by the configured **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
 
 ```rust
    /// The consistency models supported.
@@ -167,7 +167,7 @@ Replication is greatly governed by the configured **consistency model**, which e
    }
 ```
 
-1. Strong Consistency
+- Strong Consistency
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
@@ -185,7 +185,7 @@ In the **Strong Consistency** model, replicated data is temporarily stored in a 
 
 This model guarantees that data is fully synchronized across all replicas before it becomes available to the application layer.
 
-2. Eventual Consistency
+- Eventual Consistency
 
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
