@@ -14,7 +14,14 @@ SwarmNL is a library designed for P2P networking in distributed systems. It's li
 - [Features and examples](#features-and-examples)
   - [Node configuration](#node-configuration)
   - [Node communication](#node-communication)
-
+- [Replication](#replication)
+  - [Key features](#key-features)
+  - [Example](#example-configuring-and-using-replication)
+  - [Why use SwarmNl for Replication](#why-use-swarmnl-for-replication)
+- [Sharding](#sharding)
+  - [Key features](#key-features-1)
+  - [Example](#example-configuring-and-operating-a-sharded-network)
+  - [Why use SwarmNl for Sharding](#why-use-swarmnl-for-sharding)
 <!-- TOC end -->
 
 ## Why SwarmNL?
