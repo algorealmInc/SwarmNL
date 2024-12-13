@@ -131,6 +131,7 @@ Replication is governed by key primitives that define the behavior of individual
 #### Default Configuration
 
 If no custom configuration is provided, the library uses a default setup:
+
 - **`queue_length`**: 100
 - **`expiry_time`**: 60 seconds
 - **`sync_wait_time`**: 5 seconds
@@ -172,16 +173,18 @@ Replication is greatly influenced by the configured **consistency model**, which
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
 - Receiving Data:
-   - When replicated data arrives at a node, it includes a flag (`confirmations`) initialized to `1`, indicating the originating node already has the data.
-   - This data is stored in the **temporary buffer** of the receiving node.
+
+  - When replicated data arrives at a node, it includes a flag (`confirmations`) initialized to `1`, indicating the originating node already has the data.
+  - This data is stored in the **temporary buffer** of the receiving node.
 
 - Broadcasting Data:
-   - The receiving node immediately broadcasts the data to its replica peers.
-   - Each peer increments the `confirmations` fields of the data upon receiving the broadcast.
+
+  - The receiving node immediately broadcasts the data to its replica peers.
+  - Each peer increments the `confirmations` fields of the data upon receiving the broadcast.
 
 - Confirming Consistency:
-   - When the `confirmations` reaches `node_count - 1` (e.g., 2 for a 3-node network), the data is deemed consistent.
-   - The data is then moved from the temporary buffer to the primary (public) buffer, making it accessible to the application layer.
+  - When the `confirmations` reaches `node_count - 1` (e.g., 2 for a 3-node network), the data is deemed consistent.
+  - The data is then moved from the temporary buffer to the primary (public) buffer, making it accessible to the application layer.
 
 This model guarantees that data is fully synchronized across all replicas before it becomes available to the application layer.
 
@@ -190,18 +193,21 @@ This model guarantees that data is fully synchronized across all replicas before
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
 - Buffer Queue:
-   - The public buffer uses a `BTreeSet` to organize replicated data based on a **Lamport clock**.
+
+  - The public buffer uses a `BTreeSet` to organize replicated data based on a **Lamport clock**.
 
 - Synchronization Task:
-   - A background task periodically broadcasts the `MessageId`s of data in the queue to all replica peers.
-   - Peers compare the received `MessageId`s with their local buffer to identify missing data.
+
+  - A background task periodically broadcasts the `MessageId`s of data in the queue to all replica peers.
+  - Peers compare the received `MessageId`s with their local buffer to identify missing data.
 
 - Retrieving Missing Data:
-   - Peers send an RPC request to retrieve missing data and add it to their buffers.
-   - The system trusts that, over time, all nodes will achieve eventual consistency as data propagates and synchronizes across the network.
+
+  - Peers send an RPC request to retrieve missing data and add it to their buffers.
+  - The system trusts that, over time, all nodes will achieve eventual consistency as data propagates and synchronizes across the network.
 
 - Buffer Aging and Eviction:
-   The buffer has a **maximum size** and supports an **aging mechanism**:
+  The buffer has a **maximum size** and supports an **aging mechanism**:
   - Each data item has an associated lifespan `max_age` calculated as the current unix timestamp minus the `incoming_timestamp` of the data item.
   - If the buffer is full, items exceeding their lifespan are lazily removed during the next data insertion.
   - This ensures data remains accessible for sufficient time while optimizing buffer space.
@@ -252,7 +258,7 @@ SwarmNL provides a trait called `Sharding` to implement sharding. To maintain fl
          data: ByteVector,
       ) -> NetworkResult<Option<ByteVector>> { .. }
 
-      /// Fetch data from the shard network.
+      /// Fetch data from the shard network. It returns None if the node is a memnber of the shard with the data, meaning the node should read it locally.
       async fn fetch(
          &self,
          mut core: Core,
