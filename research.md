@@ -1,4 +1,4 @@
-# **SwarmNL: A Library to Build Custom Networking Layers for Decentralized Applications**
+# **SwarmNL: A Library to Build Custom Networking Layers for Decentralized and Distributed Applications**
 
 SwarmNL addresses two critical concerns in distributed systems: **Scaling** and **Fault Tolerance**. This section focuses on how SwarmNL handles **Fault Tolerance** using redundancy.
 
@@ -8,7 +8,23 @@ Fault tolerance in SwarmNL is primarily achieved through **redundancy**, which e
 
 ### **Replication**
 
-SwarmNL facilitates seamless data replication among configured nodes in the network. This replication is governed by a configurable **consistency model**, which ensures synchronized data across nodes. SwarmNL supports two consistency models:
+SwarmNL facilitates seamless data replication among configured nodes in the network. This replication is governed by a configurable **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
+
+```rust
+   /// The consistency models supported.
+   ///
+   /// This is important as is determines the behaviour of the node in handling and delivering
+   /// replicated data to the application layer. There are also trade-offs to be considered
+   /// before choosing any model. You must choose the model that aligns and suits your exact
+   /// usecase and objective.
+   #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+   pub enum ConsistencyModel {
+      /// Eventual consistency
+      Eventual,
+      /// Strong consistency
+      Strong(ConsensusModel),
+   }
+```
 
 ---
 
