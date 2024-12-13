@@ -278,9 +278,50 @@ The `Sharding` trait also includes generic functions for:
 
 ### **Data Forwarding**
 
-Data forwarding occurs when a node receives data it is not configured to store or process due to the shard's configuration. In such cases, the node identifies the appropriate shard and forwards the data to the corresponding nodes within that shard.
-How it works:
-The nodes takes the key and calls the `locate_shard()` function to find the shard the data is to be stored. After that is done, the node finds nodes that belongs to the shard and then tries to forward the data to each peer in the loop using an `RPC` mechanism. Because nodes could be much in a shard, the loop has a clause in its algorithm. Whenever the RPC is sent, if a node responds with an `Ok()` having recieved the forwarded data, then the loop breaks and the sharding operation is complete. We expect that replication will take place immediately and cheaply as the node in the shard receieved it. Saving bandwidth for the sending node. That is why replication must be configured for sharding.
+Data forwarding occurs when a node receives data it isn’t responsible for due to its shard configuration. In such cases, the node locates the appropriate shard and forwards the data to the relevant nodes within that shard.
+
+### How It Works:
+1. The node takes the data's key and uses the `locate_shard()` function to determine which shard the data should go to.
+2. After identifying the target shard, the node finds the nodes in that shard and attempts to forward the data to them using an RPC mechanism.
+3. The forwarding process continues in a loop until one of the nodes responds with `Ok()`, indicating that the data has been successfully received. At this point, the loop breaks, completing the operation.
+4. Once the data is received by a node in the shard, replication happens quickly and efficiently, saving bandwidth for the sending node.
+
+This is why replication should be configured for sharding to ensure smooth data forwarding and efficient network usage.
+
+```rust 
+   //! Forward data to peers in shard
+   
+   // ...
+   // Shuffle the peers.
+   let mut rng = StdRng::from_entropy();
+   let mut nodes = nodes.iter().cloned().collect::<Vec<_>>();
+
+   nodes.shuffle(&mut rng);
+
+   // Prepare an RPC to ask for the data from nodes in the shard.
+   let mut message = vec![
+      Core::SHARD_RPC_REQUEST_FLAG.as_bytes().to_vec(), /* Flag to indicate shard data
+                                                         * request */
+   ];
+   message.append(&mut data);
+
+   // Attempt to forward the data to peers.
+   for peer in nodes {
+      let rpc_request = AppData::SendRpc {
+         keys: message.clone(),
+         peer: peer.clone(),
+      };
+
+      // Query the network and return the response on the first successful response.
+      if let Ok(response) = core.query_network(rpc_request).await {
+         if let AppResponse::SendRpc(data) = response {
+            return Ok(Some(data));
+         }
+      }
+   }
+
+   //...
+```
 
 ### **Shards and Replication**
 
