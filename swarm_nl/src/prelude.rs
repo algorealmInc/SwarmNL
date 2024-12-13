@@ -46,7 +46,7 @@ pub type Seconds = u64;
 pub type PeerIdString = String;
 /// The stringified `Multiaddr` type.
 pub type MultiaddrString = String;
-/// A collection of nodes described purely by their addresses
+/// A collection of nodes described purely by their addresses.
 pub type Nodes = HashMap<PeerIdString, MultiaddrString>;
 
 /// Lower bound port range.
