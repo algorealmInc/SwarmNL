@@ -36,7 +36,7 @@ SwarmNL facilitates seamless data replication among configured nodes in the netw
    }
 ```
 
-### **1. Strong Consistency**
+#### **1. Strong Consistency**
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
@@ -58,7 +58,7 @@ This model guarantees that data is fully synchronized across all replicas before
 
 ---
 
-### **2. Eventual Consistency**
+#### **2. Eventual Consistency**
 
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
