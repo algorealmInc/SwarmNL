@@ -58,6 +58,8 @@ pub(crate) mod prelude;
 pub use prelude::*;
 pub mod replication;
 pub mod sharding;
+
+#[cfg(test)]
 mod tests;
 
 /// The Core Behaviour implemented which highlights the various protocols

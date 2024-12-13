@@ -262,6 +262,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 - **Consistency Models**: Choose from a variety of consistency models, including strong consistency with customizable parameters.
 - **Dynamic Node Management**: Nodes can seamlessly join and leave replica networks without disrupting operations. Events are quickly propagated to all nodes.
 - **Ease of Use**: Minimal setup is required to add replication to your system, ensuring quick integration and deployment.
+- **Node Cloning**: Complete instant cloning of data in the buffer of a replica peer.
 
 ### Example: Configuring and Using Replication
 

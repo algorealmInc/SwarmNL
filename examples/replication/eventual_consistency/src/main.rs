@@ -1,8 +1,8 @@
 //! Copyright 2024 Algorealm, Inc.
 
 //! This example demonstrates the replication of data accross nodes in a network using the
-//! eventual data consistency synchronization model. Here we are spinning up three replica nodes that accept data
-//! from standard input to read contents off the replica buffer or to immedately replicates the input data across its replica network.
+//! eventual consistency data synchronization model. Here we are spinning up three replica nodes that accept data
+//! from standard input to read contents off the replica buffer or to immedately replicate the input data across its replica network.
 
 use std::{collections::HashMap, io::{self, Write}, time::Duration};
 
