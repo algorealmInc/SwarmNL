@@ -35,13 +35,13 @@ pub type RpcData = ByteVector;
 /// Type that represents a vector of vector of bytes.
 pub type ByteVector = Vec<Vec<u8>>;
 
-/// Type that represents the id of a shard
+/// Type that represents the id of a shard.
 pub type ShardId = String;
 
-/// Type that represents the result for network operations
+/// Type that represents the result for network operations.
 pub type NetworkResult<T> = Result<T, NetworkError>;
 
-/// Type that represents a vector of string
+/// Type that represents a vector of string.
 pub type StringVector = Vec<String>;
 
 /// Type that represents a nonce.
