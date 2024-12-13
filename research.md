@@ -38,7 +38,33 @@ SwarmNL facilitates seamless data replication among configured nodes in the netw
 
 #### **1. Strong Consistency**
 
-In the **Strong Consistency** model, replicated data is temporarily stored in a buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
+In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
+
+```rust
+   /// Enum containing configurations for replication.
+   #[derive(Clone, Debug)]
+   pub enum ReplNetworkConfig {
+      /// A custom configuration.
+      Custom {
+         /// Max capacity for transient storage.
+         queue_length: u64,
+         /// Expiry time of data in the buffer if the buffer is full. Set to `None` for no expiry.
+         expiry_time: Option<Seconds>,
+         /// Epoch to wait before attempting the next network synchronization of data in the buffer.
+         sync_wait_time: Seconds,
+         /// The data consistency model to be supported by the node. This must be uniform across all
+         /// nodes to prevent undefined behaviour.
+         consistency_model: ConsistencyModel,
+         /// When data has arrived and is saved into the buffer, the time to wait for it to get to
+         /// other peers after which it can be picked for synchronization.
+         data_aging_period: Seconds,
+      },
+      /// A default configuration: `queue_length` = 100, `expiry_time` = 60 seconds,
+      /// `sync_wait_time` = 5 seconds, `consistency_model`: `Eventual`, `data_wait_period` = 5
+      /// seconds.
+      Default,
+   }
+```
 
 1. **Receiving Data**:
 
