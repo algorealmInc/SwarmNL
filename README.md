@@ -274,6 +274,7 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
 #### Configuring a Node for Replication
 
 ```rust
+    #![cfg_attr(not(doctest))]
     //! Configure the node for replication with a strong consistency model
 
     // Define the replica network ID
@@ -349,7 +350,7 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
 #### Configuring a node for sharding
 
 ```rust
-
+    #![cfg_attr(not(doctest))]
     //! Configure a node for sharding operations
 
     /// The constant id of the sharded network. Should be kept as a secret.
@@ -441,6 +442,7 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
 #### Choosing a sharding algorithm and storing data on the network
 
 ```rust
+    #![cfg_attr(not(doctest))]
     //! Select a sharding algorithm and assign nodes to their respective shards
 
     // Initialize the hash-based sharding policy
