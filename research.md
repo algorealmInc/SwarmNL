@@ -8,7 +8,83 @@ Fault tolerance in SwarmNL is primarily achieved through **redundancy**, which e
 
 ### **Replication**
 
-SwarmNL facilitates seamless data replication among configured nodes in the network. This replication is governed by a configurable **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
+SwarmNL simplifies data replication across nodes, ensuring consistency and reliability in distributed systems. Below is the structure of an entry in the replication buffer, along with the purpose of each field:
+
+```rust
+   /// Represents an entry in the replication buffer for marshaling and transient storage
+   /// of incoming replication payloads.
+   #[derive(Clone, Debug)]
+   pub struct ReplBufferData {
+      /// The raw incoming data from the replica peer.
+      pub data: StringVector,
+      /// Lamport clock for ordering and synchronization.
+      pub lamport_clock: Nonce,
+      /// Timestamp indicating when the message was sent.
+      pub outgoing_timestamp: Seconds,
+      /// Timestamp indicating when the message was received.
+      pub incoming_timestamp: Seconds,
+      /// A unique identifier for the message, typically a hash of the payload.
+      pub message_id: String,
+      /// The peer ID of the source node that sent the data.
+      pub source: PeerId,
+      /// Number of confirmations for strong consistency models.
+      pub confirmations: Option<Nonce>,
+   }
+```
+### **Field Descriptions**
+
+- **`data`**  
+  The raw data received from a replica peer. This field contains a `StringVector`, which is a vector of strings representing the replicated payload.
+
+- **`lamport_clock`**  
+  A critical synchronization and ordering primitive in distributed systems. The Lamport clock is used internally in the replication buffer queue to order messages and data across the replication network. The clock is incremented whenever a node receives a message or sends data for replication. Each node maintains its own Lamport clock, updating it with the highest value received in messages. The replication buffer is implemented as a `BTreeSet`, ordered by this clock.
+
+```rust
+   /// Implement Ord.
+   impl Ord for ReplBufferData {
+      fn cmp(&self, other: &Self) -> Ordering {
+         self.lamport_clock
+            .cmp(&other.lamport_clock) // Compare by lamport_clock first
+            .then_with(|| self.message_id.cmp(&other.message_id)) // Then compare by message_id
+      }
+   }
+
+   /// Implement PartialOrd.
+   impl PartialOrd for ReplBufferData {
+      fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+         Some(self.cmp(other))
+      }
+   }
+
+   /// Implement Eq.
+   impl Eq for ReplBufferData {}
+
+   /// Implement PartialEq.
+   impl PartialEq for ReplBufferData {
+      fn eq(&self, other: &Self) -> bool {
+         self.lamport_clock == other.lamport_clock && self.message_id == other.message_id
+      }
+   }
+```
+- **`outgoing_timestamp`**  
+  Records the time a message leaves the source node for replication across the network.
+
+- **`incoming_timestamp`**  
+  Captures the time when replicated data is received on a node.
+
+- **`message_id`**  
+  A unique identifier, typically a hash of the message payload. It ensures the uniqueness of messages in the replication buffer and prevents duplication. In eventual consistency models, only `message_id`s are exchanged for comparison before data is pulled on demand.
+
+- **`source`**  
+  The peer ID of the node that sent the replicated data across the network.
+
+- **`confirmations`**  
+  Relevant for strong consistency models, this field tracks the number of confirmations received from nodes in the network. Data is only moved from the transient replication buffer to the primary public buffer for application consumption once the configured confirmation threshold is met.
+
+
+Replication is configured by important setting that dictate the behaviour of the network. These settings are considered below:
+
+This replication is governed by a configurable **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
 
 ```rust
    /// The consistency models supported.
@@ -36,52 +112,29 @@ SwarmNL facilitates seamless data replication among configured nodes in the netw
    }
 ```
 
-#### **1. Strong Consistency**
+#### - Strong Consistency**
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
-```rust
-   /// Important data to marshall from incoming relication payload and store in the transient
-   /// buffer.
-   #[derive(Clone, Debug)]
-   pub struct ReplBufferData {
-      /// Raw incoming data.
-      pub data: StringVector,
-      /// Lamports clock for synchronization.
-      pub lamport_clock: Nonce,
-      /// Timestamp at which the message left the sending node.
-      pub outgoing_timestamp: Seconds,
-      /// Timestamp at which the message arrived.
-      pub incoming_timestamp: Seconds,
-      /// Message ID to prevent deduplication. It is usually a hash of the incoming message.
-      pub message_id: String,
-      /// Sender PeerId.
-      pub sender: PeerId,
-      /// Number of confirmations. This is to help the nodes using the strong consistency
-      /// synchronization data model to come to an agreement
-      pub confirmations: Option<Nonce>,
-   }
-```
-
 1. **Receiving Data**:
 
-   - When replicated data arrives at a node, it includes a flag (`confirmation count`) initialized to `1`, indicating the originating node already has the data.
+   - When replicated data arrives at a node, it includes a flag (`confirmations`) initialized to `1`, indicating the originating node already has the data.
    - This data is stored in the **temporary buffer** of the receiving node.
 
 2. **Broadcasting Data**:
 
    - The receiving node immediately broadcasts the data to its replica peers.
-   - Each peer increments the `confirmation count` upon receiving the broadcast.
+   - Each peer increments the `confirmations` fields of the data upon receiving the broadcast.
 
 3. **Confirming Consistency**:
-   - When the `confirmation count` reaches `node_count - 1` (e.g., 2 for a 3-node network), the data is deemed consistent.
+   - When the `confirmations` reaches `node_count - 1` (e.g., 2 for a 3-node network), the data is deemed consistent.
    - The data is then moved from the temporary buffer to the primary (public) buffer, making it accessible to the application layer.
 
 This model guarantees that data is fully synchronized across all replicas before it becomes available to the application layer.
 
 ---
 
-#### **2. Eventual Consistency**
+#### - Eventual Consistency**
 
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
