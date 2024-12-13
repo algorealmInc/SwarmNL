@@ -13,8 +13,8 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
 #### Replication data structure
 
 ```rust
-   /// Represents an entry in the replication buffer for marshaling and transient storage
-   /// of incoming replication payloads.
+   /// Important data to marshall from incoming relication payload and store in the transient
+   /// buffer.
    #[derive(Clone, Debug)]
    pub struct ReplBufferData {
       /// The raw incoming data from the replica peer.
@@ -84,9 +84,11 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
   Relevant for `strong consistency` synchronization models, this field tracks the number of confirmations received from nodes in the network. Data is only moved from the transient replication buffer to the primary public buffer for application consumption once the configured confirmation threshold is met.
 
 #### Configurations
+
 Replication is governed by key primitives that define the behavior of individual nodes and the network as a whole. These settings are detailed below:
+
 ```rust
-   ///` Enum containing configurations for replication.
+   /// Enum containing configurations for replication.
    #[derive(Clone, Debug)]
    pub enum ReplNetworkConfig {
       /// A custom configuration.
@@ -164,7 +166,7 @@ This replication is governed by a configurable **consistency model**, which ensu
    }
 ```
 
-#### - Strong Consistency\*\*
+#### - Strong Consistency
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
