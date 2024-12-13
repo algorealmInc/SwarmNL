@@ -41,7 +41,7 @@ Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm
 
 ## Research and Technicalities
 
-Please check [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html) for more technical details and understanding of SwarmNL and it's design choices.
+Please check [here](https://github.com/algorealmInc/SwarmNL/blob/main/research.md) for more technical details and understanding of SwarmNL and it's design choices.
 
 ## Features and examples
 
