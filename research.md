@@ -128,7 +128,7 @@ Replication is governed by key primitives that define the behavior of individual
 - **`data_aging_period`**  
   The waiting period (in seconds) after data is saved into the buffer before it is eligible for synchronization. This allows for additional processing or validations if needed.
 
-### Default Configuration
+#### Default Configuration
 
 If no custom configuration is provided, the library uses a default setup:
 
