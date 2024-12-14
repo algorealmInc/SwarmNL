@@ -4,6 +4,8 @@
 //! eventual consistency data synchronization model. Here we are spinning up three replica nodes that accept data
 //! from standard input to read contents off the replica buffer or to immedately replicate the input data across its replica network.
 
+#![allow(unused_variables, dead_code, unused_imports)]
+
 use std::{collections::HashMap, io::{self, Write}, time::Duration};
 
 use swarm_nl::{

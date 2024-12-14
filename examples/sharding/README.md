@@ -114,4 +114,4 @@ Run:
 docker run -it range-based
 ```
 
-Hit `Ctrl+D` to exit.
+The Docker image will open three terminals and the script will submit commands to each one to demonstrate the example. To quit, use the `exit` command in each terminal.
