@@ -20,6 +20,8 @@
 //! This setup highlights the flexibility of SwarmNL in implementing custom sharding policies
 //! while maintaining seamless integration with replication mechanisms.
 
+#![allow(unused_variables, dead_code, unused_imports)]
+
 use std::{
 	collections::{BTreeMap, HashMap},
 	fs,
@@ -353,7 +355,7 @@ async fn run_node(
 	println!("Usage:");
 	println!("shard <key> <file> <data>          - Place data in appropriate shard");
 	println!("Fetch <key> <file>                 - Request data from the network");
-	println!("read <file>      				     - Read data stored locally on this shard");
+	println!("read <file>               - Read data stored locally on this shard");
 	println!("exit                               - Exit the application");
 
 	loop {

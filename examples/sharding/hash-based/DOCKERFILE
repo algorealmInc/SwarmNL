@@ -5,7 +5,7 @@ FROM rust:latest
 RUN apt-get update && apt-get install -y tmux bash && apt-get clean
 
 # Set the working directory
-WORKDIR /app
+WORKDIR /usr/src/swarmnl-hash-based-sharding-demo
 
 # Copy the Rust project into the container
 COPY . .
