@@ -5,11 +5,12 @@ tmux new-session -d -s rust-nodes "cargo run --features=first-node"
 tmux split-window -h "cargo run --features=second-node"
 tmux split-window -v "cargo run --features=third-node"
 
-# Arrange panes (optional, for better layout)
+# Arrange panes for better layout
 tmux select-layout tiled
 
 # Give the nodes some time to start
-sleep 7
+echo "Waiting 120 seconds for all three nodes to start..."
+sleep 120
 
 # Send commands to each pane
 # Pane 0 (first node)

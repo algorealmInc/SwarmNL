@@ -1,18 +1,23 @@
-# Use the official Rust image as a base
+# Use a Rust base image
 FROM rust:latest
 
-# Set the working directory inside the container
+# Install tmux and other utilities
+RUN apt-get update && apt-get install -y tmux bash && apt-get clean
+
+# Set the working directory
 WORKDIR /usr/src/swarmnl-range-based-sharding-demo
 
-# Copy the Cargo.toml and Cargo.lock files to leverage Docker cache
-COPY Cargo.toml Cargo.lock ./
+# Copy the Rust project into the container
 COPY . .
 
-# Build the Rust crate
-RUN cargo build --release
+# Prebuild dependencies to speed up the runtime builds
+RUN cargo build --release --features=first-node && \
+    cargo build --release --features=second-node && \
+    cargo build --release --features=third-node
 
-# Run the script to start both nodes
-COPY run_nodes.sh .
-RUN chmod +x run_nodes.sh 
+# Copy the tmux startup script
+COPY run_nodes.sh /run_nodes.sh
+RUN chmod +x /run_nodes.sh
 
-CMD ["./run_nodes.sh"]
+# Start tmux with the script
+CMD ["/run_nodes.sh"]
