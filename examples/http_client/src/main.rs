@@ -6,6 +6,8 @@
 //! providing interfaces to handle network events as they occur. This example demonstrates how to
 //! send an HTTP POST request to a remote server in response to incoming replication data events.
 
+#![allow(unused_variables, dead_code, unused_imports)]
+
 use std::{
 	collections::HashMap,
 	io::{self, Write},
