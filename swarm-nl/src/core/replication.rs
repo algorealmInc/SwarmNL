@@ -12,7 +12,7 @@ use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::SystemTime};
 pub struct ReplConfigData {
 	/// Lamport's clock for synchronization.
 	pub lamport_clock: Nonce,
-	/// Clock of last data consumed from the replica buffer
+	/// Clock of last data consumed from the replica buffer.
 	pub last_clock: Nonce,
 	/// Replica nodes described by their addresses.
 	pub nodes: HashMap<String, String>,

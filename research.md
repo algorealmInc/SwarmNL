@@ -169,9 +169,9 @@ Replication is greatly influenced by the configured **consistency model**, which
    /// usecase and objective.
    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
    pub enum ConsistencyModel {
-      /// Eventual consistency
+      /// Eventual consistency.
       Eventual,
-      /// Strong consistency
+      /// Strong consistency.
       Strong(ConsensusModel),
    }
 
@@ -179,9 +179,9 @@ Replication is greatly influenced by the configured **consistency model**, which
    /// during the impl of a strong consistency sync model.
    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
    pub enum ConsensusModel {
-      /// All nodes in the network must contribute to consensus
+      /// All nodes in the network must contribute to consensus.
       All,
-      /// Just a subset of the network are needed for consensus
+      /// Just a subset of the network are needed for consensus.
       MinPeers(u64),
    }
 ```
