@@ -5,15 +5,13 @@ FROM rust:latest
 RUN apt-get update && apt-get install -y tmux bash && apt-get clean
 
 # Set the working directory
-WORKDIR /usr/src/swarmnl-eventual-consistency-replication-demo
+WORKDIR /usr/src/swarmnl-peer-cloning-replication-demo
 
 # Copy the Rust project into the container
 COPY . .
 
-# Prebuild dependencies to speed up the runtime builds
-RUN cargo build --release --features=first-node && \
-    cargo build --release --features=second-node && \
-    cargo build --release --features=third-node
+# Prebuild Rust binary to speed up the runtime builds
+RUN cargo build --release
 
 # Copy the tmux startup script
 COPY run_nodes.sh /run_nodes.sh

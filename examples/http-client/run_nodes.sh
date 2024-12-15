@@ -18,7 +18,7 @@ sleep 3
 
 # Pane 1 (second node)
 tmux send-keys -t rust-nodes:0.1 "repl great" C-m
-sleep 3
+sleep 12
 
 # Pane 2 (third node)
 tmux send-keys -t rust-nodes:0.2 "repl amazing" C-m
@@ -26,8 +26,3 @@ sleep 3
 
 # Attach to the session so you can observe the output
 tmux attach-session -t rust-nodes
-
-# Exit the sessions
-tmux send-keys -t rust-nodes:0.0 "exit" C-m
-tmux send-keys -t rust-nodes:0.1 "exit" C-m
-tmux send-keys -t rust-nodes:0.2 "exit" C-m
