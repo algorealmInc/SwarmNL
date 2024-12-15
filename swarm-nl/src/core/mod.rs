@@ -6,6 +6,7 @@
 #![doc = include_str!("../../doc/core/NetworkBuilder.md")]
 #![doc = include_str!("../../doc/core/ApplicationInteraction.md")]
 #![doc = include_str!("../../doc/core/EventHandling.md")]
+#![doc = include_str!("../../doc/core/Replication.md")]
 
 use std::{
 	cmp,
