@@ -134,7 +134,7 @@ pub fn string_to_peer_id(peer_id_string: &str) -> Option<PeerId> {
 	PeerId::from_bytes(&peer_id_string.from_base58().unwrap_or_default()).ok()
 }
 
-/// Generate a random string of variable length
+/// Generate a random string of variable length.
 pub fn generate_random_string(length: usize) -> String {
 	let mut rng = rand::thread_rng();
 	(0..length)
@@ -143,7 +143,7 @@ pub fn generate_random_string(length: usize) -> String {
 }
 
 /// Unmarshall data recieved as RPC during the execution of the eventual consistency algorithm to
-/// fill in missing messages in the node's buffer
+/// fill in missing messages in the node's buffer.
 pub fn unmarshal_messages(data: Vec<Vec<u8>>) -> Vec<ReplBufferData> {
 	let mut result = Vec::new();
 
@@ -185,7 +185,7 @@ pub fn unmarshal_messages(data: Vec<Vec<u8>>) -> Vec<ReplBufferData> {
 	result
 }
 
-/// Get unix timestamp as string
+/// Get unix timestamp as string.
 pub fn get_unix_timestamp() -> Seconds {
 	// Get the current system time
 	let now = SystemTime::now();
@@ -203,7 +203,7 @@ pub fn byte_vec_to_string_vec(input: ByteVector) -> StringVector {
 		.collect()
 }
 
-/// Convert a [StringVector] to a [ByteVector]
+/// Convert a [StringVector] to a [ByteVector].
 pub fn string_vec_to_byte_vec(input: StringVector) -> ByteVector {
 	input.into_iter().map(|s| s.into_bytes()).collect()
 }
@@ -228,6 +228,7 @@ pub fn shard_image_to_bytes(
 	serde_json::to_vec(&serializable_image)
 }
 
+/// Merge two shard network states.
 pub fn merge_shard_states(
 	local_state: &mut HashMap<String, HashSet<PeerId>>,
 	incoming_state: HashMap<String, HashSet<PeerId>>,
@@ -243,7 +244,7 @@ pub fn merge_shard_states(
 	}
 }
 
-/// Deserialize bytes into HashMap<String, HashSet<PeerId>>
+/// Deserialize bytes into shard image structure.
 pub fn bytes_to_shard_image(bytes: Vec<u8>) -> HashMap<String, HashSet<PeerId>> {
 	// Deserialize into the serializable form
 	if let Ok(serializable_image) =
