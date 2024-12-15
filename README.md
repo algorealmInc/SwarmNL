@@ -38,9 +38,9 @@ Say goodbye to the complexities of networking and hello to simplicity. With Swar
 
 Have a look at these step-by-step examples that demonstrate the use of SwarmNL in various contexts:
 
-- [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/echo_server): demonstrates a simple use case of setting up a node and querying the network layer.
-- [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/file_sharing_app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
-- [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/simple_game): demonstrates communicating with peers over the network through gossiping.
+- [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/echo-server): demonstrates a simple use case of setting up a node and querying the network layer.
+- [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/file-sharing-app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
+- [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/simple-game): demonstrates communicating with peers over the network through gossiping.
 - [Sharding tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/sharding): demonstrates splitting a network into shards for scaling and handling communication between various nodes in a shard and across the network.
 - [Replication tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
 

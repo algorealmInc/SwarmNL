@@ -1,10 +1,16 @@
 [package]
-name = "echo_server"
+name = "simple-game"
 version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rust-ini = "0.20.0"
 swarm_nl = { path = "../../swarm_nl", features = ["tokio-runtime"] }
 tokio = { version = "1.37.0", features = ["full"] }
+rand = "0.8.5"
+
+[features]
+first-node = []
+second-node = []

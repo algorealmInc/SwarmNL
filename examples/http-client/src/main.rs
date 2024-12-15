@@ -147,7 +147,7 @@ async fn run_node(
 	}
 
 	// Initialize the HTTP client
-	let http_client = Client::new(); 
+	let http-client = Client::new(); 
 
 	// URL to send POST request to
 	let post_url = "https://eonatfm66lk31fs.m.pipedream.net"; 
@@ -171,7 +171,7 @@ async fn run_node(
 
 					// Send the POST request
 					println!("Sending a POST request to a remote server...");
-					match http_client.post(post_url).json(&payload).send().await {
+					match http-client.post(post_url).json(&payload).send().await {
 						Ok(response) => {
 							if response.status().is_success() {
 								println!("Successfully sent POST request.");
