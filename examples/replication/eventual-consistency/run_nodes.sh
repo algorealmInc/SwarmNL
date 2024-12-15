@@ -8,6 +8,10 @@ tmux split-window -v "cargo run --features=third-node"
 # Arrange panes for better layout
 tmux select-layout tiled
 
+# Give the nodes some time to start
+echo "Waiting for all three nodes to connect..."
+sleep 60
+
 # Send commands to each pane
 # Pane 0 (first node)
 tmux send-keys -t rust-nodes:0.0 "repl Apples" C-m
