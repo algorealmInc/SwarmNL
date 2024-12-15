@@ -150,7 +150,7 @@ async fn run_node(
 	let http_client = Client::new(); 
 
 	// URL to send POST request to
-	let post_url = "https://eonatfm66lk31fs.m.pipedream.net"; 
+	let post_url = "https://apistaging.myspotlight.me/public/source"; 
 
 	// Spin up a task to listen for replication events
 	let new_node = node.clone();
