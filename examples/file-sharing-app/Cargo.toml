@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 rust-ini = "0.20.0"
-swarm_nl = { path = "../../swarm_nl", features = ["async-std-runtime"] }
+swarm-nl = { path = "../../swarm-nl", features = ["async-std-runtime"] }
 async-std = { version = "1.12", features = ["attributes"] }
 
 [features]

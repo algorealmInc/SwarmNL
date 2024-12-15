@@ -4,9 +4,9 @@ use std::io::{self, BufRead};
 /// This crate demonstrates how to use SwarmNl. Here, we build a simple echo server that
 /// recieves inout from stdin, writes it to the network layer and then recieves it
 /// back from the network.
-use swarm_nl::core::{AppData, AppResponse, Core, CoreBuilder};
-use swarm_nl::setup::BootstrapConfig;
-use swarm_nl::Port;
+use swarm-nl::core::{AppData, AppResponse, Core, CoreBuilder};
+use swarm-nl::setup::BootstrapConfig;
+use swarm-nl::Port;
 
 /// Setup first node using default config.
 pub async fn setup_node(ports: (Port, Port)) -> Core {

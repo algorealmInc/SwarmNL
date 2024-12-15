@@ -116,4 +116,4 @@ async fn main() {
 }
 ```
 
-The server simply creates an Echo request using [`AppData`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/enum.AppData.html#variant.Echo), sends it to the network using [`query_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.query_network) and prints the string received from [`AppResponse`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/enum.AppResponse.html#variant.Echo) to the terminal.
+The server simply creates an Echo request using [`AppData`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/enum.AppData.html#variant.Echo), sends it to the network using [`query_network`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/struct.Core.html#method.query_network) and prints the string received from [`AppResponse`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/enum.AppResponse.html#variant.Echo) to the terminal.

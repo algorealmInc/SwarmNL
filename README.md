@@ -6,7 +6,7 @@
 
 SwarmNL is a library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by [libp2p](https://docs.libp2p.io/), SwarmNL simplifies networking so developers can focus on building.
 
-Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html).
+Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm-nl/index.html).
 
 <!-- TOC start -->
 
@@ -103,7 +103,7 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 
 ```
 
-Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
+Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm-nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
 ### Event handling
 

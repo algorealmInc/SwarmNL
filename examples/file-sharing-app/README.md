@@ -222,9 +222,9 @@ async fn setup_node_2(
 
 6. Implement the following methods from the `EventHandler` trait:
 
-- [`fn rpc_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.rpc_incoming_message_handled)
-- [`fn gossipsub_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_handled)
-- [`fn kademlia_put_record_success`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#method.kademlia_put_record_success)
+- [`fn rpc_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#tymethod.rpc_incoming_message_handled)
+- [`fn gossipsub_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_handled)
+- [`fn kademlia_put_record_success`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#method.kademlia_put_record_success)
 
 1. Create a function that runs _node 1_ and loops indefinately to receive and respond to network events (i.e. the RPC request of data on the file system).
 
@@ -263,7 +263,7 @@ async fn run_node_1() {
 }
 ```
 
-7. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.recv_from_network) to handle the request.
+7. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/struct.Core.html#method.recv_from_network) to handle the request.
 
 ```rust
 async fn run_node_2() {

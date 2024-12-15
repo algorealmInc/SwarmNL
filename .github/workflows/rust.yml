@@ -17,8 +17,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     # - name: Build with async-std-runtime
-      # run: cd swarm_nl && cargo build --features=async-std-runtime
+      # run: cd swarm-nl && cargo build --features=async-std-runtime
     - name: Build with tokio-runtime
-      run: cd swarm_nl && cargo build --features=tokio-runtime
+      run: cd swarm-nl && cargo build --features=tokio-runtime
     - name: Run tests
-      run: cd swarm_nl && cargo test --lib --features=tokio-runtime 
+      run: cd swarm-nl && cargo test --lib --features=tokio-runtime 
