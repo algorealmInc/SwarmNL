@@ -1,8 +1,8 @@
 # Event Handling
 
-SwarmNl handles events are stored in an internal buffer in the network layer as they occur. They have to be polled and consumed explicitly before they are handled. [`Core`] exposes events and its handling to the application layer with two events: 
+Network events are stored in an internal buffer in the network layer as they occur. They have to be polled and consumed explicitly and are exposed by [`Core`] to the application layer by two functions:
 
-- [`Core::next_event]: This function returns the next event in the queue and returns `None` if the internal event buffrer queue is empty.
+- [`Core::next_event()]: This function returns the next event in the queue and returns `None` if the internal event buffer queue is empty.
 
 ```rust
     // ...
@@ -33,7 +33,7 @@ SwarmNl handles events are stored in an internal buffer in the network layer as 
     // ...
 ```
 
-- [`Core::events]: This function drains all the buffered events and returns it to the application layer as an `Iterator`;
+- [`Core::events()`]: This function drains all the buffered events and returns it to the application layer as an `Iterator` object;
 
 ```rust
     // ...
