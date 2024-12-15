@@ -1,7 +1,7 @@
 // Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
-//! The module that contains important data structures and logic for the functioning of swarmNl.
+//! The module that contains important data structures and logic for the functioning of SwarmNL.
 
 use self::ping_config::PingInfo;
 use libp2p::gossipsub::MessageId;
@@ -638,7 +638,7 @@ pub mod ping_config {
 	}
 }
 
-/// Module containing important state relating to the `Gossipsub` protocol.
+/// Module containing important state relating to the [`Gossipsub`](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/README.md) protocol.
 pub mod gossipsub_cfg {
 	use super::*;
 
@@ -649,7 +649,7 @@ pub mod gossipsub_cfg {
 		pub list: HashSet<PeerId>,
 	}
 
-	/// GossipSub configuration.
+	/// `Gossipsub` configuration.
 	pub enum GossipsubConfig {
 		/// A default configuration.
 		Default,
