@@ -1,5 +1,5 @@
 [package]
-name = "http_client_model"
+name = "http-client-model"
 version = "0.2.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 rust-ini = "0.20.0"
-swarm_nl = { path = "../../swarm_nl", features = ["tokio-runtime"] }
+swarm-nl = { git = "https://github.com/algorealmInc/SwarmNL.git", features = ["tokio-runtime"] }
 tokio = { version = "1.37.0", features = ["full"] }
 # async-std = { version = "1.12", features = ["attributes"] }
 reqwest = { version = "0.12.9", features = ["json"] }

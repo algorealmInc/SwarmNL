@@ -24,17 +24,17 @@ jobs:
         id: pages
         uses: actions/configure-pages@v4
       - name: Clean docs folder
-        run: cd swarm_nl && cargo clean --doc
+        run: cd swarm-nl && cargo clean --doc
       - name: Build docs
-        run: cd swarm_nl && cargo doc --no-deps --features=tokio-runtime
+        run: cd swarm-nl && cargo doc --no-deps --features=tokio-runtime
       - name: Add redirect
-        run: cd swarm_nl && echo '<meta http-equiv="refresh" content="0;url=aoc/index.html">' > target/doc/index.html
+        run: cd swarm-nl && echo '<meta http-equiv="refresh" content="0;url=aoc/index.html">' > target/doc/index.html
       - name: Remove lock file
-        run: cd swarm_nl && rm target/doc/.lock
+        run: cd swarm-nl && rm target/doc/.lock
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: swarm_nl/target/doc
+          path: swarm-nl/target/doc
   deploy:
     name: Deploy
     environment:

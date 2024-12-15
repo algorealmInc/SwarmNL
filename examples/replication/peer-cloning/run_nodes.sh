@@ -9,8 +9,8 @@ tmux split-window -v "cargo run --features=third-node"
 tmux select-layout tiled
 
 # Give the nodes some time to start
-echo "Waiting for all three nodes to start..."
-sleep 7
+echo "Waiting for all three nodes to connect..."
+sleep 60
 
 # Send commands to each pane
 # Pane 0 (first node)
@@ -25,9 +25,10 @@ sleep 2
 tmux send-keys -t rust-nodes:0.2 "repl Papayas" C-m
 sleep 2
 
-# Read and fetch commands
+# Clone and read
+tmux send-keys -t rust-nodes:0.2 "clone 12D3KooWQDpMufFJytG2xQuz7JzfK2vBH2g3XXBJ9v2xY7SegRUk" C-m
+sleep 4
 tmux send-keys -t rust-nodes:0.2 "read" C-m
-tmux send-keys -t rust-nodes:0.1 "read" C-m
 
 # Attach to the session so you can observe the output
 tmux attach-session -t rust-nodes

@@ -6,22 +6,26 @@
 
 SwarmNL is a library designed for P2P networking in distributed systems. It's lightweight, scalable, and easy to configure, making it perfect for decentralized applications. Powered by [libp2p](https://docs.libp2p.io/), SwarmNL simplifies networking so developers can focus on building.
 
-<!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
+Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm-nl/index.html).
+
+<!-- TOC start -->
 
 - [Why SwarmNL?](#why-swarmnl)
-- [examples](#examples)
-- [Documentation](#documentation)
-- [Features and examples](#features-and-examples)
-  - [Node configuration](#node-configuration)
-  - [Node communication](#node-communication)
+- [Tutorials and examples](#tutorials-and-examples)
+- [Research and technicalities](#research-and-technicalities)
+- [Node configuration](#node-configuration)
+  - [Example](#example-node-configuration-with-default-settings)
+  - [Event handling](#event-handling)
+- [Node communication](#node-communication)
+  - [Example](#example-communicating-with-the-network-layer)
 - [Replication](#replication)
   - [Key features](#key-features)
   - [Example](#example-configuring-and-using-replication)
-  - [Why use SwarmNl for Replication](#why-use-swarmnl-for-replication)
+  - [Why use SwarmNL for replication](#why-use-swarmnl-for-replication)
 - [Sharding](#sharding)
   - [Key features](#key-features-1)
   - [Example](#example-configuring-and-operating-a-sharded-network)
-  - [Why use SwarmNl for Sharding](#why-use-swarmnl-for-sharding)
+  - [Why use SwarmNL for sharding](#why-use-swarmnl-for-sharding)
 <!-- TOC end -->
 
 ## Why SwarmNL?
@@ -30,29 +34,23 @@ SwarmNL makes buiding a peer-to-peer decentralized and distributed networking st
 
 Say goodbye to the complexities of networking and hello to simplicity. With SwarmNL, all the hard work is done for you, leaving you to focus on simple configurations and your application logic.
 
-## Examples
+## Tutorials and examples
 
-Have a look at some examples that demonstrate the use of SwarmNl in various contexts:
+Have a look at these step-by-step examples that demonstrate the use of SwarmNL in various contexts:
 
-- [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/echo_server): demonstrates a simple use case of setting up a node and querying the network layer.
-- [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/file_sharing_app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
-- [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/simple_game): demonstrates communicating with peers over the network through gossiping.
-- [The sharding tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/sharding): demonstrates splitting a network into shards for scaling and handling communication between various nodes in a shard and across the network.
-- [The replication tutorial](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
+- [Echo server tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/echo-server): demonstrates a simple use case of setting up a node and querying the network layer.
+- [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/file-sharing-app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
+- [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/simple-game): demonstrates communicating with peers over the network through gossiping.
+- [Sharding tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/sharding): demonstrates splitting a network into shards for scaling and handling communication between various nodes in a shard and across the network.
+- [Replication tutorials](https://github.com/algorealmInc/SwarmNL/tree/main/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
 
-Visit the examples folder [here](https://github.com/algorealmInc/SwarmNL/tree/dev/examples) to understand more on how to use the library. The examples also contains integration with IPFS, HTTP servers etc.
+Visit the examples folder [here](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/) to gain a fuller understanding on ways to use the library, including how to integrate SwarmNL with IPFS and HTTP servers.
 
-## Documentation
+## Research and technicalities
 
-Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html).
+Have a look at [this document](https://github.com/algorealmInc/SwarmNL/blob/main/research.md) for a technical overview of SwarmNL and it's design choices.
 
-## Research and Technicalities
-
-Please check [here](https://github.com/algorealmInc/SwarmNL/blob/main/research.md) for more technical details and understanding of SwarmNL and it's design choices.
-
-## Features and examples
-
-### Node configuration
+## Node configuration
 
 SwarmNL provides a simple interface to configure a node and specify parameters to dictate its behaviour. This includes:
 
@@ -63,10 +61,10 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 - Protocol specification and handlers
 - Event handlers for network events and logging
 
-#### Example
+### Example: node configuration with default settings
 
 ```rust
-    #![cfg_attr(not(doctest))]
+      #![cfg_attr(not(doctest))]
       //! Using the default node setup configuration
 
       // Default config
@@ -105,9 +103,9 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 
 ```
 
-Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm_nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
+Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm-nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
-### Event Handling
+### Event handling
 
 During network operations, various events are generated. These events help us track the activities in the network layer. When generated, they are stored in an internal buffer until they are explicitly polled and consumed, or until the queue is full. It is important to consume critical events promptly to prevent loss if the buffer becomes full.
 
@@ -181,7 +179,7 @@ During network operations, various events are generated. These events help us tr
 	}
 ```
 
-### Node communication
+## Node communication
 
 For communication, SwarmNL leverages the powerful capabilities of libp2p. These includes:
 
@@ -189,10 +187,10 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 - A simple RPC mechanism to exchange data quickly between peers.
 - Gossiping: SwarmNL uses the Gossipsub 1.1 protocol, specified by the [libp2p spec](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md).
 
-#### Communicate with the network layer
+### Example: communicating with the network layer
 
 ```rust
-    #![cfg_attr(not(doctest))]
+      #![cfg_attr(not(doctest))]
       //! Communicate with remote nodes using the simple and familiar async-await paradigm.
 
       // Build node or network core
@@ -260,18 +258,18 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 
 **SwarmNL** makes fault tolerance through redundancy simple and easy to integrate into your application. With replication built into SwarmNL, you can achieve robust and scalable systems effortlessly.
 
-### Key Features
+### Key features
 
-- **Consistency Models**: Choose from a variety of consistency models, including strong consistency with customizable parameters.
-- **Dynamic Node Management**: Nodes can seamlessly join and leave replica networks without disrupting operations. Events are quickly propagated to all nodes.
-- **Ease of Use**: Minimal setup is required to add replication to your system, ensuring quick integration and deployment.
-- **Node Cloning**: Complete instant cloning of data in the buffer of a replica peer.
+- **Consistency models**: Choose from a variety of consistency models, including strong consistency with customizable parameters.
+- **Dynamic node management**: Nodes can seamlessly join and leave replica networks without disrupting operations. Events are quickly propagated to all nodes.
+- **Ease of use**: Minimal setup is required to add replication to your system, ensuring quick integration and deployment.
+- **Node cloning**: Complete instant cloning of data in the buffer of a replica peer.
 
-### Example: Configuring and Using Replication
+### Example: configuring and using replication
 
 Here’s how you can set up and use SwarmNL's replication capabilities:
 
-#### Configuring a Node for Replication
+#### Configuring a node for replication
 
 ```rust
     #![cfg_attr(not(doctest))]
@@ -299,7 +297,7 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
     node.replicate(payload, REPL_NETWORK_ID).await;
 ```
 
-#### Handling Replication Events
+#### Handling replication events
 
 SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
 
@@ -326,7 +324,7 @@ SwarmNL exposes network events to your application, allowing you to process inco
 
 ```
 
-### Why Use SwarmNL for Replication?
+### Why use SwarmNL for replication?
 
 - **Reliability**: Ensures data integrity across multiple nodes with customizable consistency guarantees.
 - **Scalability**: Handles dynamic node changes with ease, making it suitable for large distributed systems.
@@ -336,14 +334,14 @@ SwarmNL exposes network events to your application, allowing you to process inco
 
 Sharding is a capability in distributed systems that enables networks to scale efficiently. SwarmNL provides a generic sharding functionality, allowing applications to easily partition their network and configure it for sharding.
 
-### Key Features
+### Key features
 
 - **Customizable Sharding Algorithms**: SwarmNL supports generic interfaces that let you specify your own sharding algorithm, such as hash-based or range-based, while leveraging the full capabilities of the network.
 - **Replication-Driven Sharding**: Sharding in SwarmNL is built on its replication capabilities, ensuring the library remains lightweight and highly functional.
 - **Data Forwarding**: SwarmNL implements data-forwarding, allowing any node to handle requests for data stored on other nodes within any shard. Data is forwarded to the appropriate node for storage, and a network search algorithm enables retrieval from any node in any shard.
 - **Integrated Application Layer Traps**: To maintain flexibility, SwarmNL permits nodes storing data to `trap` into the application layer when handling data requests. This ensures practicality and usability in real-world scenarios.
 
-### Example: Configuring and Operating a Sharded Network
+### Example: configuring and operating a sharded network
 
 Here’s how you can set up and use SwarmNL's sharding capabilities:
 
@@ -498,7 +496,7 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
         .await;
 ```
 
-#### Handling Sharding Events
+#### Handling sharding events
 
 A node can receive data either through forwarding from a node in another shard or via replication from a peer node in the same shard. Below is an example demonstrating how to listen for and handle both types of events.
 
@@ -554,7 +552,7 @@ A node can receive data either through forwarding from a node in another shard o
     }
 ```
 
-### Why Use SwarmNL for Sharding?
+### Why use SwarmNL for sharding?
 
 SwarmNL integrates the networking and storage layers to deliver a seamless sharding experience. This approach enables nodes to interact directly with the application layer and local environment, providing a robust and flexible solution for scalable distributed systems.
 

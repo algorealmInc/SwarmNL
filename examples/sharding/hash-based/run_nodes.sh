@@ -9,8 +9,8 @@ tmux split-window -v "cargo run --features=third-node"
 tmux select-layout tiled
 
 # Give the nodes some time to start
-echo "Waiting 120 seconds for all three nodes to start..."
-sleep 120
+echo "Waiting for all three nodes to connect..."
+sleep 60
 
 # Send commands to each pane
 # Pane 0 (first node)
@@ -25,7 +25,7 @@ sleep 2
 tmux send-keys -t rust-nodes:0.2 "shard mars mars_creatures.txt Inkls" C-m
 
 # Read and fetch commands
-tmux send-keys -t rust-nodes:0.2 "read" C-m
+tmux send-keys -t rust-nodes:0.2 "read mars_creatures.txt" C-m
 tmux send-keys -t rust-nodes:0.2 "fetch mars mars_creatures.txt" C-m
 tmux send-keys -t rust-nodes:0.1 "fetch earth earth_creatures.txt" C-m
 

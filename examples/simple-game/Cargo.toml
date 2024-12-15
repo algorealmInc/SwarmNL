@@ -1,5 +1,5 @@
 [package]
-name = "file_sharing_app"
+name = "simple-game"
 version = "0.2.0"
 edition = "2021"
 
@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 rust-ini = "0.20.0"
-swarm_nl = { path = "../../swarm_nl", features = ["async-std-runtime"] }
-async-std = { version = "1.12", features = ["attributes"] }
+swarm-nl = { path = "../../swarm-nl", features = ["tokio-runtime"] }
+tokio = { version = "1.37.0", features = ["full"] }
+rand = "0.8.5"
 
 [features]
 first-node = []

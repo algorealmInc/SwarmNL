@@ -1,12 +1,30 @@
-# **SwarmNL: A Library to Build Custom Networking Layers for Decentralized and Distributed Applications**
+# SwarmNL: a library to build custom networking layers for decentralized and distributed applications
 
-SwarmNL addresses two critical concerns in distributed systems: **Scaling** and **Fault Tolerance**. This section focuses on how SwarmNL handles **Fault Tolerance** using redundancy.
+SwarmNL addresses two critical concerns in distributed systems: **fault tolerance** and **scaling**. This document provides a technical overview of the design decisions of how these are implemented in the library.
 
-## **Fault Tolerance**
+## Table of contents
 
-Fault tolerance in SwarmNL is primarily achieved through **redundancy**, which ensures that other nodes in the network remain operational to service incoming requests, even in the event of failures. SwarmNL handles redundancy using one key technique: **Replication**.
+- [Fault Tolerance](#fault-tolerance)
+   - [Replication](#replication)
+     - [Replication Data Structure](#replication-data-structure)
+     - [Configurations](#configurations)
+     - [Default Configuration](#default-configuration)
+     - [Consistency Model](#consistency-model)
+       - [Strong Consistency](#strong-consistency)
+       - [Eventual Consistency](#eventual-consistency)
+- [Scaling](#scaling)
+   - [The `Sharding` Trait](#the-sharding-trait)
+     - [Data Forwarding](#data-forwarding)
+   - [The `ShardStorage` Trait](#the-shardstorage-trait)
+     - [Handling Incoming Requests](#handling-incoming-requests)
+   - [Shards and Replication](#shards-and-replication)
+- [Reference](#reference)
 
-### **Replication**
+## Fault tolerance
+
+Fault tolerance in SwarmNL is primarily achieved through **Redundancy**, which ensures that other nodes in the network remain operational to service incoming requests, even in the event of failures. SwarmNL handles redundancy using **Replication**.
+
+### Replication
 
 SwarmNL simplifies data replication across nodes, ensuring consistency and reliability in distributed systems. Below is the structure of an entry in the replication buffer, along with the purpose of each field:
 
@@ -128,9 +146,9 @@ Replication is governed by key primitives that define the behavior of individual
 - **`data_aging_period`**  
   The waiting period (in seconds) after data is saved into the buffer before it is eligible for synchronization. This allows for additional processing or validations if needed.
 
-#### Default Configuration
+#### Default configuration
 
-If no custom configuration is provided, the library uses a default setup:
+If no custom configuration is provided, the library uses a default setup with:
 
 - **`queue_length`**: 100
 - **`expiry_time`**: 60 seconds
@@ -138,7 +156,7 @@ If no custom configuration is provided, the library uses a default setup:
 - **`consistency_model`**: Eventual consistency
 - **`data_aging_period`**: 5 seconds
 
-#### Consistency Model
+#### Consistency model
 
 Replication is greatly influenced by the configured **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
 
@@ -172,12 +190,12 @@ Replication is greatly influenced by the configured **consistency model**, which
 
 In the **Strong Consistency** model, replicated data is temporarily stored in a transient buffer and is only committed to the public buffer after ensuring synchronization across all nodes. The process involves the following steps:
 
-- Receiving Data:
+- Receiving data:
 
   - When replicated data arrives at a node, it includes a flag (`confirmations`) initialized to `1`, indicating the originating node already has the data.
   - This data is stored in the **temporary buffer** of the receiving node.
 
-- Broadcasting Data:
+- Broadcasting data:
 
   - The receiving node immediately broadcasts the data to its replica peers.
   - Each peer increments the `confirmations` fields of the data upon receiving the broadcast.
@@ -192,21 +210,22 @@ This model guarantees that data is fully synchronized across all replicas before
 
 In the **Eventual Consistency** model, replicated data is immediately stored in the **public buffer**. Consistency is achieved over time through a periodic synchronization task. The process works as follows:
 
-- Buffer Queue:
+- Buffer queue:
 
   - The public buffer uses a `BTreeSet` to organize replicated data based on a **Lamport clock**.
 
-- Synchronization Task:
+- Synchronization task:
 
   - A background task periodically broadcasts the `MessageId`s of data in the queue to all replica peers.
   - Peers compare the received `MessageId`s with their local buffer to identify missing data.
 
-- Retrieving Missing Data:
+- Retrieving missing data:
 
   - Peers send an RPC request to retrieve missing data and add it to their buffers.
   - The system trusts that, over time, all nodes will achieve eventual consistency as data propagates and synchronizes across the network.
 
-- Buffer Aging and Eviction:
+- Buffer aging and eviction:
+
   The buffer has a **maximum size** and supports an **aging mechanism**:
   - Each data item has an associated lifespan `max_age` calculated as the current unix timestamp minus the `incoming_timestamp` of the data item.
   - If the buffer is full, items exceeding their lifespan are lazily removed during the next data insertion.
@@ -218,7 +237,7 @@ In the eventual consistency model, the application layer operates with the expec
 
 Scaling the network is primarily achieved through **replication** and **sharding**. Replication has already been discussed in the context of fault tolerance. Scaling enables improved read and write performance by partitioning the network into logical `shards`, each responsible for a subset of the data. A `shard` may span multiple nodes, and each shard manages its own data storage and operations.
 
-### **The `Sharding` Trait**
+### The `Sharding` trait
 
 SwarmNL provides a trait called `Sharding` to implement sharding. To maintain flexibility and configurability, developers are required to implement the `locate_shard()` function within the trait. This function maps a key or data item to a logical shard, allowing developers to define sharding strategies tailored to their application's needs.
 
@@ -274,13 +293,13 @@ The `Sharding` trait also includes generic functions for:
 - Joining or exiting a shard.
 - Fetching data over the network.
 - Storing data in the appropriate shard.
-- **Data forwarding**, explained below.
+- **Data Forwarding**, explained below.
 
-### **Data Forwarding**
+### Data forwarding
 
-Data forwarding occurs when a node receives data it isn’t responsible for due to its shard configuration. In such cases, the node locates the appropriate shard and forwards the data to the relevant nodes within that shard.
+Data Forwarding occurs when a node receives data it isn’t responsible for due to its shard configuration. In such cases, the node locates the appropriate shard and forwards the data to the relevant nodes within that shard.
 
-### How It Works:
+#### How it works
 
 1. The node takes the data's key and uses the `locate_shard()` function to determine which shard the data should go to.
 2. After identifying the target shard, the node finds the nodes in that shard and attempts to forward the data to them using an RPC mechanism.
@@ -324,7 +343,7 @@ This is why replication should be configured for sharding to ensure smooth data 
    //...
 ```
 
-### **The `ShardStorage` Trait**
+### The `ShardStorage` trait
 
 The `ShardStorage` trait allows nodes to `trap` into their application logic and environment to answer the sharded network requests.
 
@@ -337,7 +356,7 @@ pub trait ShardStorage: Send + Sync + Debug {
 }
 ```
 
-### Handling Incoming Requests
+### Handling incoming requests
 
 Incoming requests can be easily managed by calling the `fetch_data()` function on the storage object, which returns the requested data to the asking node in the sharded network.
 
@@ -394,12 +413,13 @@ This approach ensures flexibility, efficiency, and thread-safe handling of data.
    // ...
 ```
 
-### **Shards and Replication**
+### Shards and replication
 
 All nodes within a shard act as replicas of each other and synchronize their data based on the consistency model configured during replication setup. This tight integration between sharding and replication ensures that the data within each shard is reliable and consistent, as defined by the application's requirements.
 
 By combining replication and sharding, SwarmNL offers a scalable and fault-tolerant framework for managing decentralized networks while giving developers the freedom to design shard configurations that align with their use case.
 
 
-#### Reference:
+#### Reference
+
 Andrew Tanenbaum, "Distributed Systems: Principles and Paradigms", 2002.

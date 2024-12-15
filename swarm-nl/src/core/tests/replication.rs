@@ -4,13 +4,6 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
 
-use libp2p::{gossipsub::MessageId, PeerId};
-use libp2p_identity::Keypair;
-use std::{collections::HashMap, io, time::Duration};
-use futures::{
-	channel::mpsc::{self, Receiver, Sender},
-	select, SinkExt, StreamExt,
-};
 use crate::{
 	core::{
 		gossipsub_cfg::GossipsubConfig,
@@ -20,6 +13,13 @@ use crate::{
 	setup::BootstrapConfig,
 	MultiaddrString, PeerIdString, Port,
 };
+use futures::{
+	channel::mpsc::{self, Receiver, Sender},
+	select, SinkExt, StreamExt,
+};
+use libp2p::{gossipsub::MessageId, PeerId};
+use libp2p_identity::Keypair;
+use std::{collections::HashMap, io, time::Duration};
 
 use super::constants::*;
 
@@ -925,8 +925,8 @@ mod eventual_consistency {
 		}
 	}
 
-    #[tokio::test]
-    async fn test_lamports_clock_ordering(){
+	#[tokio::test]
+	async fn test_lamports_clock_ordering() {
 		// Get Peer Id's
 		let peer_id_1 = Keypair::from_protobuf_encoding(&NODE_1_KEYPAIR)
 			.unwrap()
@@ -952,8 +952,8 @@ mod eventual_consistency {
 		let ports_3: (Port, Port) = (49754, 55702);
 		let ports_4: (Port, Port) = (49755, 55704);
 
-        // Setup async channel to send network state between tasks
-        let (mut tx, mut rx) = mpsc::channel::<Vec<(String, u64)>>(5);
+		// Setup async channel to send network state between tasks
+		let (mut tx, mut rx) = mpsc::channel::<Vec<(String, u64)>>(5);
 
 		// Setup node 1
 		let task_1 = tokio::task::spawn(async move {
@@ -989,7 +989,7 @@ mod eventual_consistency {
 				.await
 				.unwrap();
 
-            // Send to replica node 2
+			// Send to replica node 2
 			node.replicate(vec!["Papayas".into()], &REPL_NETWORK_ID)
 				.await
 				.unwrap();
@@ -1026,14 +1026,14 @@ mod eventual_consistency {
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
-            // Publish messages
+			// Publish messages
 			node.replicate(vec!["Oranges".into()], &REPL_NETWORK_ID)
-                .await
-                .unwrap();
-            node.replicate(vec!["Kiwis".into()], &REPL_NETWORK_ID)
-                .await
-                .unwrap();
-            
+				.await
+				.unwrap();
+			node.replicate(vec!["Kiwis".into()], &REPL_NETWORK_ID)
+				.await
+				.unwrap();
+
 			// Keep node running
 			tokio::time::sleep(Duration::from_secs(15)).await;
 		});
@@ -1067,20 +1067,20 @@ mod eventual_consistency {
 			// Join replica network works
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
 
-            // Sleep to give time for node 1 and 2 to publish data to the network
+			// Sleep to give time for node 1 and 2 to publish data to the network
 			tokio::time::sleep(Duration::from_secs(20)).await;
 
-            // Get replica buffer state
-            let mut buffer_state = Vec::new();
-            while let Some(data) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
-                buffer_state.push((data.data[0].clone(), data.lamport_clock));
-            }
+			// Get replica buffer state
+			let mut buffer_state = Vec::new();
+			while let Some(data) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
+				buffer_state.push((data.data[0].clone(), data.lamport_clock));
+			}
 
-            // Send buffer state to node 4 over mpsc channel
-            let _ = tx.send(buffer_state).await;
+			// Send buffer state to node 4 over mpsc channel
+			let _ = tx.send(buffer_state).await;
 
-            // Keep node alive for 10 seconds so the producing end does not close
-            tokio::time::sleep(Duration::from_secs(10)).await;
+			// Keep node alive for 10 seconds so the producing end does not close
+			tokio::time::sleep(Duration::from_secs(10)).await;
 		});
 
 		// Setup node 4
@@ -1111,28 +1111,30 @@ mod eventual_consistency {
 
 			// Join replica network
 			let _ = node.join_repl_network(REPL_NETWORK_ID.into()).await;
-			
-            // We wait for 25 seconds so that node 1, 2 and 3 operations are completed
-            tokio::time::sleep(Duration::from_secs(25)).await;
-			
-            // Get local buffer state
-            let mut local_buffer_state = Vec::new();
-            while let Some(data) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
-                local_buffer_state.push((data.data[0].clone(), data.lamport_clock));
-            }
 
-            // Get node 3's incoming buffer state
-            let incoming_buffer_state = rx.next().await.unwrap();
-            
-            // Compare both buffer states and the ordering of their data
-            for (local_data, incoming_data) in local_buffer_state.iter().zip(incoming_buffer_state.iter()) {
-                assert_eq!(local_data.0, incoming_data.0);
-                assert_eq!(local_data.1, incoming_data.1);
-            }
+			// We wait for 25 seconds so that node 1, 2 and 3 operations are completed
+			tokio::time::sleep(Duration::from_secs(25)).await;
+
+			// Get local buffer state
+			let mut local_buffer_state = Vec::new();
+			while let Some(data) = node.consume_repl_data(REPL_NETWORK_ID.into()).await {
+				local_buffer_state.push((data.data[0].clone(), data.lamport_clock));
+			}
+
+			// Get node 3's incoming buffer state
+			let incoming_buffer_state = rx.next().await.unwrap();
+
+			// Compare both buffer states and the ordering of their data
+			for (local_data, incoming_data) in
+				local_buffer_state.iter().zip(incoming_buffer_state.iter())
+			{
+				assert_eq!(local_data.0, incoming_data.0);
+				assert_eq!(local_data.1, incoming_data.1);
+			}
 		});
 
 		for task in vec![task_1, task_2, task_3] {
 			task.await.unwrap();
 		}
-    }
+	}
 }

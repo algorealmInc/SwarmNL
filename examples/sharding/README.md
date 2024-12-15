@@ -33,7 +33,7 @@ shard earth earth_creatures.txt Unicorns
 shard mars mars_creatures.txt Inkls
 ```
 
-From node 3's terminal, you can read what is in node 3's buffer by submitting the `read` command. To fetch the values from the network, submit the following command from node 3:
+From node 3's terminal, you can read what is stored in node 3 by submitting the `read` command. To fetch the values from the network, submit the following command from node 3:
 
 ```bash
 fetch mars mars_creatures.txt

@@ -118,10 +118,10 @@ impl EventHandler for Game {
 
 2. Implement the event handler methods we'll need for the game. These include:
 
-- [`gossipsub_subscribe_message_recieved`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#method.gossipsub_subscribe_message_recieved)
-- [`gossipsub_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_handled)
-- [`gossipsub_incoming_message_filtered`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_filtered)
-- [`rpc_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/trait.EventHandler.html#tymethod.rpc_incoming_message_handled)
+- [`gossipsub_subscribe_message_recieved`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#method.gossipsub_subscribe_message_recieved)
+- [`gossipsub_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_handled)
+- [`gossipsub_incoming_message_filtered`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_filtered)
+- [`rpc_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#tymethod.rpc_incoming_message_handled)
 
 For `gossipsub_subscribe_message_recieved`:
 
@@ -340,7 +340,7 @@ async fn run_node_1() {
 }
 ```
 
-7. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.recv_from_network) and [`send_to_network`](https://algorealminc.github.io/SwarmNL/swarm_nl/core/struct.Core.html#method.send_to_network) to handle the request.
+7. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/struct.Core.html#method.recv_from_network) and [`send_to_network`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/struct.Core.html#method.send_to_network) to handle the request.
 
 ```rust
 async fn run_node_2() {

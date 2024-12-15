@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 rust-ini = "0.20.0"
-swarm_nl = { git = "https://github.com/algorealmInc/SwarmNL.git", features = ["tokio-runtime"] }
+swarm-nl = { git = "https://github.com/algorealmInc/SwarmNL.git", features = ["tokio-runtime"] }
 tokio = { version = "1.37.0", features = ["full"] }
 # async-std = { version = "1.12", features = ["attributes"] }
 rand = "0.8.5"

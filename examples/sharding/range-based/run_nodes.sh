@@ -9,8 +9,8 @@ tmux split-window -v "cargo run --features=third-node"
 tmux select-layout tiled
 
 # Give the nodes some time to start
-echo "Waiting 120 seconds for all three nodes to start..."
-sleep 120
+echo "Waiting for all three nodes to connect..."
+sleep 60
 
 # Send commands to each pane
 # Pane 0 (first node)
