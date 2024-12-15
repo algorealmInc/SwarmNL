@@ -1,6 +1,6 @@
 # Network builder
 
-To build a network or a node, you first need to create a [`CoreBuilder`] object using the [`CoreBuilder::with_config`] method to create a bootstrap node, then you can simply call [`CoreBuilder::build`] to set up the network. This will create a [`Core`] struct with methods you can use to send and receive data to/from the network.
+To build a network or a node, you first need to create a [`CoreBuilder`] object using the [`CoreBuilder::with_config`] method to create a bootstrap node, then you can simply call [`CoreBuilder::build`] to set up the network. This will create a [`Core`] struct which serves as the interface between an application and the network. It contains several methods used to interact and perform activities on the network.
 
 The [`CoreBuilder::with_config`] method takes a parameter - [`BootstrapConfig`], to pass in a node's bootstrap configuration.
 
@@ -25,7 +25,7 @@ You can explicitly overrride the default values of [`CoreBuilder::with_config`] 
 - [`CoreBuilder::with_network_id`] : Configures the network ID or name e.g. `/your-protocol-name/1.0`.
 - [`CoreBuilder::listen_on`] : Configures the IP address to listen on e.g. IPv4(127.0.0.1).
 - [`CoreBuilder::with_idle_connection_timeout`]: Configures a timeout for keeping a connection alive.
-- [`CoreBuilder::with_replication`]: Configures the node for participation in a replication network.
+- [`CoreBuilder::with_replication`]: Configures the node for replication.
 - etc.
 
 For example: 
@@ -59,6 +59,7 @@ For example:
 			.with_transports(custom_transport.clone())
 			.with_idle_connection_timeout(custom_keep_alive_duration.clone())
 			.listen_on(custom_ip_address.clone())
+			.with_replication(ReplNetworkConfig::Default)
 			.build()
 			.await.
 			.unwrap();
