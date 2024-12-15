@@ -100,49 +100,14 @@ docker run -it file-sharing-demo
 
 ## Tutorial
 
-1. Define your application state and implement `EventHandler`:
-
-```rust
-/// Application State.
-#[derive(Clone)]
-struct FileServer;
-
-/// Handle network events.
-impl EventHandler for FileServer {
-    fn new_listen_addr(
-		&mut self,
-		local_peer_id: PeerId,
-		_listener_id: ListenerId,
-		addr: Multiaddr,
-	) {
-		// announce interfaces we're listening on
-		println!("Peer id: {}", local_peer_id);
-		println!("We're listening on the {}", addr);
-	}
-
-	fn connection_established(
-		&mut self,
-		peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_established_in: Duration,
-	) {
-		println!("Connection established with peer: {:?}", peer_id);
-	}
-	
-	// -- rest of the `EventHandler` implementation goes here --
-}
-```
-
-2. Set a timeout for nodes to initiate connections (this could be 5 seconds, our example is set to 10 for running the Docker example)
+1. Set a timeout for nodes to initiate connections (this could be 5 seconds, our example is set to 10 for running the Docker example)
 
 ```rust
 const NODE_1_WAIT_TIME: u64 = 10;
 const NODE_2_WAIT_TIME: u64 = 10;
 ```
 
-3. Create constants for the file name, file location and protobuf keypair.
+2. Create constants for the file name, file location and protobuf keypair.
 
 ```rust
 /// The key we're writing to the DHT
@@ -159,37 +124,34 @@ pub const PROTOBUF_KEYPAIR: [u8; 68] = [
 ];
 ```
 
-4. Create a function to set up _node_1_ using the specified protobuf keypair and application state from the previous steps.
+3. Create a function to set up _node_1_ using the specified protobuf keypair and application state from the previous steps.
 
 ```rust
-async fn setup_node_1(ports: (Port, Port)) -> Core<FileServer> {
+async fn setup_node_1(ports: (Port, Port)) -> Core {
 	let mut protobuf = PROTOBUF_KEYPAIR.clone();
-	let app_state = FileServer;
 
 	// First, we want to configure our node by specifying a static keypair (for easy connection by
 	// node 2)
 	let config = BootstrapConfig::default()
-		.generate_keypair_from_protobuf("ed25519", buffer)
+		.generate_keypair_from_protobuf("ed25519", &mut protobuf)
 		.with_tcp(ports.0)
 		.with_udp(ports.1);
 
 	// Set up network
-	CoreBuilder::with_config(config, app_state)
-		.build()
-		.await
-		.unwrap()
+	let mut builder = CoreBuilder::with_config(config);
+
+	// Configure RPC handling
+	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
+
+	// Finish build
+	builder.build().await.unwrap()
 }
 ```
 
-5. Create a function to set up _node_2_.
+4. Create a function to set up _node_2_.
 
 ```rust
-async fn setup_node_2(
-	node_1_ports: (Port, Port),
-	ports: (Port, Port),
-) -> (Core<FileServer>, PeerId) {
-	let app_state = FileServer;
-
+async fn setup_node_2(node_1_ports: (Port, Port), ports: (Port, Port)) -> (Core, PeerId) {
 	// The PeerId of the node 1
 	let peer_id = Keypair::from_protobuf_encoding(&PROTOBUF_KEYPAIR)
 		.unwrap()
@@ -210,28 +172,82 @@ async fn setup_node_2(
 		.with_udp(ports.1);
 
 	// Set up network
-	(
-		CoreBuilder::with_config(config, app_state)
-			.build()
-			.await
-			.unwrap(),
-		peer_id,
-	)
+	let mut builder = CoreBuilder::with_config(config);
+
+	// Configure RPC handling
+	builder = builder.with_rpc(RpcConfig::Default, rpc_incoming_message_handler);
+
+	// Set up network
+	(builder.build().await.unwrap(), peer_id)
 }
 ```
 
-6. Implement the following methods from the `EventHandler` trait:
-
-- [`fn rpc_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#tymethod.rpc_incoming_message_handled)
-- [`fn gossipsub_incoming_message_handled`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#tymethod.gossipsub_incoming_message_handled)
-- [`fn kademlia_put_record_success`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/trait.EventHandler.html#method.kademlia_put_record_success)
-
-1. Create a function that runs _node 1_ and loops indefinately to receive and respond to network events (i.e. the RPC request of data on the file system).
+5. Create a function to handle incoming network requests:
 
 ```rust
+fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+	println!("Received incoming RPC: {:?}", data);
+
+	// Extract the file name from the incoming data
+	let file_name = String::from_utf8_lossy(&data[0]);
+	// Trim any potential whitespace
+	let file_name = file_name.trim();
+
+	// Read the contents of the file
+	let mut file_content = Vec::new();
+	match File::open(&file_name) {
+		Ok(mut file) => match file.read_to_end(&mut file_content) {
+			Ok(_) => {
+				println!("File read successfully: {}", file_name);
+			},
+			Err(e) => {
+				println!("Failed to read file content: {}", e);
+				return vec![b"Error: Failed to read file content".to_vec()];
+			},
+		},
+		Err(e) => {
+			println!("Failed to open file: {}", e);
+			return vec![b"Error: Failed to open file".to_vec()];
+		},
+	}
+
+	// Return the file content as a Vec<Vec<u8>>
+	vec![file_content]
+}
+```
+
+6. Create a function that runs _node 1_ and loops indefinately to receive and respond to network events (i.e. the RPC request of data on the file system).
+
+```rust
+/// Run node 1.
 async fn run_node_1() {
 	// Set up node
 	let mut node = setup_node_1((49666, 49606)).await;
+
+	// Read events generated at setup
+	while let Some(event) = node.next_event().await {
+		match event {
+			NetworkEvent::NewListenAddr {
+				local_peer_id,
+				listener_id: _,
+				address,
+			} => {
+				// Announce interfaces we're listening on
+				println!("Peer id: {}", local_peer_id);
+				println!("We're listening on the {}", address);
+			},
+			NetworkEvent::ConnectionEstablished {
+				peer_id,
+				connection_id: _,
+				endpoint: _,
+				num_established: _,
+				established_in: _,
+			} => {
+				println!("Connection established with peer: {:?}", peer_id);
+			},
+			_ => {},
+		}
+	}
 
 	// Sleep for a few seconds to allow node 2 to reach out
 	async_std::task::sleep(Duration::from_secs(NODE_1_WAIT_TIME)).await;
@@ -239,7 +255,10 @@ async fn run_node_1() {
 	// What are we writing to the DHT?
 	// A file we have on the fs and the location of the file, so it can be easily retrieved
 
-	println!("[1] >>>> Writing file location to DHT: {}", String::from_utf8_lossy(KADEMLIA_KEY.as_bytes()));
+	println!(
+		"[1] >>>> Writing file location to DHT: {}",
+		String::from_utf8_lossy(KADEMLIA_KEY.as_bytes())
+	);
 
 	// Prepare a query to write to the DHT
 	let (key, value, expiration_time, explicit_peers) = (
@@ -259,6 +278,22 @@ async fn run_node_1() {
 	// Submit query to the network
 	node.query_network(kad_request).await.unwrap();
 
+
+	// Check for DHT events
+	let _ = node
+		.events()
+		.await
+		.map(|e| {
+			match e {
+				NetworkEvent::KademliaPutRecordSuccess { key } => {
+					// Call handler
+					println!("Record successfully written to DHT. Key: {:?}", key);
+				},
+				_ => {},
+			}
+		})
+		.collect::<Vec<_>>();
+
 	loop {}
 }
 ```
@@ -266,9 +301,39 @@ async fn run_node_1() {
 7. Create a function to run _node 2_ using [`recv_from_network`](https://algorealminc.github.io/SwarmNL/swarm-nl/core/struct.Core.html#method.recv_from_network) to handle the request.
 
 ```rust
+/// Run node 2.
 async fn run_node_2() {
 	// Set up node 2 and initiate connection to node 1
 	let (mut node_2, node_1_peer_id) = setup_node_2((49666, 49606), (49667, 49607)).await;
+
+	// Read all currently buffered network events
+	let events = node_2.events().await;
+
+	let _ = events
+		.map(|e| {
+			match e {
+				NetworkEvent::NewListenAddr {
+					local_peer_id,
+					listener_id: _,
+					address,
+				} => {
+					// Announce interfaces we're listening on
+					println!("Peer id: {}", local_peer_id);
+					println!("We're listening on the {}", address);
+				},
+				NetworkEvent::ConnectionEstablished {
+					peer_id,
+					connection_id: _,
+					endpoint: _,
+					num_established: _,
+					established_in: _,
+				} => {
+					println!("Connection established with peer: {:?}", peer_id);
+				},
+				_ => {},
+			}
+		})
+		.collect::<Vec<_>>();
 
 	// Sleep for a few seconds to allow node 1 write to the DHT
 	async_std::task::sleep(Duration::from_secs(NODE_2_WAIT_TIME)).await;
@@ -282,7 +347,10 @@ async fn run_node_2() {
 	if let Ok(result) = node_2.query_network(kad_request).await {
 		// We have our response
 		if let AppResponse::KademliaLookupSuccess(value) = result {
-			println!("[2] >>>> File read from DHT: {}", String::from_utf8_lossy(&value));
+			println!(
+				"[2] >>>> File read from DHT: {}",
+				String::from_utf8_lossy(&value)
+			);
 			// Now prepare an RPC query to fetch the file from the remote node
 			let fetch_key = vec![value];
 
@@ -336,4 +404,4 @@ async fn main() {
 }
 ```
 
-That's it! You've just created a file sharing app using SwarmNl. 
+That's it! You've just created a file sharing app using SwarmNL. 
