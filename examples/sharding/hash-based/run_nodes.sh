@@ -25,7 +25,7 @@ sleep 2
 tmux send-keys -t rust-nodes:0.2 "shard mars mars_creatures.txt Inkls" C-m
 
 # Read and fetch commands
-tmux send-keys -t rust-nodes:0.2 "read" C-m
+tmux send-keys -t rust-nodes:0.2 "read mars_creatures.txt" C-m
 tmux send-keys -t rust-nodes:0.2 "fetch mars mars_creatures.txt" C-m
 tmux send-keys -t rust-nodes:0.1 "fetch earth earth_creatures.txt" C-m
 
