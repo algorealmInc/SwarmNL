@@ -14,7 +14,14 @@ SwarmNL is a library designed for P2P networking in distributed systems. It's li
 - [Features and examples](#features-and-examples)
   - [Node configuration](#node-configuration)
   - [Node communication](#node-communication)
-
+- [Replication](#replication)
+  - [Key features](#key-features)
+  - [Example](#example-configuring-and-using-replication)
+  - [Why use SwarmNl for Replication](#why-use-swarmnl-for-replication)
+- [Sharding](#sharding)
+  - [Key features](#key-features-1)
+  - [Example](#example-configuring-and-operating-a-sharded-network)
+  - [Why use SwarmNl for Sharding](#why-use-swarmnl-for-sharding)
 <!-- TOC end -->
 
 ## Why SwarmNL?
@@ -38,6 +45,10 @@ Visit the examples folder [here](https://github.com/algorealmInc/SwarmNL/tree/de
 ## Documentation
 
 Visit the deployed Rust docs [here](https://algorealminc.github.io/SwarmNL/swarm_nl/index.html).
+
+## Research and Technicalities
+
+Please check [here](https://github.com/algorealmInc/SwarmNL/blob/main/research.md) for more technical details and understanding of SwarmNL and it's design choices.
 
 ## Features and examples
 
@@ -254,6 +265,7 @@ For communication, SwarmNL leverages the powerful capabilities of libp2p. These 
 - **Consistency Models**: Choose from a variety of consistency models, including strong consistency with customizable parameters.
 - **Dynamic Node Management**: Nodes can seamlessly join and leave replica networks without disrupting operations. Events are quickly propagated to all nodes.
 - **Ease of Use**: Minimal setup is required to add replication to your system, ensuring quick integration and deployment.
+- **Node Cloning**: Complete instant cloning of data in the buffer of a replica peer.
 
 ### Example: Configuring and Using Replication
 
@@ -292,8 +304,8 @@ Here’s how you can set up and use SwarmNL's replication capabilities:
 SwarmNL exposes network events to your application, allowing you to process incoming replica data effectively.
 
 ```rust
-    #![cfg_attr(not(doctest))]
-    // Listen for replication events
+    //! Listen for replication events
+    
     loop {
         // Check for incoming data events
         if let Some(event) = node.next_event().await {
@@ -411,7 +423,6 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
     let local_storage = Arc::new(Mutex::new(LocalStorage));
 
     // Configure node for replication, we will be using an eventual consistency model here.
-    // If we will be sharding data, our consistency model MUST be set to EVENTUAL.
     let repl_config = ReplNetworkConfig::Custom {
         queue_length: 150,
         expiry_time: Some(10),
@@ -492,7 +503,7 @@ Here’s how you can set up and use SwarmNL's sharding capabilities:
 A node can receive data either through forwarding from a node in another shard or via replication from a peer node in the same shard. Below is an example demonstrating how to listen for and handle both types of events.
 
 ```rust
-    #![cfg_attr(not(doctest))]
+    //! Listen for and consume data from a sharded network.
     loop {
         // Check for incoming data events
         if let Some(event) = node.next_event().await {
@@ -550,7 +561,7 @@ SwarmNL integrates the networking and storage layers to deliver a seamless shard
 ### _Moving forward 👷🏼_
 _In future iterations, we will be working on:_
 - _Extending support for more transport layers._
-- _Optimization of network algorithms._
+- _Providing further optimizating of network algorithms for various network scenerios._
 
 <br>
 In essence, SwarmNL is designed to simplify networking so you can focus on building that world-changing application of yours! Cheers! 🥂

@@ -57,7 +57,7 @@ where
 	async fn network_state(core: Core) -> HashMap<String, HashSet<PeerId>> {
 		core.network_info.sharding.state.lock().await.clone()
 	}
-	
+
 	/// Join a shard network.
 	async fn join_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> {
 		// Ensure the network sharding ID is set.
@@ -197,7 +197,7 @@ where
 		// Shuffle nodes so their order of query is randomized
 		let mut rng = StdRng::from_entropy();
 		let mut nodes = nodes.iter().cloned().collect::<Vec<_>>();
-		
+
 		nodes.shuffle(&mut rng);
 
 		// Attempt to forward the data to peers.
@@ -218,7 +218,8 @@ where
 		Err(NetworkError::DataForwardingError)
 	}
 
-	/// Fetch data from the shard network.
+	/// Fetch data from the shard network. It returns None if the node is a memnber of the shard
+	/// with the data, meaning the node should read it locally.
 	async fn fetch(
 		&self,
 		mut core: Core,

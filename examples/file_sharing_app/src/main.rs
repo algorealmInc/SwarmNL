@@ -1,9 +1,9 @@
-// Copyright 2024 Algorealm, Inc.
+//! Copyright 2024 Algorealm, Inc.
 
-/// This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing
-/// application using two nodes. One nodes writes a record to the DHT and specifies itself as a
-/// provider for a file it has locally. The other node reads the DHT and then uses an RPC to
-/// fetch the file from the first peer.
+//! This crate demonstrates how to use SwarmNl. Here, we build a simple file sharing
+//! application using two nodes. One nodes writes a record to the DHT and specifies itself as a
+//! provider for a file it has locally. The other node reads the DHT and then uses an RPC to
+//! fetch the file from the first peer.
 use std::{
 	collections::HashMap,
 	fs::File,
