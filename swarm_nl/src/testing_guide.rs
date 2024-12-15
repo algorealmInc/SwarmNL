@@ -176,11 +176,12 @@
 //! ```bash
 //! cargo test repl_itest_join_and_exit_works
 //! ```
-//! 
+//!
 //! ## Sharding tests
-//! 
-//! For sharding tests, we setup the nodes as separate threads to form sharding networks. For example:
-//! 
+//!
+//! For sharding tests, we setup the nodes as separate threads to form sharding networks. For
+//! example:
+//!
 //! ```bash
 //! cargo test join_and_exit_shard_network
 //! ```

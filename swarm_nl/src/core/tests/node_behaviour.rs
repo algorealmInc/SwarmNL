@@ -48,9 +48,9 @@ fn create_test_ini_file(file_path: &str) {
 fn node_default_behavior_works() {
 	// Build a node with the default network id
 
-use std::net::IpAddr;
+	use std::net::IpAddr;
 
-use crate::{TcpConfig, TransportOpts, DEFAULT_NETWORK_ID, MAX_PORT, MIN_PORT};
+	use crate::{TcpConfig, TransportOpts, DEFAULT_NETWORK_ID, MAX_PORT, MIN_PORT};
 	let default_node = setup_core_builder();
 
 	// Assert that the default network id is '/swarmnl/1.0'
