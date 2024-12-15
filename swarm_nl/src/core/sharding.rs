@@ -1,7 +1,7 @@
 // Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
-//! Module that contains important data structures to manage [`Sharding`] operations on the
+//! Module that contains important data structures to manage sharding operations on the
 //! network.
 use std::fmt::Debug;
 

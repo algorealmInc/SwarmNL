@@ -1,7 +1,7 @@
 // Copyright 2024 Algorealm, Inc.
 // Apache 2.0 License
 
-//! Module that contains important data structures to manage `Replication` operations on the
+//! Module that contains important data structures to manage replication operations on the
 //! network.
 
 use super::*;
