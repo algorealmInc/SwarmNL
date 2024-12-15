@@ -42,7 +42,7 @@ Have a look at these step-by-step examples that demonstrate the use of SwarmNL i
 - [File sharing application tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/file-sharing-app): demonstrates interacting with the DHT and sending/recieving RPCs from peers.
 - [Simple game tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/simple-game): demonstrates communicating with peers over the network through gossiping.
 - [Sharding tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/sharding): demonstrates splitting a network into shards for scaling and handling communication between various nodes in a shard and across the network.
-- [Replication tutorial](https://github.com/algorealmInc/SwarmNL/tree/main/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
+- [Replication tutorials](https://github.com/algorealmInc/SwarmNL/tree/main/examples/replication): demonstrates the replication of data across nodes specially configured to provide redundancy to the network.
 
 Visit the examples folder [here](https://github.com/algorealmInc/SwarmNL/tree/dev/examples/) to gain a fuller understanding on ways to use the library, including how to integrate SwarmNL with IPFS and HTTP servers.
 
