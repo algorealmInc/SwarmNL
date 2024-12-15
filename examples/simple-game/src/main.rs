@@ -52,92 +52,22 @@ struct Game {
 	pub current_guess: i32,
 }
 
-/// Handler and respond to network events
-impl EventHandler for Game {
-	fn new_listen_addr(
-		&mut self,
-		local_peer_id: PeerId,
-		_listener_id: ListenerId,
-		addr: Multiaddr,
-	) {
-		// announce interfaces we're listening on
-		println!("[[Node {}]] >> Peer id: {}", self.node, local_peer_id);
-		println!("[[Node {}]] >> We're listening on the {}", self.node, addr);
-	}
-
-	fn connection_established(
-		&mut self,
-		peer_id: PeerId,
-		_connection_id: ConnectionId,
-		_endpoint: &ConnectedPoint,
-		_num_established: NonZeroU32,
-		_established_in: Duration,
-	) {
-		println!(
-			"[[Node {}]] >> Connection established with peer: {:?}",
-			self.node, peer_id
-		);
-	}
-
-	/// Event that announces that a peer has just joined a network.
-	fn gossipsub_subscribe_message_recieved(&mut self, peer_id: PeerId, topic: String) {
-		println!(
-			"[[Node {}]] >> Peer {:?} just joined the mesh network for topic: {}",
-			self.node, peer_id, topic
-		);
-	}
-
-	/// Event that announces the arrival of a gossip message.
-	fn gossipsub_incoming_message_handled(&mut self, _source: PeerId, data: Vec<String>) {
-		println!(
-			"[[Node {}]] >> incoming data from peer -> {}: {}",
-			self.node, data[0], data[1]
-		);
-
-		// Parse our data
-		match data[0].as_str() {
-			"guess" => {
-				// Our remote peer has made a guess
-				let remote_peer_guess = data[1].parse::<i32>().unwrap();
-
-				// Compare
-				if self.current_guess > remote_peer_guess {
-					self.score += 1;
-				}
-			},
-			"win" => {
-				// Set our score to -1
-				// Game over
-				self.score = -1;
-			},
-			_ => {},
-		}
-
-		if self.score != -1 && self.score != HIGH_SCORE {
-			println!(
-				"[[Node {}]] >> Node ({}) score: {}",
-				self.node, self.node, self.score
-			);
-		}
-	}
-
-	/// Event that announces the beginning of the filtering and authentication of the incoming
-	/// gossip message. It returns a boolean to specify whether the massage should be dropped or
-	/// should reach the application. All incoming messages are allowed in by default.
-	fn gossipsub_incoming_message_filtered(
-		&mut self,
-		propagation_source: PeerId,
-		message_id: MessageId,
-		source: Option<PeerId>,
-		topic: String,
-		data: Vec<String>,
-	) -> bool {
-		// Drop all guesses that a greater than 10
-		// Parse our data
-		match data[0].as_str() {
-			"guess" => {
-				// Our remote peer has made a guess
-				let remote_peer_guess = data[1].parse::<i32>().unwrap();
+/// Event that announces the beginning of the filtering and authentication of the incoming
+/// gossip message. It returns a boolean to specify whether the massage should be dropped or
+/// should reach the application. All incoming messages are allowed in by default.
+fn gossipsub_filter_fn(
+	propagation_source: PeerId,
+	message_id: MessageId,
+	source: Option<PeerId>,
+	topic: String,
+	data: Vec<String>,
+) -> bool {
+	// Drop all guesses that a greater than 10
+	// Parse our data
+	match data[0].as_str() {
+		"guess" => {
+			// Our remote peer has made a guess
+			let remote_peer_guess = data[1].parse::<i32>().unwrap();
 
 			if remote_peer_guess > 10 {
 				println!("Message dropped, remote guess: {}", remote_peer_guess);
@@ -296,7 +226,7 @@ async fn run_node_1() {
 			// Prepare a gossip request
 			let gossip_request = AppData::GossipsubBroadcastMessage {
 				topic: GOSSIP_NETWORK.to_string(),
-				message: vec!["guess".to_string(), random_u32.to_string()],
+				message: vec!["guess".to_string().into(), random_u32.to_string().into()],
 			};
 
 			// Gossip our random value to our peers
@@ -308,7 +238,7 @@ async fn run_node_1() {
 				// We've won!
 				println!(
 					"[[Node {}]] >> Congratulations! Node 1 is the winner.",
-					node_1.state.lock().await.node
+					game_state.node
 				);
 
 				// Inform Node 2
@@ -316,7 +246,7 @@ async fn run_node_1() {
 				// Prepare a gossip request
 				let gossip_request = AppData::GossipsubBroadcastMessage {
 					topic: GOSSIP_NETWORK.to_string(),
-					message: vec!["win".to_string(), random_u32.to_string()],
+					message: vec!["win".to_string().into(), random_u32.to_string().into()],
 				};
 
 				// Gossip our random value to our peers
@@ -327,7 +257,7 @@ async fn run_node_1() {
 				// We lost :(
 				println!(
 					"[[Node {}]] >> Game Over! Node 2 is the winner.",
-					node_1.state.lock().await.node
+					game_state.node
 				);
 				break;
 			}
@@ -338,6 +268,12 @@ async fn run_node_1() {
 				.await
 				.map(|e| {
 					match e {
+						NetworkEvent::GossipsubSubscribeMessageReceived { peer_id, topic } => {
+							println!(
+								"[[Node {}]] >> Peer {:?} just joined the mesh network for topic: {}",
+								game_state.node, peer_id, topic
+							);
+						},
 						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
 							// Call handler
 							handle_gossipsub_incoming_message(&mut game_state, source, data);
@@ -420,7 +356,7 @@ async fn run_node_2() {
 			// Prepare a gossip request
 			let gossip_request = AppData::GossipsubBroadcastMessage {
 				topic: GOSSIP_NETWORK.to_string(),
-				message: vec!["guess".to_string(), random_u32.to_string()],
+				message: vec!["guess".to_string().into(), random_u32.to_string().into()],
 			};
 
 			// Gossip our random value to our peers
@@ -432,15 +368,15 @@ async fn run_node_2() {
 				// We've won!
 				println!(
 					"[[Node {}]] >> Congratulations! Node 2 is the winner.",
-					node_2.state.lock().await.node
+					game_state.node
 				);
 
 				// Inform Node 2
 
 				// Prepare a gossip request
 				let gossip_request = AppData::GossipsubBroadcastMessage {
-					topic: GOSSIP_NETWORK.to_string(),
-					message: vec!["win".to_string(), random_u32.to_string()],
+					topic: GOSSIP_NETWORK.to_string().into(),
+					message: vec!["win".to_string().into(), random_u32.to_string().into()],
 				};
 
 				// Gossip our random value to our peers
@@ -451,7 +387,7 @@ async fn run_node_2() {
 				// We lost :(
 				println!(
 					"[[Node {}]] >> Game Over! Node 1 is the winner.",
-					node_2.state.lock().await.node
+					game_state.node
 				);
 				break;
 			}
@@ -462,6 +398,12 @@ async fn run_node_2() {
 				.await
 				.map(|e| {
 					match e {
+						NetworkEvent::GossipsubSubscribeMessageReceived { peer_id, topic } => {
+							println!(
+								"[[Node {}]] >> Peer {:?} just joined the mesh network for topic: {}",
+								game_state.node, peer_id, topic
+							);
+						},
 						NetworkEvent::GossipsubIncomingMessageHandled { source, data } => {
 							// Call handler
 							handle_gossipsub_incoming_message(&mut game_state, source, data);
