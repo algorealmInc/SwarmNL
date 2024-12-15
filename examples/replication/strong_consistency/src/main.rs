@@ -2,7 +2,7 @@
 
 //! This example demonstrates the replication of data accross nodes in a network using the
 //! strong data consistency synchronization model. Here we are spinning up three replica nodes that accept data
-//! from standard input and then immedately replicate the data across the replica network.
+//! from standard input and then immediately replicate the data across the replica network.
 
 use std::{collections::HashMap, io, time::Duration};
 
