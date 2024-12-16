@@ -155,7 +155,7 @@ async fn run_node(
 			// confirmations are complete
 			if let Some(repl_data) = node.consume_repl_data(REPL_NETWORK_ID).await {
 				println!(
-					"Data gotten from replica: {} ({} confirmations)",
+					"Data received from replica: {} ({} confirmations)",
 					repl_data.data[0],
 					repl_data.confirmations.unwrap()
 				);

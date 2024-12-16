@@ -34,7 +34,7 @@ repl amazing
 ```
 
 When the replicated data arrives on a node and reaches the application layer, it is immediately sent to a remote server.
-You should see the message `Successfully sent POST request.` printed to the terminal afte this operation.
+You should see the message `Successfully sent POST request.` printed to the terminal after this operation.
 
 ## Run with Docker
 
