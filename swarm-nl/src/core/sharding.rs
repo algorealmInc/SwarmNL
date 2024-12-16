@@ -82,7 +82,7 @@ where
 		// Free `Core`
 		drop(shard_state);
 
-		// Join the shard network (as a replication network)
+		// Join the shard network (as a replica network)
 		let _ = core.join_repl_network(shard_id.to_string()).await;
 
 		// Inform the entire network about our decision
