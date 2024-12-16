@@ -18,6 +18,7 @@ SwarmNL addresses two critical concerns in distributed systems: **fault toleranc
    - [The `ShardStorage` Trait](#the-shardstorage-trait)
      - [Handling Incoming Requests](#handling-incoming-requests)
    - [Shards and Replication](#shards-and-replication)
+   - [No central point of failure](#no-central-point-of-failure)
 - [Reference](#reference)
 
 ## Fault tolerance
