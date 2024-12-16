@@ -38,7 +38,7 @@ Then the third node:
 repl Papayas
 ```
 
-Then in node 3, running the following command will return the values in its replication buffer:
+Then in node 3, running the following command will return the values in its replication buffer (which contains data gotten from nofe 1 and 2):
 
 ```bash
 read
@@ -78,6 +78,30 @@ And the third node:
 
 ```bash
 cargo run --features=first-node
+```
+
+Now, submit the following commands to replicate data from nodes in the network, starting with the first node:
+
+```bash
+repl Apples
+```
+
+The second node:
+
+```bash
+repl Oranges
+```
+
+Then the third node:
+
+```bash
+repl Papayas
+```
+
+Then in node 3, running the following command will return the values in its replication buffer alongside the number of confirmations before the data was written to the primary public buffer to be exposed to the application layer. 
+
+```bash
+read
 ```
 
 ## Run with Docker
@@ -142,7 +166,11 @@ Then in node 3, run the following command to clone node 2's buffer (by passing i
 clone 12D3KooWFPuUnCFtbhtWPQk1HSGEiDxzVrQAxYZW5zuv2kGrsam4
 ```
 
-We expect node 2 to contain "Papayas" and "Apples" in its buffer which you can verify by submitting `read` to stdin from node 3's terminal.
+We expect node 2 to contain "Papayas" and "Apples" in its buffer which you can verify by submitting `read` to stdin from node 3's terminal to read it's buffer content:
+
+```bash
+read
+```
 
 ## Run with Docker
 

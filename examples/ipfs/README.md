@@ -30,8 +30,8 @@ repl Oranges
 # for node 3
 repl Papayas
 ```
-
-You should see a message printed to the stdout of nodes 1 and 2 such as:
+When the replicated data arrived on a node and reaches the application layer, it is immediately uploaded to the IPFS network for persistence.
+After the operation, should see a message printed to the stdout of nodes 1 and 2 such as:
 
 ```bash
 File successfully uploaded to IPFS with hash: QmX7epzCn2jD8nPUDiehmZDQs69HxKYcmM
