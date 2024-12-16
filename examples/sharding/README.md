@@ -33,13 +33,28 @@ shard earth earth_creatures.txt Unicorns
 shard mars mars_creatures.txt Inkls
 ```
 
-From node 3's terminal, you can read what is stored in node 3 by submitting the `read` command. To fetch the values from the network, submit the following command from node 3:
+According to the configuration in the example, node 1 and 2 belongs to the shard with key "mars". Node 3 beloings to a separate shard with key "earth".
+To read the local data stored on node 1 (mars shard). Run the following command:
+
+```bash
+read
+```
+
+After that, we would query the "earth" shard for the data it holds. To do that, please run the following command:
+
+```bash
+fetch earth earth_creatures.txt
+```
+
+Here, we are sending a data request to the sharded network, telling it to read the file "earth_creatures.txt" on the shard "earth".
+
+From node 3's terminal, you can also read what is stored in node 3 by submitting the `read` command. To request data stored in the "mars" shard, kindly run the following:
 
 ```bash
 fetch mars mars_creatures.txt
 ```
 
-In node 2's terminal, run:
+In node 2's terminal, you can also run the following:
 
 ```bash
  fetch earth earth_creatures.txt
@@ -84,20 +99,28 @@ cargo run --features=third-node
 Once all nodes are running, submit the following commands to each terminal:
 
 ```bash
-# in node 1's terminal
+# in node 1's terminal (stores it in shard 2 (node 2))
 shard 150 song --> Give It Away
 
-# in node 2's terminal
+# in node 2's terminal (stores it in shard 1 (node 1))
 shard 250 song --> Under the Bridge
 
-# in node 3's terminal
+# in node 3's terminal (stores it in shard 3 (node 3))
 shard 55 song --> I Could Have Lied
 ```
 
-Then use the `read` and `fetch` commands to check the networks behavior, by executing the following in the third terminal for example:
+To read data stored locally on a particular node, run the following command:
 
 ```bash
-read && fetch 150 song
+read
+```
+Please note that once read is called, all the available data is removed from the replica buffer and consumed.
+
+TO fetch a song placed in a particular shard, please run the following:
+
+```bash
+# Run this in node 1's terminal
+fetch 150 song
 ```
 
 ## Run with Docker

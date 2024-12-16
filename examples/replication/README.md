@@ -98,7 +98,7 @@ Then the third node:
 repl Papayas
 ```
 
-Then in node 3, running the following command will return the values in its replication buffer alongside the number of confirmations before the data was written to the primary public buffer to be exposed to the application layer. 
+Then in node 3, running the following command will return the values in its replication buffer alongside the number of confirmations before the data was written to the primary public buffer and exposed to the application layer. 
 
 ```bash
 read
