@@ -133,7 +133,7 @@ fn echo_for_node1_query_network() {
 			.await
 		{
 			if let AppResponse::Echo(echoed_response) = result {
-				// Assert that what was sent was gotten back
+				// Assert that what was sent was received
 				assert_eq!(echo_string, echoed_response);
 			}
 		}
@@ -159,7 +159,7 @@ fn echo_for_node1_send_and_receive() {
 			.await
 		{
 			if let AppResponse::Echo(echoed_response) = result {
-				// Assert that what was sent was gotten back
+				// Assert that what was sent was received
 				assert_eq!(echo_string, echoed_response);
 			}
 		}

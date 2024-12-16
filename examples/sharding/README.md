@@ -19,7 +19,7 @@ cargo run --features=second-node
 And the third node:
 
 ```bash
-cargo run --features=first-node
+cargo run --features=third-node
 ```
 
 In the separate terminals where each node is running, submit the following commands:
@@ -34,13 +34,13 @@ shard mars mars_creatures.txt Inkls
 ```
 
 According to the configuration in the example, node 1 and 2 belongs to the shard with key "mars". Node 3 beloings to a separate shard with key "earth".
-To read the local data stored on node 1 (mars shard). Run the following command:
+To read the local data stored on node 1 ("mars" shard), run the following command from the first terminal:
 
 ```bash
 read
 ```
 
-After that, we would query the "earth" shard for the data it holds. To do that, please run the following command:
+After that, we would query the "earth" shard for the data it holds. To do that, run the following command:
 
 ```bash
 fetch earth earth_creatures.txt
@@ -48,7 +48,7 @@ fetch earth earth_creatures.txt
 
 Here, we are sending a data request to the sharded network, telling it to read the file "earth_creatures.txt" on the shard "earth".
 
-From node 3's terminal, you can also read what is stored in node 3 by submitting the `read` command. To request data stored in the "mars" shard, kindly run the following:
+From node 3's terminal, you can also read what is stored in node 3 by submitting the `read` command. To request data stored in the "mars" shard, run the following:
 
 ```bash
 fetch mars mars_creatures.txt
@@ -57,7 +57,7 @@ fetch mars mars_creatures.txt
 In node 2's terminal, you can also run the following:
 
 ```bash
- fetch earth earth_creatures.txt
+fetch earth earth_creatures.txt
 ```
 
 ## Run with Docker
@@ -114,9 +114,10 @@ To read data stored locally on a particular node, run the following command:
 ```bash
 read
 ```
-Please note that once read is called, all the available data is removed from the replica buffer and consumed.
 
-TO fetch a song placed in a particular shard, please run the following:
+Note that once `read` is called, all the available data is removed from local storage and consumed.
+
+To fetch a "song" placed in a particular shard, please run the following:
 
 ```bash
 # Run this in node 1's terminal

@@ -107,7 +107,7 @@ async fn run_node(
 	let mut node = setup_node(ports_1, &keypair[..], bootnodes).await;
 
 	// Join replica network
-	println!("Joining replication network");
+	println!("Joining replica network");
 	if let Ok(_) = node.join_repl_network(REPL_NETWORK_ID.into()).await {
 		println!("Replica network successfully joined");
 	} else {

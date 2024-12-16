@@ -3,7 +3,7 @@
 //! > **Note**: the library is compatible with both `tokio` and `async-std` runtimes, however all
 //! > tests are written to use the `tokio` executor.
 //! > Therefore, to run the tests you must specify the runtime feature flag e.g. `cargo test
-//! > --features=tokio-runtime`.
+//! > --features=tokio-runtime` unless it is already set as the default runtime in Cargo.toml.
 //!
 //! Tests are organised into the following modules:
 //!
@@ -170,18 +170,38 @@
 //!
 //! ## Replication tests
 //!
-//! For replication tests, we setup the nodes as separate threads to form replication networks. For
-//! testing joining and exiting functions, for example run:
+//! For each Replication test, we setup nodes as separate async tasks that dial each other to form a replica network.
 //!
-//! ```bash
-//! cargo test repl_itest_join_and_exit_works
-//! ```
+//! The `setup_node` function builds each node with replication configured.
+//!
+//! For basic replication tests we test the network behaves as expected for:
+//! - Joining and exiting the network
+//! - Replicating and fetching data from the network
+//! - Fully replicating a node from the replica network
+//!
+//! For Strong Consistency tests, we test the network behaves as expected for:
+//! - Number of confirmations are correct in a network with only 2 nodes
+//! - Number of confirmations are correct in a network with 3 nodes
+//! - Number of confirmations are correct in a network with `MinPeers` set to 2 nodes
+//!
+//! For Eventual Consistency tests, we test the network behaves as expected for:
+//! - A node is updated upon newly joining a replica network
+//! - Lamport ordering
+//! - Replicating a value across the network
 //!
 //! ## Sharding tests
 //!
-//! For sharding tests, we setup the nodes as separate threads to form sharding networks. For
-//! example:
+//! To setup the testing environment for Sharding, we implement `ShardStorage` to define the behavior of `fetch_data()` 
+//! which fetches data separated by `-->`. We also implement the `Sharding` trait for range-based sharding to test the behavior of the network.
 //!
-//! ```bash
-//! cargo test join_and_exit_shard_network
-//! ```
+//! In each test, we setup nodes as separate async tasks that forms the sharded network.
+//! The `setup_node` function builds each node with replication and sharding configured.
+//!
+//! For Sharding, we test the network behaves as expected for:
+//!
+//! - Joining and exiting a sharded network
+//! - Data forwarding between shards
+//! - Replication between nodes in a shard
+//! - Sharding and fetching from local storage
+//! - Fetching sharded data from the network
+//!  

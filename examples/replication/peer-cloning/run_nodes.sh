@@ -26,7 +26,7 @@ tmux send-keys -t rust-nodes:0.2 "repl Papayas" C-m
 sleep 2
 
 # Clone and read
-tmux send-keys -t rust-nodes:0.2 "clone 12D3KooWQDpMufFJytG2xQuz7JzfK2vBH2g3XXBJ9v2xY7SegRUk" C-m
+tmux send-keys -t rust-nodes:0.2 "clone 12D3KooWFPuUnCFtbhtWPQk1HSGEiDxzVrQAxYZW5zuv2kGrsam4" C-m
 
 sleep 4
 

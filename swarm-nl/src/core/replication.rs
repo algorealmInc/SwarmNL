@@ -736,7 +736,7 @@ impl ReplicaBufferQueue {
 			peer: replica_node,
 		};
 
-		// Try to query the replica node and insert data gotten into buffer
+		// Try to query the replica node and insert data received into buffer
 		let mut queue = self.queue.lock().await;
 		match queue.get_mut(&repl_network) {
 			Some(local_state) => {

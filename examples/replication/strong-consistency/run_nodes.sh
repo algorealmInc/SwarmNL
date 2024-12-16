@@ -15,15 +15,15 @@ sleep 60
 # Send commands to each pane
 # Pane 0 (first node)
 tmux send-keys -t rust-nodes:0.0 "repl Apples" C-m
-sleep 2
+sleep 4
 
 # Pane 1 (second node)
 tmux send-keys -t rust-nodes:0.1 "repl Oranges" C-m
-sleep 2
+sleep 4
 
 # Pane 2 (third node)
 tmux send-keys -t rust-nodes:0.2 "repl Papayas" C-m
-sleep 2
+sleep 4
 
 # Read and fetch commands
 tmux send-keys -t rust-nodes:0.2 "read" C-m
