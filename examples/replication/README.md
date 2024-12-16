@@ -1,6 +1,6 @@
 # Replication examples
 
-These examples demonstrate the configurations and operations of a replication network using SwarmNL using Eventual Consistency and Strong Consistency models.
+These examples demonstrate the configurations and operations of a replica network using SwarmNL using Eventual Consistency and Strong Consistency models.
 
 ## Eventual consistency
 
