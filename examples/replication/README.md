@@ -38,7 +38,7 @@ Then the third node:
 repl Papayas
 ```
 
-Then in node 3, running the following command will return the values in its replication buffer (which contains data gotten from nofe 1 and 2):
+Then in node 3, running the following command will return the values in its replication buffer (which contains data gotten from node 1 and 2):
 
 ```bash
 read
