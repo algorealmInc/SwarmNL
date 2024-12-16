@@ -32,6 +32,7 @@ pub struct ShardingInfo {
 pub(super) struct DefaultShardStorage;
 
 impl ShardStorage for DefaultShardStorage {
+	/// Important function to implement on shard storage interface to read local shard data and return a response to the requesting node.
 	fn fetch_data(&self, key: ByteVector) -> ByteVector {
 		// Simply echo incoming data request
 		key
