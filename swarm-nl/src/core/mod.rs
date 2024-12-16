@@ -1210,8 +1210,7 @@ impl Core {
 		}
 	}
 
-	/// Send data to replica nodes. Function returns false if node is not a member of the replica
-	/// network specified, meaning the replication network has not been configured or joined.
+	/// Send data to replica nodes.
 	pub async fn replicate(
 		&mut self,
 		mut replica_data: ByteVector,
