@@ -31,7 +31,7 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
 #### Replication data structure
 
 ```rust
-   /// Important data to marshall from incoming relication payload and store in the transient
+   /// Important data to marshall from incoming payload and store in the replication
    /// buffer.
    #[derive(Clone, Debug)]
    pub struct ReplBufferData {
@@ -158,7 +158,7 @@ If no custom configuration is provided, the library uses a default setup with:
 
 #### Consistency model
 
-Replication is greatly influenced by the configured **consistency model**, which ensures that all nodes in the network have a consistent view. SwarmNL supports two consistency models:
+Replication is greatly influenced by the configured **consistency model**, which ensures that all nodes have a consistent view of the data in the network. SwarmNL supports two consistency models:
 
 ```rust
    /// The consistency models supported.
@@ -166,7 +166,7 @@ Replication is greatly influenced by the configured **consistency model**, which
    /// This is important as is determines the behaviour of the node in handling and delivering
    /// replicated data to the application layer. There are also trade-offs to be considered
    /// before choosing any model. You must choose the model that aligns and suits your exact
-   /// usecase and objective.
+   /// usecase and objectives.
    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
    pub enum ConsistencyModel {
       /// Eventual consistency.
@@ -239,7 +239,7 @@ Scaling the network is primarily achieved through **replication** and **sharding
 
 ### The `Sharding` trait
 
-SwarmNL provides a trait called `Sharding` to implement sharding. To maintain flexibility and configurability, developers are required to implement the `locate_shard()` function within the trait. This function maps a key or data item to a logical shard, allowing developers to define sharding strategies tailored to their application's needs.
+SwarmNL provides a trait called `Sharding` to implement sharding. To maintain flexibility and configurability, developers are required to implement the `locate_shard()` function of the trait. This function maps a key or data item to a logical shard, allowing developers to define sharding strategies tailored to their application's needs.
 
 ```rust
    /// Trait that specifies sharding logic and behaviour of shards.
@@ -269,7 +269,7 @@ SwarmNL provides a trait called `Sharding` to implement sharding. To maintain fl
 	   async fn exit_network(&self, mut core: Core, shard_id: &Self::ShardId) -> NetworkResult<()> { .. }
 
       /// Send data to peers in the appropriate logical shard. It returns the data if the node is a
-      /// member of the shard after replicating it to fellow nodes in the same shard.
+      /// member of the shard, after replicating it to fellow nodes in the same shard.
       async fn shard(
          &self,
          mut core: Core,
@@ -277,7 +277,7 @@ SwarmNL provides a trait called `Sharding` to implement sharding. To maintain fl
          data: ByteVector,
       ) -> NetworkResult<Option<ByteVector>> { .. }
 
-      /// Fetch data from the shard network. It returns None if the node is a memnber of the shard with the data, meaning the node should read it locally.
+      /// Fetch data from the shard network. It returns `None` if the node is a member of the shard the stores the data, meaning the node should read it locally.
       async fn fetch(
          &self,
          mut core: Core,
