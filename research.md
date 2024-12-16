@@ -419,7 +419,7 @@ All nodes within a shard act as replicas of each other and synchronize their dat
 
 By combining replication and sharding, SwarmNL offers a scalable and fault-tolerant framework for managing decentralized networks while giving developers the freedom to design shard configurations that align with their use case.
 
-### **No Central point of failure**
+### No central point of failure
 
 SwarmNL is designed with resilience and fault tolerance at its core, ensuring that the network has no single point of failure. This is achieved by eliminating reliance on coordinator-based algorithms or centralized decision-making mechanisms. Instead, SwarmNL leverages fully decentralized algorithms to handle all network operations, enhancing the robustness and scalability of the system.
 
