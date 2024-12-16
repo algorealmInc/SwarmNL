@@ -73,7 +73,7 @@ pub enum ReplNetworkConfig {
 	Default,
 }
 
-/// Important data to marshall from incoming relication payload and store in the transient
+/// Important data to marshall from incoming relication payload and store in the replica
 /// buffer.
 #[derive(Clone, Debug)]
 pub struct ReplBufferData {
