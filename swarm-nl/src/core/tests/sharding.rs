@@ -53,7 +53,7 @@ struct LocalStorage {
 
 // Implement the `ShardStorage` trait for our local storage
 impl ShardStorage for LocalStorage {
-	fn fetch_data(&self, key: ByteVector) -> ByteVector {
+	fn fetch_data(&mut self, key: ByteVector) -> ByteVector {
 		// Convert the key to a UTF-8 string
 		let key_str = String::from_utf8_lossy(&key[0]);
 
