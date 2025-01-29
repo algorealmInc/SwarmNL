@@ -57,7 +57,7 @@ SwarmNL simplifies data replication across nodes, ensuring consistency and relia
   The raw data received from a replica peer. This field contains a `StringVector`, which is a vector of strings representing the replicated payload.
 
 - **`lamport_clock`**  
-  A critical synchronization and ordering primitive in distributed systems. The Lamport clock is used internally in the replication buffer queue to order messages and data across the replication network. The clock is incremented whenever a node receives a message or sends data for replication. Each node maintains its own Lamport clock, updating it with the highest value received in messages. The replication buffer is implemented as a `BTreeSet`, ordered by this clock.
+  A critical synchronization and ordering primitive in distributed systems. The Lamport clock is used internally in the replication buffer queue to order messages and data across the replica network. The clock is incremented whenever a node receives a message or sends data for replication. Each node maintains its own Lamport clock, updating it with the highest value received in messages. The replication buffer is implemented as a `BTreeSet`, ordered by this clock.
 
 ```rust
    /// Implement Ord.
@@ -142,7 +142,7 @@ Replication is governed by key primitives that define the behavior of individual
   The interval (in seconds) between synchronization attempts for data in the buffer. This ensures efficient utilization of network resources while maintaining data freshness.
 
 - **`consistency_model`**  
-  Defines the level of consistency required for data replication and the behaviour to ensure it. This must be uniform across all nodes in the replication network to prevent inconsistent or undefined behavior.
+  Defines the level of consistency required for data replication and the behaviour to ensure it. This must be uniform across all nodes in the replica network to prevent inconsistent or undefined behavior.
 
 - **`data_aging_period`**  
   The waiting period (in seconds) after data is saved into the buffer before it is eligible for synchronization. This allows for additional processing or validations if needed.
@@ -420,7 +420,7 @@ All nodes within a shard act as replicas of each other and synchronize their dat
 
 By combining replication and sharding, SwarmNL offers a scalable and fault-tolerant framework for managing decentralized networks while giving developers the freedom to design shard configurations that align with their use case.
 
-### **No Central point of failure**
+### No central point of failure
 
 SwarmNL is designed with resilience and fault tolerance at its core, ensuring that the network has no single point of failure. This is achieved by eliminating reliance on coordinator-based algorithms or centralized decision-making mechanisms. Instead, SwarmNL leverages fully decentralized algorithms to handle all network operations, enhancing the robustness and scalability of the system.
 

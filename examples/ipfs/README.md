@@ -17,7 +17,7 @@ cargo run --features=second-node
 And the third node:
 
 ```bash
-cargo run --features=first-node
+cargo run --features=third-node
 ```
 
 In the separate terminals where each node is running, submit the following commands:
@@ -31,7 +31,7 @@ repl Oranges
 repl Papayas
 ```
 When the replicated data arrived on a node and reaches the application layer, it is immediately uploaded to the IPFS network for persistence.
-After the operation, should see a message printed to the stdout of nodes 1 and 2 such as:
+After the operation, you should see a message printed to the stdout of each node such as:
 
 ```bash
 File successfully uploaded to IPFS with hash: QmX7epzCn2jD8nPUDiehmZDQs69HxKYcmM

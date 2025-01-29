@@ -71,14 +71,14 @@ impl ShardStorage for LocalStorage {
 	}
 }
 
-/// Implement the `Sharding` trait
-/// Range-based sharding implementation
+
+/// Implement the `Sharding` trait for our range-based sharding policy.
 pub struct RangeSharding<T>
 where
 	T: ToString + Send + Sync,
 {
 	/// A map where the key represents the upper bound of a range, and the value is the
-	/// corresponding shard ID
+	/// corresponding shard ID.
 	ranges: BTreeMap<u64, T>,
 }
 
