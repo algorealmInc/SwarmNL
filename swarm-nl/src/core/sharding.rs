@@ -13,7 +13,7 @@ use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 /// forwarded data requests. This is a mechanism to trap into the application storage layer to read
 /// sharded data.
 pub trait ShardStorage: Send + Sync + Debug {
-	fn fetch_data(&self, key: ByteVector) -> ByteVector;
+	fn fetch_data(&mut self, key: ByteVector) -> ByteVector;
 }
 
 /// Important data for the operation of the sharding protocol.
@@ -33,7 +33,7 @@ pub(super) struct DefaultShardStorage;
 
 impl ShardStorage for DefaultShardStorage {
 	/// Important function to implement on shard storage interface to read local shard data and return a response to the requesting node.
-	fn fetch_data(&self, key: ByteVector) -> ByteVector {
+	fn fetch_data(&mut self, key: ByteVector) -> ByteVector {
 		// Simply echo incoming data request
 		key
 	}
@@ -219,7 +219,7 @@ where
 		Err(NetworkError::DataForwardingError)
 	}
 
-	/// Fetch data from the shard network. It returns None if the node is a memnber of the shard
+	/// Fetch data from the shard network. It returns `None` if the node is a memnber of the shard
 	/// with the data, meaning the node should read it locally.
 	async fn fetch(
 		&self,

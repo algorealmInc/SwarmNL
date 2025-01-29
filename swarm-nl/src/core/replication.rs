@@ -120,7 +120,7 @@ impl PartialEq for ReplBufferData {
 	}
 }
 
-/// Transient buffer queue where incoming replicated data are stored temporarily.
+/// Replica buffer queue where incoming replicated data are stored temporarily.
 pub(crate) struct ReplicaBufferQueue {
 	/// Configuration for replication and general synchronization.
 	config: ReplNetworkConfig,
@@ -172,9 +172,11 @@ impl ReplicaBufferQueue {
 		let mut queue = self.queue.lock().await;
 		queue.insert(repl_network.clone(), Default::default());
 
-		// Initialize transient buffer, in case of a string consistency model
-		let mut queue = self.temporary_queue.lock().await;
-		queue.insert(repl_network.clone(), Default::default());
+		// Initialize transient buffer, in case of a strong consistency model
+		if self.consistency_model() != ConsistencyModel::Eventual {
+			let mut queue = self.temporary_queue.lock().await;
+			queue.insert(repl_network.clone(), Default::default());
+		}
 	}
 
 	/// Push a new [ReplBufferData] item into the buffer.

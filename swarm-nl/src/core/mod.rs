@@ -235,7 +235,6 @@ impl CoreBuilder {
 			request_response: (request_response_behaviour, rpc_handler_fn),
 			gossipsub: (gossipsub_behaviour, gossip_filter_fn),
 			replication_cfg: ReplNetworkConfig::Default,
-			// The default peers to be forwarded sharded data must be 25% of the total in a shard
 			sharding: ShardingInfo {
 				id: Default::default(),
 				local_storage: Arc::new(Mutex::new(DefaultShardStorage)),
@@ -1017,7 +1016,7 @@ impl Core {
 
 	/// Setup the necessary preliminaries for the sharding protocol
 	async fn init_sharding(&mut self, network_id: String) {
-		// We will setup the indelying gossip group that all nodes in the nwtwork must be a part of,
+		// We will setup the undelying gossip group that all nodes in the nwtwork must be a part of,
 		// to keep the state of the network consistent
 		let gossip_request = AppData::GossipsubJoinNetwork(network_id.clone());
 		let _ = self.query_network(gossip_request).await;
