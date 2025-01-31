@@ -1,6 +1,6 @@
 [package]
 name = "swarm-nl"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Adedeji Adebayo <adedeji@algorealm.org>", "Sacha Lansky <sacha@algorealm.org>"]
 description = "A library to build custom networking layers for decentralized and distributed applications."
