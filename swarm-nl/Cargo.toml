@@ -9,6 +9,7 @@ repository = "https://github.com/algorealmInc/SwarmNL"
 readme = "README.md"
 keywords = ["web3", "swarm", "libp2p", "networking", "p2p"]  # Relevant tags
 categories = ["science"]
+documentation = "https://docs.rs/swarm-nl/latest/swarm_nl/"
 
 [dependencies]
 rust-ini = "0.20.0"
