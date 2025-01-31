@@ -7,7 +7,7 @@ description = "A library to build custom networking layers for decentralized and
 license = "Apache-2.0"
 repository = "https://github.com/algorealmInc/SwarmNL"
 readme = "README.md"
-keywords = ["web3", "swarm", "libp2p", "networking", "p2p", "decentralized", "distributed"]  # Relevant tags
+keywords = ["web3", "swarm", "libp2p", "networking", "p2p"]  # Relevant tags
 categories = ["networking", "science"]
 
 [dependencies]
