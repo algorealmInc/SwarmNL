@@ -2,8 +2,13 @@
 name = "swarm-nl"
 version = "0.2.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Adedeji Adebayo <adedeji@algorealm.org>", "Sacha Lansky <sacha@algorealm.org>"]
+description = "A library to build custom networking layers for decentralized and distributed applications."
+license = "Apache-2.0"
+repository = "https://github.com/algorealmInc/SwarmNL"
+readme = "README.md"
+keywords = ["web3", "swarm", "libp2p", "networking", "p2p", "decentralized", "distributed"]  # Relevant tags
+categories = ["networking", "science"]
 
 [dependencies]
 rust-ini = "0.20.0"
