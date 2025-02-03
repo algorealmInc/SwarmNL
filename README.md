@@ -1,4 +1,5 @@
-<!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNL.png" alt="SwarmNL" style="border-radius: 15px !important;"> -->
+[![crates.io](https://img.shields.io/crates/v/swarm-nl.svg)](https://crates.io/crates/swarm-nl)
+![maintenance](https://img.shields.io/badge/maintenance-actively--developed-brightgreen.svg)
 
 # SwarmNL
 
