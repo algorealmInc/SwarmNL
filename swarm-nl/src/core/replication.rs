@@ -701,7 +701,7 @@ impl ReplicaBufferQueue {
 				entry.extend_from_slice(msg.message_id.as_bytes());
 				entry.extend_from_slice(Core::FIELD_DELIMITER.to_string().as_bytes());
 				entry.extend_from_slice(msg.sender.to_base58().as_bytes());
-
+ 
 				// Append the entry to the result, separated by `ENTRY_DELIMITER`
 				if !result.is_empty() {
 					result.extend_from_slice(Core::ENTRY_DELIMITER.to_string().as_bytes());
