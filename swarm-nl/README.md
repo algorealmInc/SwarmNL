@@ -1,4 +1,5 @@
-<!-- <img src="https://github.com/algorealmInc/SwarmNL/blob/c3fe530350ec37755c64b47cba06361d39b3b095/SwarmNL.png" alt="SwarmNL" style="border-radius: 15px !important;"> -->
+[![crates.io](https://img.shields.io/crates/v/swarm-nl.svg)](https://crates.io/crates/swarm-nl)
+![maintenance](https://img.shields.io/badge/maintenance-actively--developed-brightgreen.svg)
 
 # SwarmNL
 
@@ -103,7 +104,7 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 
 ```
 
-Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm-nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
+Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/main/swarm-nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
 ### Event handling
 

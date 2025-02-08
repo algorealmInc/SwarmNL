@@ -104,7 +104,7 @@ SwarmNL provides a simple interface to configure a node and specify parameters t
 
 ```
 
-Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/dev/swarm-nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
+Please look at a template `.ini` file [here](https://github.com/algorealmInc/SwarmNL/blob/main/swarm-nl/bootstrap_config.ini) for configuring a node in the network.<br><br>
 
 ### Event handling
 
