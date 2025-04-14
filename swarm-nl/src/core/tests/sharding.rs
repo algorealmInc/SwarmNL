@@ -34,7 +34,7 @@ fn rpc_incoming_message_handler(data: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 	data
 }
 
-/// Handle gissiping
+/// Handle gossiping
 fn gossipsub_filter_fn(
 	propagation_source: PeerId,
 	message_id: MessageId,
