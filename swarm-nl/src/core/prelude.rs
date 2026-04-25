@@ -14,17 +14,19 @@ use thiserror::Error;
 
 use super::*;
 
-/// The duration (in seconds) to wait for response from the network layer before timing
-/// out.
-pub const NETWORK_READ_TIMEOUT: Seconds = 30;
+/// Default maximum number of polls in [`Core::recv_from_network`] before returning
+/// [`NetworkError::NetworkReadTimeout`]. Effective timeout = `DEFAULT_RECV_MAX_POLLS ×
+/// DEFAULT_RECV_POLL_INTERVAL_MS` ms. Configurable via
+/// [`CoreBuilder::with_network_timeout`].
+pub const DEFAULT_RECV_MAX_POLLS: usize = 10;
 
-/// The time it takes for the task to sleep before it can recheck if an output has been placed in
-/// the response buffer.
-pub const TASK_SLEEP_DURATION: Seconds = 3;
+/// Default sleep between polls in [`Core::recv_from_network`], in milliseconds.
+/// Configurable via [`CoreBuilder::with_network_timeout`].
+pub const DEFAULT_RECV_POLL_INTERVAL_MS: u64 = 3_000;
 
-/// The height of the internal queue. This represents the maximum number of elements that a queue
-/// can accommodate without losing its oldest elements.
-const MAX_QUEUE_ELEMENTS: usize = 300;
+/// Default capacity of the internal network event queue. When full the oldest event is
+/// evicted. Configurable via [`CoreBuilder::with_event_queue_capacity`].
+pub const DEFAULT_EVENT_QUEUE_CAPACITY: usize = 300;
 
 /// Type that represents the response of the network layer to the application layer's event handler.
 pub type AppResponseResult = Result<AppResponse, NetworkError>;
@@ -589,6 +591,10 @@ pub(super) struct NetworkInfo {
 	pub replication: replication::ReplInfo,
 	/// Important information to manage `sharding` operations.
 	pub sharding: sharding::ShardingInfo,
+	/// Maximum number of polls in `recv_from_network` before returning `NetworkReadTimeout`.
+	pub network_recv_max_polls: usize,
+	/// Milliseconds to sleep between each poll in `recv_from_network`.
+	pub network_recv_poll_interval_ms: u64,
 }
 
 /// Module that contains important data structures to manage `Ping` operations on the network.
@@ -680,8 +686,13 @@ pub mod gossipsub_cfg {
 }
 
 /// Queue that stores and removes data in a FIFO manner.
+///
+/// When the queue reaches its configured `capacity` the oldest element is evicted to make
+/// room for the new one.  Use [`DataQueue::with_capacity`] to override the default of
+/// [`DEFAULT_EVENT_QUEUE_CAPACITY`].
 #[derive(Clone)]
 pub(super) struct DataQueue<T: Debug + Clone + Eq + PartialEq + Hash> {
+	capacity: usize,
 	buffer: Arc<Mutex<VecDeque<T>>>,
 }
 
@@ -689,15 +700,16 @@ impl<T> DataQueue<T>
 where
 	T: Debug + Clone + Eq + PartialEq + Hash,
 {
-	/// The initial buffer capacity, to optimize for speed and defer allocation
-	const INITIAL_BUFFER_CAPACITY: usize = 300;
-
-	/// Create new queue.
+	/// Create a new queue with the default capacity ([`DEFAULT_EVENT_QUEUE_CAPACITY`]).
 	pub fn new() -> Self {
+		Self::with_capacity(DEFAULT_EVENT_QUEUE_CAPACITY)
+	}
+
+	/// Create a new queue with an explicit `capacity`.
+	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			buffer: Arc::new(Mutex::new(VecDeque::with_capacity(
-				DataQueue::<T>::INITIAL_BUFFER_CAPACITY,
-			))),
+			capacity,
+			buffer: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))),
 		}
 	}
 
@@ -706,10 +718,10 @@ where
 		self.buffer.lock().await.pop_front()
 	}
 
-	/// Append an item to the queue.
+	/// Append an item to the queue, evicting the oldest entry if capacity is reached.
 	pub async fn push(&self, item: T) {
 		let mut buffer = self.buffer.lock().await;
-		if buffer.len() >= MAX_QUEUE_ELEMENTS {
+		if buffer.len() >= self.capacity {
 			buffer.pop_front();
 		}
 		buffer.push_back(item);

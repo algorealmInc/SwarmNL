@@ -136,7 +136,7 @@ pub struct CoreBuilder {
 	/// The size of the stream buffers to use to track application requests to the network layer
 	/// internally.
 	stream_size: usize,
-	/// The IP address to listen on.f
+	/// The IP address to listen on.
 	ip_address: IpAddr,
 	/// Connection keep-alive duration while idle.
 	keep_alive_duration: Seconds,
@@ -163,6 +163,14 @@ pub struct CoreBuilder {
 	/// The name of the entire shard network. This is important for quick broadcasting of changes
 	/// in the shard network as a whole.
 	sharding: ShardingInfo,
+	/// Maximum number of polls in [`Core::recv_from_network`] before returning
+	/// [`NetworkError::NetworkReadTimeout`]. Effective timeout = `network_recv_max_polls ×
+	/// network_recv_poll_interval_ms` ms.
+	network_recv_max_polls: usize,
+	/// Milliseconds to sleep between each poll in [`Core::recv_from_network`].
+	network_recv_poll_interval_ms: u64,
+	/// Maximum number of events the internal event queue can hold before evicting the oldest.
+	event_queue_capacity: usize,
 }
 
 impl CoreBuilder {
@@ -240,6 +248,9 @@ impl CoreBuilder {
 				local_storage: Arc::new(Mutex::new(DefaultShardStorage)),
 				state: Default::default(),
 			},
+			network_recv_max_polls: DEFAULT_RECV_MAX_POLLS,
+			network_recv_poll_interval_ms: DEFAULT_RECV_POLL_INTERVAL_MS,
+			event_queue_capacity: DEFAULT_EVENT_QUEUE_CAPACITY,
 		}
 	}
 
@@ -383,6 +394,36 @@ impl CoreBuilder {
 	/// Configure the transports to support.
 	pub fn with_transports(self, transport: TransportOpts) -> Self {
 		CoreBuilder { transport, ..self }
+	}
+
+	/// Configure the polling behaviour of [`Core::recv_from_network`].
+	///
+	/// `max_polls` is the number of retries before [`NetworkError::NetworkReadTimeout`] is
+	/// returned.  `poll_interval_ms` is the sleep duration between retries in **milliseconds**.
+	/// The effective ceiling on wait time is `max_polls × poll_interval_ms` ms.
+	///
+	/// **Default:** 10 polls × 3 000 ms = 30 s.  For 200 ms gossip workloads a value of
+	/// `(50, 100)` (5 s ceiling, 100 ms granularity) is recommended.
+	pub fn with_network_timeout(self, max_polls: usize, poll_interval_ms: u64) -> Self {
+		CoreBuilder {
+			network_recv_max_polls: max_polls,
+			network_recv_poll_interval_ms: poll_interval_ms,
+			..self
+		}
+	}
+
+	/// Configure the capacity of the internal network event queue.
+	///
+	/// When the queue is full the **oldest** event is evicted to make room for the new one.
+	/// Increase this value for workloads that generate many events in short bursts (e.g. 50+
+	/// drones gossiping at 200 ms intervals).
+	///
+	/// **Default:** [`DEFAULT_EVENT_QUEUE_CAPACITY`] (300).
+	pub fn with_event_queue_capacity(self, capacity: usize) -> Self {
+		CoreBuilder {
+			event_queue_capacity: capacity,
+			..self
+		}
 	}
 
 	/// Return the id of the network.
@@ -672,6 +713,8 @@ impl CoreBuilder {
 			gossip_filter_fn: self.gossipsub.1,
 			replication: repl_info,
 			sharding: self.sharding.clone(),
+			network_recv_max_polls: self.network_recv_max_polls,
+			network_recv_poll_interval_ms: self.network_recv_poll_interval_ms,
 		};
 
 		// Build the network core
@@ -681,8 +724,8 @@ impl CoreBuilder {
 			stream_request_buffer: stream_request_buffer.clone(),
 			stream_response_buffer: stream_response_buffer.clone(),
 			current_stream_id: Arc::new(Mutex::new(stream_id)),
-			// Initialize an empty event queue
-			event_queue: DataQueue::new(),
+			// Initialize event queue with the configured capacity
+			event_queue: DataQueue::with_capacity(self.event_queue_capacity),
 			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.clone())),
 			network_info,
 		};
@@ -930,33 +973,35 @@ impl Core {
 	/// This function is decoupled from the [`Core::send_to_network()`] method so as to prevent
 	/// blocking until the response is returned.
 	pub async fn recv_from_network(&mut self, stream_id: StreamId) -> NetworkResult<AppResponse> {
+		let max_polls = self.network_info.network_recv_max_polls;
+		let poll_interval_ms = self.network_info.network_recv_poll_interval_ms;
+
 		#[cfg(feature = "async-std-runtime")]
 		{
 			let channel = self.clone();
 			let response_handler = async_std::task::spawn(async move {
 				let mut loop_count = 0;
 				loop {
-					// Attempt to acquire the lock without blocking
-					let mut buffer_guard = channel.stream_response_buffer.lock().await;
+					// Acquire the lock, check for a result, then release before sleeping.
+					let result = {
+						let mut buffer_guard = channel.stream_response_buffer.lock().await;
+						buffer_guard.remove(&stream_id)
+					};
 
-					// Check if the value is available in the response buffer
-					if let Some(result) = buffer_guard.remove(&stream_id) {
+					if let Some(result) = result {
 						return Ok(result);
 					}
 
-					// Timeout after 10 trials
-					if loop_count < 10 {
+					if loop_count < max_polls {
 						loop_count += 1;
 					} else {
 						return Err(NetworkError::NetworkReadTimeout);
 					}
 
-					// Response has not arrived, sleep and retry
-					async_std::task::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
+					async_std::task::sleep(Duration::from_millis(poll_interval_ms)).await;
 				}
 			});
 
-			// Wait for the spawned task to complete
 			match response_handler.await {
 				Ok(result) => result,
 				Err(_) => Err(NetworkError::NetworkReadTimeout),
@@ -969,27 +1014,26 @@ impl Core {
 			let response_handler = tokio::task::spawn(async move {
 				let mut loop_count = 0;
 				loop {
-					// Attempt to acquire the lock without blocking
-					let mut buffer_guard = channel.stream_response_buffer.lock().await;
+					// Acquire the lock, check for a result, then release before sleeping.
+					let result = {
+						let mut buffer_guard = channel.stream_response_buffer.lock().await;
+						buffer_guard.remove(&stream_id)
+					};
 
-					// Check if the value is available in the response buffer
-					if let Some(result) = buffer_guard.remove(&stream_id) {
+					if let Some(result) = result {
 						return Ok(result);
 					}
 
-					// Timeout after 10 trials
-					if loop_count < 10 {
+					if loop_count < max_polls {
 						loop_count += 1;
 					} else {
 						return Err(NetworkError::NetworkReadTimeout);
 					}
 
-					// Response has not arrived, sleep and retry
-					tokio::time::sleep(Duration::from_secs(TASK_SLEEP_DURATION)).await;
+					tokio::time::sleep(Duration::from_millis(poll_interval_ms)).await;
 				}
 			});
 
-			// Wait for the spawned task to complete
 			match response_handler.await {
 				Ok(result) => result?,
 				Err(_) => Err(NetworkError::NetworkReadTimeout),
