@@ -549,12 +549,19 @@ impl ReplicaBufferQueue {
 				let _ = core.query_network(gossip_request).await;
 			}
 
-			// Wait for a defined duration before the next sync
+			// Use the configured sync_wait_time so that callers using
+			// ReplNetworkConfig::Custom with a short interval are honoured.
+			// Previously this always used the hardcoded SYNC_WAIT_TIME constant (5 s).
+			let sync_wait_time = match self.config {
+				ReplNetworkConfig::Default => Self::SYNC_WAIT_TIME,
+				ReplNetworkConfig::Custom { sync_wait_time, .. } => sync_wait_time,
+			};
+
 			#[cfg(feature = "tokio-runtime")]
-			tokio::time::sleep(Duration::from_secs(Self::SYNC_WAIT_TIME)).await;
+			tokio::time::sleep(Duration::from_secs(sync_wait_time)).await;
 
 			#[cfg(feature = "async-std-runtime")]
-			async_std::task::sleep(Duration::from_secs(Self::SYNC_WAIT_TIME)).await;
+			async_std::task::sleep(Duration::from_secs(sync_wait_time)).await;
 		}
 	}
 
