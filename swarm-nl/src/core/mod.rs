@@ -728,6 +728,8 @@ impl CoreBuilder {
 			event_queue: DataQueue::with_capacity(self.event_queue_capacity),
 			replica_buffer: Arc::new(ReplicaBufferQueue::new(self.replication_cfg.clone())),
 			network_info,
+			#[cfg(feature = "tokio-runtime")]
+			task_handles: Arc::new(Mutex::new(Vec::new())),
 		};
 
 		// Check if sharding is configured
@@ -754,12 +756,15 @@ impl CoreBuilder {
 
 		// Spin up task to handle async operations and data on the network
 		#[cfg(feature = "tokio-runtime")]
-		tokio::task::spawn(Core::handle_async_operations(
-			swarm,
-			network_sender,
-			network_receiver,
-			network_core.clone(),
-		));
+		{
+			let handle = tokio::task::spawn(Core::handle_async_operations(
+				swarm,
+				network_sender,
+				network_receiver,
+				network_core.clone(),
+			));
+			network_core.task_handles.lock().await.push(handle.abort_handle());
+		}
 
 		// Spin up task to listen for responses from the network layer
 		#[cfg(feature = "async-std-runtime")]
@@ -770,10 +775,13 @@ impl CoreBuilder {
 
 		// Spin up task to listen for responses from the network layer
 		#[cfg(feature = "tokio-runtime")]
-		tokio::task::spawn(Core::handle_network_response(
-			application_receiver,
-			network_core.clone(),
-		));
+		{
+			let handle = tokio::task::spawn(Core::handle_network_response(
+				application_receiver,
+				network_core.clone(),
+			));
+			network_core.task_handles.lock().await.push(handle.abort_handle());
+		}
 
 		// Wait for a few seconds before passing control to the application
 		#[cfg(feature = "async-std-runtime")]
@@ -813,6 +821,10 @@ pub struct Core {
 	replica_buffer: Arc<ReplicaBufferQueue>,
 	/// Important information about the network
 	network_info: NetworkInfo,
+	/// Abort handles for background tasks spawned by `build()`. Shared across `Core` clones so
+	/// that any clone can abort all tasks (and release the TCP listener) via `shutdown()`.
+	#[cfg(feature = "tokio-runtime")]
+	task_handles: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
 }
 
 impl Core {
@@ -896,6 +908,16 @@ impl Core {
 	/// Return the node's `PeerId`.
 	pub fn peer_id(&self) -> PeerId {
 		self.keypair.public().to_peer_id()
+	}
+
+	/// Abort all background tasks spawned by `build()`, releasing the TCP/UDP listeners
+	/// immediately. Call this before dropping the last `Core` clone when you need the
+	/// port to be available for re-use (e.g. in tests, or on graceful shutdown).
+	#[cfg(feature = "tokio-runtime")]
+	pub async fn shutdown(&self) {
+		for handle in self.task_handles.lock().await.iter() {
+			handle.abort();
+		}
 	}
 
 	/// Return an iterator to the buffered network layer events and consume them.

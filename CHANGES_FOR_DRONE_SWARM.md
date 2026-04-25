@@ -125,6 +125,42 @@ is unchanged; `Custom` users now get the value they asked for.
 
 ---
 
+### 4  `Core::shutdown()` — abort background tasks to release TCP listeners  (`src/core/mod.rs`)
+
+**What changed**
+
+`build()` spawns two long-lived background tasks:
+- `handle_async_operations` — owns the libp2p `Swarm` (and thus the TCP/UDP listeners)
+- `handle_network_response` — processes responses from the swarm back to the app
+
+Previously there was no way to stop these tasks. Dropping `Core` had no effect on
+them because they held independent `Arc`-cloned state. This meant a node could not
+release its listening port until the process exited — making port reuse (e.g. a
+drone rejoining from the same address) impossible in tests.
+
+**Fix**: store `tokio::task::AbortHandle`s in a shared `Arc<Mutex<Vec<AbortHandle>>>`
+field on `Core`, captured immediately after `tokio::task::spawn`. A new method:
+
+```rust
+#[cfg(feature = "tokio-runtime")]
+pub async fn shutdown(&self)
+```
+
+aborts all stored handles, releasing the swarm and its listeners synchronously.
+
+**Usage in ds-swarm**: called in the event loop's shutdown arm after `GossipsubExitNetwork`:
+
+```rust
+core.query_network(AppData::GossipsubExitNetwork(topic)).await;
+core.shutdown().await;  // ← releases TCP port immediately
+```
+
+**Why this is safe to upstream**: purely additive, tokio-runtime only, no behaviour
+change unless `shutdown()` is explicitly called.  Any user who needs clean shutdown
+semantics (graceful restart, port reuse) benefits from this.
+
+---
+
 ## What Was Not Changed
 
 - Transport layer (TCP/QUIC).  The `ds-sim` crate handles simulation by assigning
